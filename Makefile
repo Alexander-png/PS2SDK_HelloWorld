@@ -32,7 +32,9 @@ BIN2C        = $(PS2SDK)/bin/bin2c
 # ---- Sources -------------------------------------------------------------
 EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/logging/log.c \
-                 $(SRC_DIR)/mpegv3/mpeg_player.c
+                 $(SRC_DIR)/mpegv3/mpeg_player.c \
+                 $(SRC_DIR)/audio/audio_player.c \
+                 $(SRC_DIR)/audio/audio_stream.c \
 
 EE_GEN_SRCS    = $(AUDSRV_IRX_C)             
 
@@ -50,6 +52,7 @@ $(foreach src,$(filter-out $(AUDSRV_IRX_C),$(EE_SRCS)),$(if $(wildcard $(src)),,
 EE_INCS   += -I$(SRC_DIR)               \
              -I$(SRC_DIR)/logging       \
              -I$(SRC_DIR)/mpegv3       \
+             -I$(SRC_DIR)/audio       \
 
 # -MMD -MP: generate .d dependency files alongside each .o
 EE_CFLAGS += $(BUILD_CFLAGS) -MMD -MP
