@@ -132,15 +132,23 @@ static int refill_io_buf(audio_stream_t *s, u32 wanted_frame)
     int rd;
     u32 wanted_byte;
     u32 max_bytes;
+    u32 frames_per_buf;
+    u32 aligned_frame;
 
     if (!s || s->fd < 0)
         return -1;
     if (wanted_frame >= s->total_frames)
         return -2;
 
-    wanted_byte = wanted_frame * AUDIO_FRAME_BYTES;
-    if (lseek(s->fd, (off_t)(s->data_offset + wanted_byte), SEEK_SET) < 0)
+    frames_per_buf = (u32)s->io_buf_size / AUDIO_FRAME_BYTES;
+    if (frames_per_buf == 0)
         return -3;
+
+    aligned_frame = (wanted_frame / frames_per_buf) * frames_per_buf;
+    wanted_byte = aligned_frame * AUDIO_FRAME_BYTES;
+
+    if (lseek(s->fd, (off_t)(s->data_offset + wanted_byte), SEEK_SET) < 0)
+        return -4;
 
     max_bytes = s->data_size - wanted_byte;
     if (max_bytes > (u32)s->io_buf_size)
@@ -148,11 +156,11 @@ static int refill_io_buf(audio_stream_t *s, u32 wanted_frame)
 
     rd = read(s->fd, s->io_buf, max_bytes);
     if (rd <= 0)
-        return -4;
+        return -5;
 
-    s->io_buf_start_frame = wanted_frame;
-    s->io_buf_frames      = (u32)rd / AUDIO_FRAME_BYTES;
-    return (s->io_buf_frames > 0) ? 0 : -5;
+    s->io_buf_start_frame = aligned_frame;
+    s->io_buf_frames = (u32)rd / AUDIO_FRAME_BYTES;
+    return (s->io_buf_frames > 0) ? 0 : -6;
 }
 
 static int get_frame_pair(audio_stream_t *s, u32 frame, s16 *l, s16 *r)
@@ -307,7 +315,7 @@ int audio_stream_init(audio_stream_t *s, const char *wav_path,
     if (mixbuf_frames <= 0)
         mixbuf_frames = 1024;
     if (io_buf_bytes <= 0)
-        io_buf_bytes = 64 * 1024;
+        io_buf_bytes = 128 * 1024;
 
     io_buf_bytes &= ~((int)AUDIO_FRAME_BYTES - 1);
     if (io_buf_bytes < 4096)
@@ -408,6 +416,12 @@ int audio_stream_play(audio_stream_t *s, int loop)
         return -1;
 
     s->loop    = loop ? 1 : 0;
+    s->src_pos = 0.0f;
+    s->io_buf_start_frame = 0;
+    s->io_buf_frames = 0;
+
+    refill_io_buf(s, 0);
+
     s->playing = 1;
     s->paused  = 0;
     return 0;

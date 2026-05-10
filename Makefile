@@ -35,6 +35,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/mpegv3/mpeg_player.c \
                  $(SRC_DIR)/audio/audio_player.c \
                  $(SRC_DIR)/audio/audio_stream.c \
+                 $(SRC_DIR)/audio/audio_mixer_stream.c
 
 EE_GEN_SRCS    = $(AUDSRV_IRX_C)             
 
