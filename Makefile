@@ -25,25 +25,36 @@ endif
 # ---- Paths ---------------------------------------------------------------
 SRC_DIR    = src
 OBJ_DIR    = obj/$(BUILD)
+AUDSRV_IRX   = $(PS2SDK)/iop/irx/audsrv.irx
+AUDSRV_IRX_C = $(SRC_DIR)/audsrv_irx.c
+BIN2C        = $(PS2SDK)/bin/bin2c
 
 # ---- Sources -------------------------------------------------------------
-EE_SRCS    = $(SRC_DIR)/main.c            \
-             $(SRC_DIR)/logging/log.c
+EE_STATIC_SRCS = $(SRC_DIR)/main.c \
+                 $(SRC_DIR)/logging/log.c \
+                 $(SRC_DIR)/mpegv3/mpeg_player.c
 
-EE_OBJS    = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(EE_SRCS))
+EE_GEN_SRCS    = $(AUDSRV_IRX_C)             
+
+EE_SRCS        = $(EE_STATIC_SRCS) $(EE_GEN_SRCS)
+
+EE_OBJS    = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(EE_SRCS)) \
+             $(AUDSRV_IRX_OBJ)
+
 EE_DEPS    = $(EE_OBJS:.o=.d)
 
 # Sanity-check that every listed source actually exists.
-$(foreach src,$(EE_SRCS),$(if $(wildcard $(src)),,$(error Source not found: $(src))))
+$(foreach src,$(filter-out $(AUDSRV_IRX_C),$(EE_SRCS)),$(if $(wildcard $(src)),,$(error Source not found: $(src))))
 
 # ---- Compile flags -------------------------------------------------------
 EE_INCS   += -I$(SRC_DIR)               \
-             -I$(SRC_DIR)/logging
+             -I$(SRC_DIR)/logging       \
+             -I$(SRC_DIR)/mpegv3       \
 
 # -MMD -MP: generate .d dependency files alongside each .o
 EE_CFLAGS += $(BUILD_CFLAGS) -MMD -MP
 
-EE_LIBS    = -ldebug -lgraph -lpacket -ldma -lkernel
+EE_LIBS    = -lmpeg -ldraw -lgraph -lpacket -ldma -laudsrv -lpatches -lc -ldebug -lkernel
 
 # ---- Targets -------------------------------------------------------------
 all: $(EE_BIN)
@@ -56,7 +67,7 @@ release:
 	$(MAKE) BUILD=release
 
 clean:
-	rm -rf obj app_debug.elf app_release.elf
+	rm -rf obj app_debug.elf app_release.elf $(AUDSRV_IRX_C)
 
 distclean: clean
 
@@ -74,34 +85,20 @@ distclean: clean
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.eeglobal
 
+# Generate embedded IRX source
+$(AUDSRV_IRX_C): $(AUDSRV_IRX)
+	$(BIN2C) $< $@ audsrv_irx
+
 # IMPORTANT: define our pattern rule AFTER the includes so it overrides
 # ps2sdk's default `%.o: %.c` rule. Last definition wins in make.
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 
+# $(OBJ_DIR)/audsrv_irx.o: $(AUDSRV_IRX)
+# 	@mkdir -p $(dir $@)
+# 	$(EE_OBJCOPY) -I binary -O elf32-littlemips -B mips $< $@  
+
 # Pull in dependency files. The leading dash silences errors on first
 # build (when no .d files exist yet) — make ignores missing -include files.
 -include $(EE_DEPS)
-
-
-
-
-
-# include $(PS2SDK)/samples/Makefile.pref
-# include $(PS2SDK)/samples/Makefile.eeglobal
-
-# EE_BIN  = app.elf
-# EE_OBJS = Main.o Log.o
-# EE_LIBS = -ldebug -lgraph -lpacket -ldma -lkernel
-
-# # Enable on-screen logging in addition to console logs:
-# EE_CFLAGS += -DLOG_SCREEN
-
-# all: $(EE_BIN)
-
-# clean:
-# 	rm -f $(EE_BIN) $(EE_OBJS)
-
-# include $(PS2SDK)/samples/Makefile.pref
-# include $(PS2SDK)/samples/Makefile.eeglobal

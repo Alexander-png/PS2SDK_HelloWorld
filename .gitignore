@@ -56,4 +56,9 @@ dkms.conf
 
 # other
 /thrash
+/mpeg
+/mpegv2
+/thirdparty
 *.bin
+*.mp4
+*.raw
