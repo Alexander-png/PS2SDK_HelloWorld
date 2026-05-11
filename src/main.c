@@ -27,3 +27,7 @@ int main(void)
     boot_shutdown(&boot);
     return 0;
 }
+
+// TODO:
+// Fix audio mixer pause behaviour (audio test state): audio never plays after stoped
+// Implement resource test state and test resourse and streaming

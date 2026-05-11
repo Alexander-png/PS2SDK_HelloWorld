@@ -3,6 +3,8 @@
 #include "engine/platform/platform.h"
 #include "engine/audio/audio.h"
 #include "engine/input/input.h"
+#include "engine/streaming/streaming.h"
+#include "engine/resources/resources.h"
 
 #include <string.h>
 
@@ -48,12 +50,12 @@ int boot_init(boot_context_t *boot)
         return -2;
     }
 
+    LOGLN("[boot] starting");
+
     if (platform_init() < 0) {
         LOGLN("[boot] platform init failed");
-        return -2;
+        return -3;
     }
-
-    LOGLN("[boot] starting");
 
     /*
      * Future mandatory systems:
@@ -74,6 +76,16 @@ int boot_init(boot_context_t *boot)
             LOGLN("[boot] input available");
         else
             LOGLN("[boot] input unavailable, continuing");
+    }
+
+    if (streaming_init() < 0) {
+        LOGLN("[boot] streaming init failed");
+        return -4;
+    }
+
+    if (resources_init() < 0) {
+        LOGLN("[boot] resources init failed");
+        return -5;
     }
 
     if (audio_init() < 0) {
@@ -121,6 +133,9 @@ void boot_shutdown(boot_context_t *boot)
 
     audio_shutdown();
     boot->audio_available = 0;
+
+    resources_shutdown();
+    streaming_shutdown();
 
     input_shutdown();
     boot->input_available = 0;

@@ -39,7 +39,10 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/audio/audio.c \
                  $(SRC_DIR)/engine/audio/audio_mixer_stream.c \
                  $(SRC_DIR)/engine/input/input_ps2.c \
-                 $(SRC_DIR)/game/states/test/audio_test_state.c
+                 $(SRC_DIR)/engine/streaming/streaming.c \
+                 $(SRC_DIR)/engine/resources/resources.c \
+                 $(SRC_DIR)/game/states/test/audio_test_state.c \
+                 $(SRC_DIR)/game/states/test/resource_test_state.c
 
 
 EE_GEN_SRCS    = $(AUDSRV_IRX_C)             
@@ -60,7 +63,9 @@ EE_INCS   += -I$(SRC_DIR) \
              -I$(SRC_DIR)/engine/logging \
              -I$(SRC_DIR)/engine/audio \
              -I$(SRC_DIR)/engine/input \
-             -I$(SRC_DIR)/game/audio
+             -I$(SRC_DIR)/engine/streaming \
+             -I$(SRC_DIR)/engine/resources \
+             -I$(SRC_DIR)/game/states/test
 
 # -MMD -MP: generate .d dependency files alongside each .o
 EE_CFLAGS += $(BUILD_CFLAGS) -MMD -MP

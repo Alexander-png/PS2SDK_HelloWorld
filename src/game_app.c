@@ -3,7 +3,10 @@
 #include "engine/audio/audio.h"
 #include "engine/input/input.h"
 #include "engine/platform/platform.h"
+#include "engine/streaming/streaming.h"
+#include "engine/resources/resources.h"
 #include "game/states/test/audio_test_state.h"
+#include "game/states/test/resource_test_state.h"
 
 #include <string.h>
 
@@ -75,8 +78,8 @@ int game_app_init(void)
 
     LOGLN("[game_app] init");
 
-    //rc = game_app_change_state(&g_empty_state, NULL);
-    rc = game_app_change_state(audio_test_state_desc(), NULL);
+    //rc = game_app_change_state(audio_test_state_desc(), NULL);
+    rc = game_app_change_state(resource_test_state_desc(), NULL);
     if (rc < 0) {
         LOGLN("[game_app] failed to enter initial state: %d", rc);
         memset(&g_app, 0, sizeof(g_app));
@@ -129,6 +132,9 @@ void game_app_tick(void)
 
     input_update();
 
+    streaming_update();
+    resources_update();
+
     audio_update(g_app.dt);
 
     if (g_app.state && g_app.state->update)
@@ -141,8 +147,7 @@ void game_app_tick(void)
 
     /*
      * Temporary pacing until vblank/timer-based frame timing exists.
-     */
-    
+     */     
     platform_delay_us(GAME_APP_FRAME_DELAY_US);
 }
 
