@@ -1,0 +1,7 @@
+/usr/local/ps2dev
+last successful video encoding:
+ffmpeg -i /home/user/vid.mp4 -f mpeg2video -vcodec mpeg2video -an -s 320x240 -b:v 1000k -minrate 1000k -maxrate 1000k -bufsize 500k -g 1 -bf 0 test.bin
+
+.ogg sound encode:
+ffmpeg -i thrash/snd2.ogg -vn -ac 2 -ar 48000 -c:a pcm_s16le snd2.wav
+
