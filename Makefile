@@ -31,11 +31,15 @@ BIN2C        = $(PS2SDK)/bin/bin2c
 
 # ---- Sources -------------------------------------------------------------
 EE_STATIC_SRCS = $(SRC_DIR)/main.c \
-                 $(SRC_DIR)/logging/log.c \
-                 $(SRC_DIR)/mpegv3/mpeg_player.c \
-                 $(SRC_DIR)/audio/audio_player.c \
-                 $(SRC_DIR)/audio/audio_stream.c \
-                 $(SRC_DIR)/audio/audio_mixer_stream.c
+                 $(SRC_DIR)/boot.c \
+                 $(SRC_DIR)/game_app.c \
+                 $(SRC_DIR)/engine/platform/platform_ps2.c \
+                 $(SRC_DIR)/engine/logging/log.c \
+                 $(SRC_DIR)/engine/audio/audio_driver_ps2.c \
+                 $(SRC_DIR)/engine/audio/audio.c \
+                 $(SRC_DIR)/engine/audio/audio_mixer_stream.c \
+                 $(SRC_DIR)/game/states/test/audio_test_state.c
+
 
 EE_GEN_SRCS    = $(AUDSRV_IRX_C)             
 
@@ -50,10 +54,11 @@ EE_DEPS    = $(EE_OBJS:.o=.d)
 $(foreach src,$(filter-out $(AUDSRV_IRX_C),$(EE_SRCS)),$(if $(wildcard $(src)),,$(error Source not found: $(src))))
 
 # ---- Compile flags -------------------------------------------------------
-EE_INCS   += -I$(SRC_DIR)               \
-             -I$(SRC_DIR)/logging       \
-             -I$(SRC_DIR)/mpegv3       \
-             -I$(SRC_DIR)/audio       \
+EE_INCS   += -I$(SRC_DIR) \
+             -I$(SRC_DIR)/engine/platform \
+             -I$(SRC_DIR)/engine/logging \
+             -I$(SRC_DIR)/engine/audio \
+             -I$(SRC_DIR)/game/audio
 
 # -MMD -MP: generate .d dependency files alongside each .o
 EE_CFLAGS += $(BUILD_CFLAGS) -MMD -MP
