@@ -1,6 +1,7 @@
 #include "game_app.h"
 #include "engine/logging/log.h"
 #include "engine/audio/audio.h"
+#include "engine/input/input.h"
 #include "game/states/test/audio_test_state.h"
 
 #include <string.h>
@@ -127,6 +128,8 @@ void game_app_tick(void)
      *   gfx2d_end_frame
      */
 
+    input_update();
+    
     audio_update(g_app.dt);
 
     if (g_app.state && g_app.state->update)

@@ -9,6 +9,7 @@ typedef struct boot_context {
     int initialized;
     int audio_available;
     int screen_available;
+    int input_available;
 } boot_context_t;
 
 int  boot_init(boot_context_t *boot);

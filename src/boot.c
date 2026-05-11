@@ -2,6 +2,7 @@
 #include "engine/logging/log.h"
 #include "engine/platform/platform.h"
 #include "engine/audio/audio.h"
+#include "engine/input/input.h"
 
 #include <string.h>
 
@@ -64,6 +65,17 @@ int boot_init(boot_context_t *boot)
      * gfx2d_init();
      */
 
+    if (input_init() < 0) {
+        boot->input_available = 0;
+        LOGLN("[boot] input init failed, continuing without input");
+    } else {
+        boot->input_available = input_is_available();
+        if (boot->input_available)
+            LOGLN("[boot] input available");
+        else
+            LOGLN("[boot] input unavailable, continuing");
+    }
+
     if (audio_init() < 0) {
         /*
          * audio_init() currently returns 0 even when audio is disabled,
@@ -78,7 +90,7 @@ int boot_init(boot_context_t *boot)
         else
             LOGLN("[boot] audio unavailable, continuing");
     }
-
+    
     boot->initialized = 1;
     LOGLN("[boot] ready");
 
@@ -109,6 +121,9 @@ void boot_shutdown(boot_context_t *boot)
 
     audio_shutdown();
     boot->audio_available = 0;
+
+    input_shutdown();
+    boot->input_available = 0;
 
     boot->initialized = 0;
 

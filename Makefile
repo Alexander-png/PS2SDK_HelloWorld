@@ -38,6 +38,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/audio/audio_driver_ps2.c \
                  $(SRC_DIR)/engine/audio/audio.c \
                  $(SRC_DIR)/engine/audio/audio_mixer_stream.c \
+                 $(SRC_DIR)/engine/input/input_ps2.c \
                  $(SRC_DIR)/game/states/test/audio_test_state.c
 
 
@@ -58,12 +59,13 @@ EE_INCS   += -I$(SRC_DIR) \
              -I$(SRC_DIR)/engine/platform \
              -I$(SRC_DIR)/engine/logging \
              -I$(SRC_DIR)/engine/audio \
+             -I$(SRC_DIR)/engine/input \
              -I$(SRC_DIR)/game/audio
 
 # -MMD -MP: generate .d dependency files alongside each .o
 EE_CFLAGS += $(BUILD_CFLAGS) -MMD -MP
 
-EE_LIBS    = -lmpeg -ldraw -lgraph -lpacket -ldma -laudsrv -lpatches -lc -ldebug -lkernel
+EE_LIBS    = -lpad -lmpeg -ldraw -lgraph -lpacket -ldma -laudsrv -lpatches -lc -ldebug -lkernel
 
 # ---- Targets -------------------------------------------------------------
 all: $(EE_BIN)
