@@ -2,11 +2,10 @@
 #include "engine/logging/log.h"
 #include "engine/audio/audio.h"
 #include "engine/input/input.h"
+#include "engine/platform/platform.h"
 #include "game/states/test/audio_test_state.h"
 
 #include <string.h>
-#include <kernel.h>
-#include <delaythread.h>
 
 #ifndef GAME_APP_FIXED_DT
 #define GAME_APP_FIXED_DT (1.0f / 60.0f)
@@ -129,7 +128,7 @@ void game_app_tick(void)
      */
 
     input_update();
-    
+
     audio_update(g_app.dt);
 
     if (g_app.state && g_app.state->update)
@@ -143,7 +142,8 @@ void game_app_tick(void)
     /*
      * Temporary pacing until vblank/timer-based frame timing exists.
      */
-    DelayThread(GAME_APP_FRAME_DELAY_US);
+    
+    platform_delay_us(GAME_APP_FRAME_DELAY_US);
 }
 
 int game_app_is_running(void)

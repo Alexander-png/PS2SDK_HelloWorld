@@ -1,10 +1,8 @@
 #include "audio_driver.h"
-#include "log.h"
+#include "engine/logging/log.h"
+#include "engine/platform/platform.h"
 
 #include <tamtypes.h>
-#include <kernel.h>
-#include <sifrpc.h>
-#include <loadfile.h>
 #include <audsrv.h>
 
 #ifndef AUDIO_OUTPUT_RATE
@@ -23,6 +21,10 @@
 #define AUDIO_MASTER_VOLUME MAX_VOLUME
 #endif
 
+#ifndef AUDIO_AUDSRV_STARTUP_DELAY_US
+#define AUDIO_AUDSRV_STARTUP_DELAY_US 100000
+#endif
+
 extern unsigned char audsrv_irx[];
 extern unsigned int size_audsrv_irx;
 
@@ -39,7 +41,7 @@ int audio_driver_init(void)
 
     LOGLN("[audio] driver init");
 
-    irx_ret = SifLoadModule("rom0:LIBSD", 0, NULL);
+    irx_ret = platform_load_module("rom0:LIBSD", 0, NULL);
     LOGLN("[audio] LIBSD load: %d", irx_ret);
 
     if (irx_ret < 0) {
@@ -48,7 +50,7 @@ int audio_driver_init(void)
     }
 
     mod_ret = 0;
-    mod_id = SifExecModuleBuffer(
+    mod_id = platform_exec_module_buffer(
         audsrv_irx,
         size_audsrv_irx,
         0,
@@ -63,16 +65,24 @@ int audio_driver_init(void)
         return AUDIO_DRIVER_ERR_AUDSRV_MODULE;
     }
 
+    /*
+     * Give the IOP module a short chance to create its RPC listener thread
+     * before the EE-side audsrv_init() tries to bind to it.
+     */
+    platform_delay_us(AUDIO_AUDSRV_STARTUP_DELAY_US);
+    LOGLN("[audio] audsrv.irx startup delay done");
+
+    LOGLN("[audio] calling audsrv_init");
     if (audsrv_init() != 0) {
         LOGLN("[audio] audsrv_init failed");
         return AUDIO_DRIVER_ERR_AUDSRV_INIT;
     }
+    LOGLN("[audio] audsrv_init ok");
 
     fmt.freq = AUDIO_OUTPUT_RATE;
     fmt.bits = AUDIO_OUTPUT_BITS;
     fmt.channels = AUDIO_OUTPUT_CHANNELS;
 
-    
     if (audsrv_set_format(&fmt) != 0) {
         LOGLN("[audio] audsrv_set_format failed");
         return AUDIO_DRIVER_ERR_FORMAT;

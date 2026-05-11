@@ -90,7 +90,7 @@ int boot_init(boot_context_t *boot)
         else
             LOGLN("[boot] audio unavailable, continuing");
     }
-    
+
     boot->initialized = 1;
     LOGLN("[boot] ready");
 
@@ -126,6 +126,8 @@ void boot_shutdown(boot_context_t *boot)
     boot->input_available = 0;
 
     boot->initialized = 0;
+
+    platform_shutdown();
 
     LOGLN("[boot] done");
 

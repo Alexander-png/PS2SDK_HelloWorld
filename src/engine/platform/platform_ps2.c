@@ -42,8 +42,7 @@ void platform_shutdown(void)
 
 void platform_delay_us(int usec)
 {
-    if (usec > 0)
-        DelayThread(usec);
+    DelayThread(usec);
 }
 
 unsigned int platform_ticks_ms(void)
@@ -53,4 +52,24 @@ unsigned int platform_ticks_ms(void)
      * Later: implement with timer or graph/vblank timing.
      */
     return 0;
+}
+
+int platform_load_module(const char *path, int argc, const char *argv)
+{
+    if (!s_platform_ready)
+        return -9999;
+
+    return SifLoadModule(path, argc, argv);
+}
+
+int platform_exec_module_buffer(const void *buffer,
+                                unsigned int size,
+                                int argc,
+                                const char *argv,
+                                int *result)
+{
+    if (!s_platform_ready)
+        return -9999;
+
+    return SifExecModuleBuffer((void *)buffer, size, argc, argv, result);
 }

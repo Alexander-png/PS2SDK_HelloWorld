@@ -1,8 +1,8 @@
 #include "audio_mixer_stream.h"
+#include "engine/platform/platform.h"
 
 #include <audsrv.h>
 #include <kernel.h>
-#include <delaythread.h>
 #include <malloc.h>
 #include <string.h>
 #include <fcntl.h>
@@ -298,7 +298,7 @@ static void audio_mixer_thread(void *arg)
                 audsrv_stop_audio();
                 m->output_active = 0;
             }
-            DelayThread(AUDIO_MIXER_IDLE_US);
+            platform_delay_us(AUDIO_MIXER_IDLE_US);
             continue;
         }
 
@@ -394,7 +394,7 @@ void audio_mixer_destroy(audio_mixer_t *m)
     audsrv_stop_audio();
 
     for (t = 0; t < 100 && m->thread_running; t++)
-        DelayThread(1000);
+        platform_delay_us(1000);
 
     if (m->thread_running && m->thread_id >= 0) {
         TerminateThread(m->thread_id);

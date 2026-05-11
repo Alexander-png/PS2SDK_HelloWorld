@@ -1,10 +1,9 @@
 #include "input.h"
 #include "engine/logging/log.h"
+#include "engine/platform/platform.h"
 
 #include <string.h>
 #include <kernel.h>
-#include <delaythread.h>
-#include <loadfile.h>
 #include <libpad.h>
 
 #ifndef INPUT_PAD_PORT
@@ -49,7 +48,7 @@ static int input_wait_pad_ready(void)
         if (state == PAD_STATE_STABLE || state == PAD_STATE_FINDCTP1)
             return 0;
 
-        DelayThread(INPUT_PAD_READY_DELAY_US);
+        platform_delay_us(INPUT_PAD_READY_DELAY_US);
     }
 
     return -1;
@@ -83,10 +82,10 @@ int input_init(void)
      * Negative return is logged but not fatal here; padInit/padPortOpen
      * below decides whether input is actually available.
      */
-    ret = SifLoadModule("rom0:SIO2MAN", 0, NULL);
+    ret = platform_load_module("rom0:SIO2MAN", 0, NULL);
     LOGLN("[input] SIO2MAN load: %d", ret);
 
-    ret = SifLoadModule("rom0:PADMAN", 0, NULL);
+    ret = platform_load_module("rom0:PADMAN", 0, NULL);
     LOGLN("[input] PADMAN load: %d", ret);
 
     ret = padInit(0);

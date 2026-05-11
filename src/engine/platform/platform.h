@@ -11,6 +11,13 @@ void platform_shutdown(void);
 void platform_delay_us(int usec);
 unsigned int platform_ticks_ms(void);
 
+int platform_load_module(const char *path, int argc, const char *argv);
+int platform_exec_module_buffer(const void *buffer,
+                                unsigned int size,
+                                int argc,
+                                const char *argv,
+                                int *result);
+
 #ifdef __cplusplus
 }
 #endif
