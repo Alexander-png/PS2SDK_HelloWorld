@@ -78,8 +78,8 @@ int game_app_init(void)
 
     LOGLN("[game_app] init");
 
-    //rc = game_app_change_state(audio_test_state_desc(), NULL);
-    rc = game_app_change_state(resource_test_state_desc(), NULL);
+    rc = game_app_change_state(audio_test_state_desc(), NULL);
+    //rc = game_app_change_state(resource_test_state_desc(), NULL);
     if (rc < 0) {
         LOGLN("[game_app] failed to enter initial state: %d", rc);
         memset(&g_app, 0, sizeof(g_app));

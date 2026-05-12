@@ -29,5 +29,6 @@ int main(void)
 }
 
 // TODO:
-// Fix audio mixer pause behaviour (audio test state): audio never plays after stoped
 // Implement resource test state and test resourse and streaming
+// Add callbacks to audio.h (audio mixer supports callbacks)
+// Fix app sometimes hang on shutdown 

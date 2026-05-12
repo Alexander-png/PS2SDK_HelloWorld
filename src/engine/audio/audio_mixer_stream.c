@@ -294,11 +294,12 @@ static void audio_mixer_thread(void *arg)
 
     while (!m->thread_exit) {
         if (!mixer_has_active_streams(m)) {
-            if (m->output_active) {
-                audsrv_stop_audio();
-                m->output_active = 0;
-            }
-            platform_delay_us(AUDIO_MIXER_IDLE_US);
+            memset(m->mixbuf, 0, bytes);
+            audsrv_wait_audio(bytes);
+            if (m->thread_exit)
+                break;
+            audsrv_play_audio((const char *)m->mixbuf, bytes);
+            m->output_active = 1;
             continue;
         }
 
