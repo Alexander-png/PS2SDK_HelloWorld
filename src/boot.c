@@ -131,17 +131,22 @@ void boot_shutdown(boot_context_t *boot)
      * memory_shutdown();
      */
 
+    LOGLN("[boot] audio");
     audio_shutdown();
     boot->audio_available = 0;
 
+    LOGLN("[boot] resources");
     resources_shutdown();
+    LOGLN("[boot] streaming");
     streaming_shutdown();
 
+    LOGLN("[boot] input");
     input_shutdown();
     boot->input_available = 0;
 
     boot->initialized = 0;
 
+    LOGLN("[boot] platform");
     platform_shutdown();
 
     LOGLN("[boot] done");
