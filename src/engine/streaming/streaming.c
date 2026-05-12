@@ -1,3 +1,5 @@
+/* streaming.c */
+
 #include "streaming.h"
 #include "engine/logging/log.h"
 
@@ -22,6 +24,9 @@ typedef struct stream_request {
 
     stream_callback_t callback;
     void *userdata;
+
+    int callback_pending;
+    stream_status_t callback_status;
 } stream_request_t;
 
 typedef struct stream_system {
@@ -57,22 +62,49 @@ static int stream_handle_to_index(stream_handle_t handle)
     return (int)handle.index;
 }
 
-static void stream_finish_request(stream_request_t *r,
-                                  stream_handle_t handle,
+static void stream_queue_callback(stream_request_t *r,
                                   stream_status_t status,
                                   int result)
 {
     r->status = status;
     r->result = result;
+    r->callback_status = status;
+    r->callback_pending = 1;
+}
 
-    if (r->callback)
-        r->callback(handle, status, r->bytes_read, r->userdata);
+static void stream_dispatch_callbacks(void)
+{
+    int i;
+
+    for (i = 0; i < STREAMING_MAX_REQUESTS; i++) {
+        stream_request_t *r = &g_streaming.requests[i];
+        stream_handle_t handle;
+        stream_callback_t callback;
+        void *userdata;
+        stream_status_t status;
+        int bytes_read;
+
+        if (!r->used || !r->callback_pending)
+            continue;
+
+        handle.index = (u16)i;
+        handle.generation = r->generation;
+
+        callback = r->callback;
+        userdata = r->userdata;
+        status = r->callback_status;
+        bytes_read = r->bytes_read;
+
+        r->callback_pending = 0;
+
+        if (callback)
+            callback(handle, status, bytes_read, userdata);
+    }
 }
 
 static void stream_process_request(int index)
 {
     stream_request_t *r;
-    stream_handle_t handle;
     int fd;
     int remaining;
     unsigned char *dst;
@@ -82,11 +114,8 @@ static void stream_process_request(int index)
     if (!r->used || r->status != STREAM_STATUS_QUEUED)
         return;
 
-    handle.index = (u16)index;
-    handle.generation = r->generation;
-
     if (!r->dst || r->size == 0 || r->path[0] == '\0') {
-        stream_finish_request(r, handle, STREAM_STATUS_FAILED, -1);
+        stream_queue_callback(r, STREAM_STATUS_FAILED, -1);
         return;
     }
 
@@ -97,7 +126,7 @@ static void stream_process_request(int index)
     fd = open(r->path, O_RDONLY);
     if (fd < 0) {
         LOGLN("[streaming] open failed: %s", r->path);
-        stream_finish_request(r, handle, STREAM_STATUS_FAILED, -2);
+        stream_queue_callback(r, STREAM_STATUS_FAILED, -2);
         return;
     }
 
@@ -105,7 +134,7 @@ static void stream_process_request(int index)
         if (lseek(fd, (off_t)r->offset, SEEK_SET) < 0) {
             close(fd);
             LOGLN("[streaming] seek failed: %s offset=%u", r->path, r->offset);
-            stream_finish_request(r, handle, STREAM_STATUS_FAILED, -3);
+            stream_queue_callback(r, STREAM_STATUS_FAILED, -3);
             return;
         }
     }
@@ -132,13 +161,13 @@ static void stream_process_request(int index)
     close(fd);
 
     if (r->bytes_read == (int)r->size) {
-        stream_finish_request(r, handle, STREAM_STATUS_READY, r->bytes_read);
+        stream_queue_callback(r, STREAM_STATUS_READY, r->bytes_read);
     } else {
         LOGLN("[streaming] short read: %s got=%d wanted=%u",
               r->path,
               r->bytes_read,
               r->size);
-        stream_finish_request(r, handle, STREAM_STATUS_FAILED, -4);
+        stream_queue_callback(r, STREAM_STATUS_FAILED, -4);
     }
 }
 
@@ -191,15 +220,11 @@ void streaming_update(void)
     if (!g_streaming.initialized)
         return;
 
-    /*
-     * First version: process at most one queued request per frame.
-     * This API is async-style, but the actual read is currently synchronous.
-     * Later this can move to a worker thread or CD/DVD streaming backend
-     * without changing callers.
-     */
     index = stream_find_request_to_process();
     if (index >= 0)
         stream_process_request(index);
+
+    stream_dispatch_callbacks();
 }
 
 stream_handle_t streaming_request_file(const stream_request_desc_t *desc)
@@ -242,6 +267,8 @@ stream_handle_t streaming_request_file(const stream_request_desc_t *desc)
     r->status = STREAM_STATUS_QUEUED;
     r->callback = desc->callback;
     r->userdata = desc->userdata;
+    r->callback_pending = 0;
+    r->callback_status = STREAM_STATUS_UNUSED;
 
     h.index = (u16)i;
     h.generation = r->generation;
@@ -273,11 +300,8 @@ void streaming_cancel(stream_handle_t handle)
         r->status == STREAM_STATUS_CANCELLED)
         return;
 
-    r->status = STREAM_STATUS_CANCELLED;
     r->result = -5;
-
-    if (r->callback)
-        r->callback(handle, r->status, r->bytes_read, r->userdata);
+    stream_queue_callback(r, STREAM_STATUS_CANCELLED, r->result);
 }
 
 void streaming_release(stream_handle_t handle)

@@ -59,6 +59,7 @@ dkms.conf
 /mpeg
 /mpegv2
 /thirdparty
+/assets
 *.bin
 *.mp4
 *.raw

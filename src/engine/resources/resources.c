@@ -18,6 +18,7 @@ typedef struct resource_item {
     u32 size;
 
     stream_handle_t stream;
+    int stream_released;
 
     resource_callback_t callback;
     void *userdata;
@@ -71,11 +72,26 @@ static int resource_file_size(const char *path, u32 *out_size)
     end = lseek(fd, 0, SEEK_END);
     close(fd);
 
-    if (end <= 0)
+    if (end < 0)
         return -3;
 
     *out_size = (u32)end;
     return 0;
+}
+
+static void resource_release_stream_if_needed(resource_item_t *r)
+{
+    if (!r)
+        return;
+
+    if (r->stream_released)
+        return;
+
+    if (streaming_is_valid(r->stream)) {
+        streaming_release(r->stream);
+    }
+
+    r->stream_released = 1;
 }
 
 static void resource_stream_callback(stream_handle_t stream,
@@ -104,15 +120,20 @@ static void resource_stream_callback(stream_handle_t stream,
               resource_type_name(r->type),
               r->path,
               r->size);
+    } else if (stream_status == STREAM_STATUS_CANCELLED) {
+        r->status = RESOURCE_STATUS_FAILED;
+        LOGLN("[resources] cancelled index=%d path=%s",
+              index,
+              r->path);
     } else {
         r->status = RESOURCE_STATUS_FAILED;
-        LOGLN("[resources] failed index=%d stream_status=%s path=%s",
+        LOGLN("[resources] failed index=%d stream_status=%s path=%s bytes_read=%d size=%u",
               index,
               streaming_status_name(stream_status),
-              r->path);
+              r->path,
+              bytes_read,
+              r->size);
     }
-
-    streaming_release(r->stream);
 
     if (r->callback)
         r->callback(handle, r->status, r->data, r->size, r->userdata);
@@ -150,13 +171,36 @@ void resources_shutdown(void)
 
 void resources_update(void)
 {
-    /*
-     * Placeholder.
-     *
-     * Current streaming callbacks run during streaming_update(), so no work
-     * is required here yet. Later this can dispatch queued resource events,
-     * upload texture pages, parse sprite banks, or finalize room data.
-     */
+    int i;
+
+    if (!g_resources.initialized)
+        return;
+
+    for (i = 0; i < RESOURCE_MAX_ITEMS; i++) {
+        resource_item_t *r = &g_resources.items[i];
+
+        if (!r->used)
+            continue;
+
+        if (r->stream_released)
+            continue;
+
+        if (!streaming_is_valid(r->stream)) {
+            r->stream_released = 1;
+            continue;
+        }
+
+        switch (streaming_status(r->stream)) {
+        case STREAM_STATUS_READY:
+        case STREAM_STATUS_FAILED:
+        case STREAM_STATUS_CANCELLED:
+            resource_release_stream_if_needed(r);
+            break;
+
+        default:
+            break;
+        }
+    }
 }
 
 resource_handle_t resource_load_file(const resource_load_desc_t *desc)
@@ -178,19 +222,12 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
         return resource_invalid_handle();
     }
 
-    data = memalign(64, size);
-    if (!data) {
-        LOGLN("[resources] alloc failed size=%u path=%s", size, desc->path);
-        return resource_invalid_handle();
-    }
-
     for (i = 0; i < RESOURCE_MAX_ITEMS; i++) {
         if (!g_resources.items[i].used)
             break;
     }
 
     if (i >= RESOURCE_MAX_ITEMS) {
-        free(data);
         LOGLN("[resources] no free slots");
         return resource_invalid_handle();
     }
@@ -209,13 +246,42 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
     r->path[sizeof(r->path) - 1] = '\0';
     r->type = desc->type;
     r->status = RESOURCE_STATUS_LOADING;
-    r->data = data;
-    r->size = size;
     r->callback = desc->callback;
     r->userdata = desc->userdata;
+    r->stream = (stream_handle_t){0xffffu, 0};
+    r->stream_released = 1;
 
     h.index = (u16)i;
     h.generation = r->generation;
+
+    if (size == 0) {
+        r->data = NULL;
+        r->size = 0;
+        r->status = RESOURCE_STATUS_READY;
+
+        LOGLN("[resources] load zero-size index=%d gen=%u type=%s path=%s",
+              i,
+              h.generation,
+              resource_type_name(r->type),
+              r->path);
+
+        if (r->callback)
+            r->callback(h, r->status, r->data, r->size, r->userdata);
+
+        return h;
+    }
+
+    data = memalign(64, size);
+    if (!data) {
+        u16 generation = r->generation;
+        LOGLN("[resources] alloc failed size=%u path=%s", size, desc->path);
+        memset(r, 0, sizeof(*r));
+        r->generation = generation;
+        return resource_invalid_handle();
+    }
+
+    r->data = data;
+    r->size = size;
 
     memset(&stream_desc, 0, sizeof(stream_desc));
     stream_desc.path = r->path;
@@ -224,24 +290,21 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
     stream_desc.dst = r->data;
     stream_desc.priority = desc->priority;
     stream_desc.callback = resource_stream_callback;
-    stream_desc.userdata = &g_resources.items[i].stream;
 
-    /*
-     * Store the resource handle in memory reserved for callback userdata.
-     * We use the stream field storage temporarily only until the request is
-     * created below, so pass a stable static slot-local handle instead.
-     */
     {
         static resource_handle_t callback_handles[RESOURCE_MAX_ITEMS];
         callback_handles[i] = h;
         stream_desc.userdata = &callback_handles[i];
     }
 
+    r->stream_released = 0;
     r->stream = streaming_request_file(&stream_desc);
     if (!streaming_is_valid(r->stream)) {
-        LOGLN("[resources] stream request failed path=%s", r->path);
+        u16 generation = r->generation;
         free(r->data);
+        LOGLN("[resources] stream request failed path=%s", r->path);
         memset(r, 0, sizeof(*r));
+        r->generation = generation;
         return resource_invalid_handle();
     }
 
@@ -267,13 +330,19 @@ void resource_release(resource_handle_t handle)
 
     r = &g_resources.items[index];
 
-    if (r->status == RESOURCE_STATUS_LOADING)
-        streaming_cancel(r->stream);
+    if (streaming_is_valid(r->stream)) {
+        stream_status_t st = streaming_status(r->stream);
 
-    streaming_release(r->stream);
+        if (st == STREAM_STATUS_QUEUED || st == STREAM_STATUS_READING)
+            streaming_cancel(r->stream);
 
-    if (r->data)
+        resource_release_stream_if_needed(r);
+    }
+
+    if (r->data) {
         free(r->data);
+        r->data = NULL;
+    }
 
     generation = r->generation;
     memset(r, 0, sizeof(*r));
