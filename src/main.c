@@ -29,6 +29,5 @@ int main(void)
 }
 
 // TODO:
-// Implement resource test state and test resourse and streaming
 // Add callbacks to audio.h (audio mixer supports callbacks)
 // Fix app sometimes hang on shutdown 
