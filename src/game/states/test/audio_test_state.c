@@ -55,6 +55,13 @@ static int audio_test_enter(game_app_t *app, void *userdata)
 
     s_audio_test.open_ok = 1;
 
+    LOGLN("[state:audio_test] calling audio_stream_preload...");
+    if (audio_stream_preload(s_audio_test.stream) < 0){
+        LOGLN("[state:audio_test] audio_stream_preload failed: %d",
+              s_audio_test.stream);
+        return 0;
+    }
+
     audio_stream_set_volume(s_audio_test.stream, s_audio_test.volume);
     audio_stream_set_speed(s_audio_test.stream, s_audio_test.speed);
 

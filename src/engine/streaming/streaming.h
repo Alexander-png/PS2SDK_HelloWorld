@@ -11,6 +11,18 @@ extern "C" {
 #define STREAMING_MAX_REQUESTS 16
 #endif
 
+#ifndef STREAMING_WORKER_COUNT
+#define STREAMING_WORKER_COUNT 2
+#endif
+
+#ifndef STREAMING_THREAD_PRIO
+#define STREAMING_THREAD_PRIO 40
+#endif
+
+#ifndef STREAMING_THREAD_STACK_SIZE
+#define STREAMING_THREAD_STACK_SIZE 0x2000
+#endif
+
 typedef enum stream_priority {
     STREAM_PRIORITY_LOW = 0,
     STREAM_PRIORITY_NORMAL,

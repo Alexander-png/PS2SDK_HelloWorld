@@ -2,6 +2,7 @@
 #define AUDIO_MIXER_STREAM_H
 
 #include <tamtypes.h>
+#include "engine/audio/audio_stream_source.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,14 +22,7 @@ typedef void (*audio_stream_callback_t)(
 
 typedef struct audio_mix_stream {
     int used;
-    int fd;
-    u32 data_offset;
-    u32 data_size;
-    u32 total_frames;
-
-    int src_rate;
-    int channels;
-    int bits;
+    audio_stream_source_t source;
 
     volatile int playing;
     volatile int paused;
@@ -37,11 +31,6 @@ typedef struct audio_mix_stream {
     volatile float speed;
 
     double src_pos;
-
-    u8 *io_buf;
-    int io_buf_size;
-    u32 io_buf_start_frame;
-    u32 io_buf_frames;
 
     audio_stream_callback_t on_started;
     audio_stream_callback_t on_stopped;
@@ -62,7 +51,7 @@ typedef struct audio_mixer {
     void *thread_stack;
     volatile int thread_exit;
     volatile int thread_running;
-    
+
     int output_active;
 } audio_mixer_t;
 
@@ -71,6 +60,9 @@ void audio_mixer_destroy(audio_mixer_t *m);
 
 int  audio_mixer_add_stream(audio_mixer_t *m, const char *wav_path, int io_buf_bytes);
 void audio_mixer_remove_stream(audio_mixer_t *m, int handle);
+
+int  audio_mixer_preload(audio_mixer_t *m, int handle);
+int  audio_mixer_stream_is_ready(const audio_mixer_t *m, int handle);
 
 int  audio_mixer_play(audio_mixer_t *m, int handle, int loop);
 void audio_mixer_pause(audio_mixer_t *m, int handle);

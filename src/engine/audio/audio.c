@@ -57,11 +57,6 @@ void audio_shutdown(void)
 void audio_update(float dt)
 {
     (void)dt;
-
-    /*
-     * Future:
-     * Dispatch queued mixer events here, not from the audio thread.
-     */
 }
 
 int audio_is_available(void)
@@ -83,6 +78,22 @@ void audio_stream_close(int handle)
         return;
 
     audio_mixer_remove_stream(&g_audio.mixer, handle);
+}
+
+int audio_stream_preload(int handle)
+{
+    if (!g_audio.available)
+        return -1;
+
+    return audio_mixer_preload(&g_audio.mixer, handle);
+}
+
+int audio_stream_is_ready(int handle)
+{
+    if (!g_audio.available)
+        return 0;
+
+    return audio_mixer_stream_is_ready(&g_audio.mixer, handle);
 }
 
 int audio_stream_play(int handle, int loop)

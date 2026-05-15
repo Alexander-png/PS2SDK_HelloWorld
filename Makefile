@@ -37,6 +37,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/logging/log.c \
                  $(SRC_DIR)/engine/audio/audio_driver_ps2.c \
                  $(SRC_DIR)/engine/audio/audio.c \
+                 $(SRC_DIR)/engine/audio/audio_stream_source.c \
                  $(SRC_DIR)/engine/audio/audio_mixer_stream.c \
                  $(SRC_DIR)/engine/input/input_ps2.c \
                  $(SRC_DIR)/engine/streaming/streaming.c \

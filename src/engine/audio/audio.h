@@ -13,6 +13,9 @@ int  audio_is_available(void);
 int  audio_stream_open(const char *wav_path, int io_buf_bytes);
 void audio_stream_close(int handle);
 
+int  audio_stream_preload(int handle);
+int  audio_stream_is_ready(int handle);
+
 int  audio_stream_play(int handle, int loop);
 void audio_stream_stop(int handle);
 void audio_stream_pause(int handle);
