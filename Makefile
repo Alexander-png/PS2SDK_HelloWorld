@@ -5,6 +5,9 @@ endif
 ifeq ($(strip $(PS2DEV)),)
   $(error "PS2DEV is not exported. Execute: export PS2DEV=/path/to/ps2dev")
 endif
+ifeq ($(strip $(GSKIT)),)
+  $(error "GSKIT is not exported. Execute: export GSKIT=/path/to/ps2dev/gsKit")
+endif
 
 # ---- Build configuration -------------------------------------------------
 # Select with: make BUILD=debug  |  make BUILD=release
@@ -42,8 +45,10 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/input/input_ps2.c \
                  $(SRC_DIR)/engine/streaming/streaming.c \
                  $(SRC_DIR)/engine/resources/resources.c \
+                 $(SRC_DIR)/engine/gfx/gfx2d.c \
                  $(SRC_DIR)/game/states/test/audio_test_state.c \
-                 $(SRC_DIR)/game/states/test/resource_test_state.c
+                 $(SRC_DIR)/game/states/test/resource_test_state.c \
+                 $(SRC_DIR)/game/states/test/sprite_test_state.c \
 
 
 EE_GEN_SRCS    = $(AUDSRV_IRX_C)             
@@ -66,12 +71,22 @@ EE_INCS   += -I$(SRC_DIR) \
              -I$(SRC_DIR)/engine/input \
              -I$(SRC_DIR)/engine/streaming \
              -I$(SRC_DIR)/engine/resources \
-             -I$(SRC_DIR)/game/states/test
+             -I$(SRC_DIR)/engine/gfx \
+             -I$(SRC_DIR)/game/states/test \
+             -I$(GSKIT)/include \
+             -I$(PS2SDK)/ports/include \
+             -I$(PS2SDK)/ports/include/png \
+             -I$(PS2SDK)/ports/include/zlib
+
+EE_LDFLAGS += -L$(GSKIT)/lib \
+              -L$(PS2SDK)/ports/lib
 
 # -MMD -MP: generate .d dependency files alongside each .o
 EE_CFLAGS += $(BUILD_CFLAGS) -MMD -MP
 
-EE_LIBS    = -lpad -lmpeg -ldraw -lgraph -lpacket -ldma -laudsrv -lpatches -lc -ldebug -lkernel
+EE_LIBS = -lpad -lmpeg -ldraw -lgraph -lpacket -ldma -laudsrv -lpatches \
+          -L$(PS2DEV)/gsKit/lib -lgskit_toolkit -lgskit -ldmakit -lpng -lz \
+          -ldebug -lc -lkernel
 
 # ---- Targets -------------------------------------------------------------
 all: $(EE_BIN)

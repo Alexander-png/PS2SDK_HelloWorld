@@ -5,8 +5,10 @@
 #include "engine/platform/platform.h"
 #include "engine/streaming/streaming.h"
 #include "engine/resources/resources.h"
+#include "engine/gfx/gfx2d.h"
 #include "game/states/test/audio_test_state.h"
 #include "game/states/test/resource_test_state.h"
+#include "game/states/test/sprite_test_state.h"
 
 #include <string.h>
 
@@ -78,7 +80,8 @@ int game_app_init(void)
 
     LOGLN("[game_app] init");
 
-    rc = game_app_change_state(audio_test_state_desc(), NULL);
+    rc = game_app_change_state(sprite_test_state_desc(), NULL);
+    //rc = game_app_change_state(audio_test_state_desc(), NULL);
     //rc = game_app_change_state(resource_test_state_desc(), NULL);
     if (rc < 0) {
         LOGLN("[game_app] failed to enter initial state: %d", rc);
@@ -126,7 +129,7 @@ void game_app_tick(void)
      *   animation_update
      *   gfx2d_begin_frame
      *   state draw
-     *   debug_overlay_draw
+     *   debug_overlay_drawe
      *   gfx2d_end_frame
      */
 
@@ -140,8 +143,12 @@ void game_app_tick(void)
     if (g_app.state && g_app.state->update)
         g_app.state->update(&g_app, g_app.dt);
 
+    gfx2d_begin_frame();
+
     if (g_app.state && g_app.state->draw)
         g_app.state->draw(&g_app);
+
+    gfx2d_end_frame();
 
     g_app.frame_index++;
 

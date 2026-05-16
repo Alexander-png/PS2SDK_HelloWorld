@@ -5,6 +5,7 @@
 #include "engine/input/input.h"
 #include "engine/streaming/streaming.h"
 #include "engine/resources/resources.h"
+#include "engine/gfx/gfx2d.h"
 
 #include <string.h>
 
@@ -88,6 +89,16 @@ int boot_init(boot_context_t *boot)
         return -5;
     }
 
+    if (gfx2d_init() < 0) {
+        LOGLN("[boot] gfx2d init failed");
+        return -6;
+    } else {
+        // LOGLN uses scr_printf() that uses PS2SDK’s debug screen drawing path, 
+        // and that path is not meant to coexist cleanly with gsKit, which
+        // gfx2d uses. So disable debug scrren if gfx 2d initialized
+        log_enable_screen(0);
+    }
+
     if (audio_init() < 0) {
         /*
          * audio_init() currently returns 0 even when audio is disabled,
@@ -130,6 +141,9 @@ void boot_shutdown(boot_context_t *boot)
      * filesystem_shutdown();
      * memory_shutdown();
      */
+
+    LOGLN("[boot] gfx2d");
+    gfx2d_shutdown();
 
     LOGLN("[boot] audio");
     audio_shutdown();
