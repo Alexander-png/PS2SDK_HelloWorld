@@ -95,7 +95,7 @@ int boot_init(boot_context_t *boot)
     } else {
         // LOGLN uses scr_printf() that uses PS2SDK’s debug screen drawing path, 
         // and that path is not meant to coexist cleanly with gsKit, which
-        // gfx2d uses. So disable debug scrren if gfx 2d initialized
+        // gfx2d uses. So disable debug scrren if gfx2d initialized
         log_enable_screen(0);
     }
 
