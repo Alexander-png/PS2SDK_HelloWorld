@@ -47,6 +47,14 @@ static void gfx2d_draw_quad_uv(int tex_id,
     );
 }
 
+static u64 gfx2d_make_rgbaq(unsigned char r,
+                            unsigned char g,
+                            unsigned char b,
+                            unsigned char a)
+{
+    return GS_SETREG_RGBAQ(r, g, b, a, 0x00);
+}
+
 // ------------------- PUBLIC API -------------------------
 int gfx2d_init(void)
 {
@@ -169,17 +177,22 @@ void gfx2d_free_texture(int tex_id)
     g_textures[tex_id].used = 0;
 }
 
-void gfx2d_draw_sprite(int tex_id, float x, float y, float w, float h)
+void gfx2d_draw_sprite_tinted(int tex_id,
+                              float x, float y, float w, float h,
+                              unsigned char r, unsigned char g,
+                              unsigned char b, unsigned char a)
 {
-    if (!g_gs 
-        || tex_id < 0
-        || tex_id >= GFX2D_MAX_TEXTURES 
-        || !g_textures[tex_id].used)
+    GSTEXTURE *tex;
+    u64 color;
+
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
         return;
 
-    GSTEXTURE *tex;
+    if (w == 0.0f || h == 0.0f)
+        return;
 
     tex = &g_textures[tex_id].tex;
+    color = gfx2d_make_rgbaq(r, g, b, a);
 
     gsKit_prim_sprite_texture(
         g_gs,
@@ -189,17 +202,24 @@ void gfx2d_draw_sprite(int tex_id, float x, float y, float w, float h)
         x + w, y + h,
         (float)tex->Width, (float)tex->Height,
         1,
-        g_modulate
+        color
     );
 }
 
-void gfx2d_draw_sprite_ex(int tex_id,
-                          float x, float y,
-                          float w, float h,
-                          float origin_x, float origin_y,
-                          float scale_x, float scale_y,
-                          float rotation_rad,
-                          int flip_x, int flip_y)
+void gfx2d_draw_sprite(int tex_id, float x, float y, float w, float h)
+{
+    gfx2d_draw_sprite_tinted(tex_id, x, y, w, h, 0x80, 0x80, 0x80, 0x80);
+}
+
+void gfx2d_draw_sprite_ex_tinted(int tex_id,
+                                 float x, float y,
+                                 float w, float h,
+                                 float origin_x, float origin_y,
+                                 float scale_x, float scale_y,
+                                 float rotation_rad,
+                                 int flip_x, int flip_y,
+                                 unsigned char r, unsigned char g,
+                                 unsigned char b, unsigned char a)
 {
     GSTEXTURE *tex;
     float c, s;
@@ -258,24 +278,60 @@ void gfx2d_draw_sprite_ex(int tex_id,
     );
 }
 
+
+
+void gfx2d_draw_sprite_ex(int tex_id,
+                          float x, float y,
+                          float w, float h,
+                          float origin_x, float origin_y,
+                          float scale_x, float scale_y,
+                          float rotation_rad,
+                          int flip_x, int flip_y)
+{
+    gfx2d_draw_sprite_ex_tinted(tex_id, 
+        x, y, 
+        w, h, 
+        origin_x, origin_y,
+        scale_x, scale_y,
+        rotation_rad,
+        flip_x, flip_y,
+        0x80, 0x80, 0x80, 0x80);
+}
+
+void gfx2d_draw_quad_tinted(int tex_id,
+                            float x1, float y1,
+                            float x2, float y2,
+                            float x3, float y3,
+                            float x4, float y4,
+                            unsigned char r, unsigned char g,
+                            unsigned char b, unsigned char a)
+{
+    GSTEXTURE *tex;
+    u64 color;
+
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+        return;
+
+    tex = &g_textures[tex_id].tex;
+    color = gfx2d_make_rgbaq(r, g, b, a);
+
+    gsKit_prim_quad_texture_3d(
+        g_gs,
+        tex,
+        x1, y1, 0, 0.0f,               0.0f,
+        x2, y2, 0, (float)tex->Width,  0.0f,
+        x3, y3, 0, 0.0f,               (float)tex->Height,
+        x4, y4, 0, (float)tex->Width,  (float)tex->Height,
+        color
+    );
+}
+
 void gfx2d_draw_quad(int tex_id,
                      float x1, float y1,
                      float x2, float y2,
                      float x3, float y3,
                      float x4, float y4)
 {
-    GSTEXTURE *tex;
-
-    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
-        return;
-
-    tex = &g_textures[tex_id].tex;
-
-    gfx2d_draw_quad_uv(
-        tex_id,
-        x1, y1, 0.0f,               0.0f,
-        x2, y2, (float)tex->Width,  0.0f,
-        x3, y3, 0.0f,               (float)tex->Height,
-        x4, y4, (float)tex->Width,  (float)tex->Height
-    );
+    gfx2d_draw_quad_tinted(tex_id, x1, y1, x2, y2, x3, y3, x4, y4,
+                           0x80, 0x80, 0x80, 0x80);
 }
