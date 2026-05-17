@@ -58,7 +58,7 @@ void gfx2d_begin_frame(void)
     int oldAlpha = g_gs->PrimAlphaEnable;
     g_gs->PrimAlphaEnable = GS_SETTING_OFF;
 
-    gsKit_clear(g_gs, GS_SETREG_RGBAQ(0x00, 0x00, 0x00, 0x80, 0x00));
+    gsKit_clear(g_gs, g_clear_color);
 
     g_gs->PrimAlphaEnable = oldAlpha;
 }
@@ -77,7 +77,7 @@ int gfx2d_load_texture(const char *path, int *out_tex_id)
         if (!g_textures[i].used) {
             memset(&g_textures[i].tex, 0, sizeof(GSTEXTURE));
 
-            if (gsKit_texture_png(g_gs, &g_textures[i].tex, path) < 0)
+            if (gsKit_texture_png(g_gs, &g_textures[i].tex, (char*)path) < 0)
                 return -1;
 
             g_textures[i].used = 1;
@@ -87,17 +87,6 @@ int gfx2d_load_texture(const char *path, int *out_tex_id)
     }
 
     return -1;
-}
-
-void gfx2d_test_rect(void)
-{
-    gsKit_prim_sprite(
-        g_gs,
-        10, 10,
-        100, 100,
-        1,
-        GS_SETREG_RGBAQ(0x80, 0x00, 0x00, 0x80, 0x00) // solid red, full alpha
-    );
 }
 
 void gfx2d_draw_sprite(int tex_id, float x, float y, float w, float h)
@@ -117,6 +106,6 @@ void gfx2d_draw_sprite(int tex_id, float x, float y, float w, float h)
         x + w, y + h,
         (float)tex->Width, (float)tex->Height,
         1,
-        GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 0x00)
+        g_modulate
     );
 }
