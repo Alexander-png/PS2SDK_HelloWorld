@@ -9,6 +9,10 @@
 #define TEST_SPRITE_PATH "yellow.png"
 #endif
 
+#ifndef TEST_SPRITE_PATH1
+#define TEST_SPRITE_PATH1 "scaryguy.png"
+#endif
+
 typedef struct sprite_test_data {
     int tex_id;
     float x;
@@ -19,6 +23,7 @@ typedef struct sprite_test_data {
 } sprite_test_data_t;
 
 static sprite_test_data_t s_sprite;
+static sprite_test_data_t s_sprite1;
 
 static int sprite_test_enter(game_app_t *app, void *userdata)
 {
@@ -33,6 +38,18 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     s_sprite.speed = 240.0f;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH, &s_sprite.tex_id) < 0) {
+        LOGLN("[state:sprite_test] failed to load texture");
+        return -1;
+    }
+
+    s_sprite1.tex_id = -1;
+    s_sprite1.x = 206.0f;
+    s_sprite1.y = 168.0f;
+    s_sprite1.w = 206.0f;
+    s_sprite1.h = 168.0f;
+    s_sprite1.speed = 0.0f;
+
+    if (gfx2d_load_texture(TEST_SPRITE_PATH1, &s_sprite1.tex_id) < 0) {
         LOGLN("[state:sprite_test] failed to load texture");
         return -1;
     }
@@ -73,6 +90,14 @@ static void sprite_test_draw(game_app_t *app)
         s_sprite.y,
         s_sprite.w,
         s_sprite.h
+    );
+
+    gfx2d_draw_sprite(
+        s_sprite1.tex_id,
+        s_sprite1.x,
+        s_sprite1.y,
+        s_sprite1.w,
+        s_sprite1.h
     );
 }
 

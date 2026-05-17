@@ -27,11 +27,7 @@ int gfx2d_init(void)
     g_gs->PSM  = GS_PSM_CT32;
     g_gs->PSMZ = GS_PSMZ_16S;
     g_gs->Mode = gsKit_check_rom();
-
-    if (g_gs->Mode == GS_MODE_PAL)
-        g_gs->Height = 512;
-    else
-        g_gs->Height = 448;
+    g_gs->Height = (g_gs->Mode == GS_MODE_PAL) ? 512 : 448;
 
     dmaKit_init(D_CTRL_RELE_OFF,
                 D_CTRL_MFD_OFF,
@@ -42,7 +38,9 @@ int gfx2d_init(void)
     dmaKit_chan_init(DMA_CHANNEL_GIF);
 
     gsKit_init_screen(g_gs);
-    g_gs->PrimAlphaEnable = GS_SETTING_OFF;
+
+    g_gs->PrimAlphaEnable = GS_SETTING_ON;
+
     gsKit_mode_switch(g_gs, GS_ONESHOT);
 
     memset(g_textures, 0, sizeof(g_textures));
@@ -55,7 +53,14 @@ void gfx2d_shutdown(void)
 
 void gfx2d_begin_frame(void)
 {
+    // Clear with blending disabled to guarantee full overwrite
+    // Fixes bug with ghosting
+    int oldAlpha = g_gs->PrimAlphaEnable;
+    g_gs->PrimAlphaEnable = GS_SETTING_OFF;
+
     gsKit_clear(g_gs, GS_SETREG_RGBAQ(0x00, 0x00, 0x00, 0x80, 0x00));
+
+    g_gs->PrimAlphaEnable = oldAlpha;
 }
 
 void gfx2d_end_frame(void)
@@ -84,12 +89,23 @@ int gfx2d_load_texture(const char *path, int *out_tex_id)
     return -1;
 }
 
+void gfx2d_test_rect(void)
+{
+    gsKit_prim_sprite(
+        g_gs,
+        10, 10,
+        100, 100,
+        1,
+        GS_SETREG_RGBAQ(0x80, 0x00, 0x00, 0x80, 0x00) // solid red, full alpha
+    );
+}
+
 void gfx2d_draw_sprite(int tex_id, float x, float y, float w, float h)
 {
-    GSTEXTURE *tex;
-
     if (tex_id < 0 || tex_id >= 16 || !g_textures[tex_id].used)
         return;
+
+    GSTEXTURE *tex;
 
     tex = &g_textures[tex_id].tex;
 
@@ -99,7 +115,7 @@ void gfx2d_draw_sprite(int tex_id, float x, float y, float w, float h)
         x,     y,
         0.0f,  0.0f,
         x + w, y + h,
-        (float)tex->Width * 2.0, (float)tex->Height * 2.0,
+        (float)tex->Width, (float)tex->Height,
         1,
         GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 0x00)
     );
