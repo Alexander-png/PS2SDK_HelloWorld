@@ -15,10 +15,7 @@
 
 typedef struct sprite_test_data {
     int tex_id;
-    float x;
-    float y;
-    float w;
-    float h;
+    gfx2d_draw_params_t draw_params;
     float speed;
 } sprite_test_data_t;
 
@@ -31,11 +28,14 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     (void)app;
     (void)userdata;
 
+    
     s_sprite.tex_id = -1;
-    s_sprite.x = 206.0f;
-    s_sprite.y = 168.0f;
-    s_sprite.w = 16.0f;
-    s_sprite.h = 16.0f;
+    s_sprite.draw_params = gfx2d_draw_params_default(206.0f, 168.0f, 16.0f, 16.0f);
+    s_sprite.draw_params.color.r = 0x80;
+    s_sprite.draw_params.color.g = 0x00;
+    s_sprite.draw_params.color.b = 0x00;
+    s_sprite.draw_params.color.a = 0x80;
+    s_sprite.draw_params.scale_x = 3;
     s_sprite.speed = 240.0f;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH, &s_sprite.tex_id) < 0) {
@@ -44,10 +44,7 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     }
 
     s_sprite1.tex_id = -1;
-    s_sprite1.x = 206.0f;
-    s_sprite1.y = 168.0f;
-    s_sprite1.w = 206.0f;
-    s_sprite1.h = 168.0f;
+    s_sprite1.draw_params = gfx2d_draw_params_default(206.0f, 168.0f, 206.0f, 168.0f);
     s_sprite1.speed = 0.0f;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH1, &s_sprite1.tex_id) < 0) {
@@ -56,10 +53,7 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     }
 
     s_sprite2.tex_id = -1;
-    s_sprite2.x = 100.0f;
-    s_sprite2.y = 50.0f;
-    s_sprite2.w = 103.0f;
-    s_sprite2.h = 94.0f;
+    s_sprite2.draw_params = gfx2d_draw_params_default(100.0f, 50.0f, 103.0f, 94.0f);
     s_sprite2.speed = 0.0f;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH1, &s_sprite2.tex_id) < 0) {
@@ -84,13 +78,13 @@ static void sprite_test_update(game_app_t *app, float dt)
     float move = s_sprite.speed * dt;
 
     if (input_button_down(INPUT_BUTTON_LEFT))
-        s_sprite.x -= move;
+        s_sprite.draw_params.x -= move;
     if (input_button_down(INPUT_BUTTON_RIGHT))
-        s_sprite.x += move;
+        s_sprite.draw_params.x += move;
     if (input_button_down(INPUT_BUTTON_UP))
-        s_sprite.y -= move;
+        s_sprite.draw_params.y -= move;
     if (input_button_down(INPUT_BUTTON_DOWN))
-        s_sprite.y += move;
+        s_sprite.draw_params.y += move;
 }
 
 static float t = 0.0f;
@@ -99,37 +93,15 @@ static void sprite_test_draw(game_app_t *app)
 {
     (void)app;
 
-    gfx2d_draw_sprite(
+    gfx2d_draw_sprite_params(
         s_sprite.tex_id,
-        s_sprite.x,
-        s_sprite.y,
-        s_sprite.w,
-        s_sprite.h
+        &s_sprite.draw_params
     );
 
-    // gfx2d_draw_sprite_ex(s_sprite.tex_id,
-    //                  s_sprite.x, s_sprite.y,
-    //                  s_sprite.w, s_sprite.h,
-    //                  s_sprite.w * 0.5f, s_sprite.h * 0.5f,
-    //                  3.0f, 1.0f,
-    //                  0.0f,
-    //                  0, 0);
-
-    gfx2d_draw_sprite(
+    gfx2d_draw_sprite_params(
         s_sprite1.tex_id,
-        s_sprite1.x,
-        s_sprite1.y,
-        s_sprite1.w,
-        s_sprite1.h
+        &s_sprite1.draw_params
     );
-
-    // gfx2d_draw_sprite_ex(s_sprite2.tex_id,
-    //                  s_sprite2.x, s_sprite2.y,
-    //                  s_sprite2.w, s_sprite2.h,
-    //                  s_sprite.w * 0.5f, s_sprite.h * 0.5f,
-    //                  3.5f, 1.0f,
-    //                  0.0f,
-    //                  0, 0);
 
     float skew = sinf(t) * 30.0f;
 
