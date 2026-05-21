@@ -13,6 +13,10 @@
 #define TEST_SPRITE_PATH1 "scaryguy.png"
 #endif
 
+#ifndef TEST_SPRITE_PATH2
+#define TEST_SPRITE_PATH2 "cryingguy0.png"
+#endif
+
 typedef struct sprite_test_data {
     int tex_id;
     gfx2d_draw_params_t draw_params;
@@ -30,7 +34,7 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
 
     s_sprite.tex_id = -1;
     s_sprite.draw_params = gfx2d_sprite_params(206.0f, 168.0f, 16.0f, 16.0f);
-    s_sprite.draw_params.z = 10;
+    s_sprite.draw_params.z = 1.0f;
     s_sprite.speed = 240.0f;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH, &s_sprite.tex_id) < 0) {
@@ -40,6 +44,7 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
 
     s_sprite1.tex_id = -1;
     s_sprite1.draw_params = gfx2d_sprite_params(206.0f, 168.0f, 206.0f, 168.0f);
+    s_sprite1.draw_params.z = 5.0f;
     s_sprite1.speed = 0.0f;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH1, &s_sprite1.tex_id) < 0) {
@@ -48,10 +53,12 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     }
 
     s_sprite2.tex_id = -1;
-    s_sprite2.draw_params = gfx2d_sprite_params(100.0f, 50.0f, 103.0f, 94.0f);
+    s_sprite2.draw_params = gfx2d_sprite_params(100.0f, 50.0f, 110.0f, 84.0f);
+    s_sprite2.draw_params.origin_x = s_sprite2.draw_params.w / 2.0f;
+    s_sprite2.draw_params.origin_y = s_sprite2.draw_params.h / 2.0f;
     s_sprite2.speed = 0.0f;
 
-    if (gfx2d_load_texture(TEST_SPRITE_PATH1, &s_sprite2.tex_id) < 0) {
+    if (gfx2d_load_texture(TEST_SPRITE_PATH2, &s_sprite2.tex_id) < 0) {
         LOGLN("[state:sprite_test] failed to load texture");
         return -1;
     }
@@ -82,7 +89,7 @@ static void sprite_test_update(game_app_t *app, float dt)
         s_sprite.draw_params.y += move;
 }
 
-static float t = 0.0f;
+static float t;
 
 static void sprite_test_draw(game_app_t *app)
 {
@@ -98,14 +105,17 @@ static void sprite_test_draw(game_app_t *app)
         &s_sprite1.draw_params
     );
 
-    float skew = sinf(t) * 30.0f;
 
-    // gfx2d_draw(s_sprite2.tex_id,
-    //     100.0f + skew,  50.0f,
-    //     220.0f + skew,  50.0f,
-    //     100.0f,        170.0f,
-    //     220.0f,        170.0f);
-    // t += 0.05f;
+    s_sprite2.draw_params.skew_x_rad = cosf(t) * 0.7f;
+    s_sprite2.draw_params.skew_y_rad = cosf(t * 2.0f) * 0.1f;
+    t += 0.7f;
+    // TODO: scale from center of sprite, not from top-left corner
+    //s_sprite2.draw_params.scale_x += 0.1f;
+
+    gfx2d_draw(
+        s_sprite2.tex_id,
+        &s_sprite2.draw_params
+    );
 }
 
 static const game_state_desc_t s_sprite_test_state = {

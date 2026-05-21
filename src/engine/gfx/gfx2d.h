@@ -24,14 +24,7 @@ typedef struct gfx2d_corner {
     float v;
 } gfx2d_corner_t;
 
-typedef enum gfx2d_draw_mode {
-    GFX2D_DRAW_MODE_SPRITE   = 0,
-    GFX2D_DRAW_MODE_FREEFORM = 1
-} gfx2d_draw_mode_t;
-
 typedef struct gfx2d_draw_params {
-    gfx2d_draw_mode_t mode;
-
     float x;
     float y;
     float z;
@@ -45,6 +38,8 @@ typedef struct gfx2d_draw_params {
     float scale_y;
 
     float rotation_rad;
+    float skew_x_rad;
+    float skew_y_rad;
 
     int flip_x;
     int flip_y;
@@ -67,7 +62,6 @@ int  gfx2d_load_texture(const char *path, int *out_tex_id);
 void gfx2d_free_texture(int tex_id);
 
 gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h);
-gfx2d_draw_params_t gfx2d_freeform_params(float x, float y, float z, float w, float h);
 
 void gfx2d_draw(int tex_id, const gfx2d_draw_params_t *params);
 

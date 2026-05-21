@@ -51,12 +51,45 @@ static void gfx2d_draw_vertices(int tex_id,
     );
 }
 
+static void gfx2d_transform_corner(const gfx2d_draw_params_t *params,
+                                   float local_x,
+                                   float local_y,
+                                   gfx2d_corner_t *out)
+{
+    float sx = tanf(params->skew_x_rad);
+    float sy = tanf(params->skew_y_rad);
+    float x, y;
+    float c, s;
+    float rx, ry;
+
+    x = local_x - params->origin_x;
+    y = local_y - params->origin_y;
+
+    {
+        float skewed_x = x + sx * y;
+        float skewed_y = y + sy * x;
+        x = skewed_x;
+        y = skewed_y;
+    }
+
+    x *= params->scale_x;
+    y *= params->scale_y;
+
+    c = cosf(params->rotation_rad);
+    s = sinf(params->rotation_rad);
+
+    rx = x * c - y * s;
+    ry = x * s + y * c;
+
+    out->x = params->x + rx;
+    out->y = params->y + ry;
+    out->z = params->z;
+}
+
 static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *params)
 {
     GSTEXTURE *tex;
     gfx2d_corner_t top_left, top_right, bottom_left, bottom_right;
-    float c, s;
-    float lx1, ly1, lx2, ly2, lx3, ly3, lx4, ly4;
     float u_left, u_right, v_top, v_bottom;
 
     if (params->w == 0.0f || params->h == 0.0f)
@@ -64,41 +97,10 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
 
     tex = &g_textures[tex_id].tex;
 
-    c = cosf(params->rotation_rad);
-    s = sinf(params->rotation_rad);
-
-    lx1 = -params->origin_x;
-    ly1 = -params->origin_y;
-
-    lx2 = params->w - params->origin_x;
-    ly2 = -params->origin_y;
-
-    lx3 = -params->origin_x;
-    ly3 = params->h - params->origin_y;
-
-    lx4 = params->w - params->origin_x;
-    ly4 = params->h - params->origin_y;
-
-    lx1 *= params->scale_x; ly1 *= params->scale_y;
-    lx2 *= params->scale_x; ly2 *= params->scale_y;
-    lx3 *= params->scale_x; ly3 *= params->scale_y;
-    lx4 *= params->scale_x; ly4 *= params->scale_y;
-
-    top_left.x = params->x + lx1 * c - ly1 * s;
-    top_left.y = params->y + lx1 * s + ly1 * c;
-    top_left.z = params->z;
-
-    top_right.x = params->x + lx2 * c - ly2 * s;
-    top_right.y = params->y + lx2 * s + ly2 * c;
-    top_right.z = params->z;
-
-    bottom_left.x = params->x + lx3 * c - ly3 * s;
-    bottom_left.y = params->y + lx3 * s + ly3 * c;
-    bottom_left.z = params->z;
-
-    bottom_right.x = params->x + lx4 * c - ly4 * s;
-    bottom_right.y = params->y + lx4 * s + ly4 * c;
-    bottom_right.z = params->z;
+    gfx2d_transform_corner(params, 0.0f,       0.0f,       &top_left);
+    gfx2d_transform_corner(params, params->w,  0.0f,       &top_right);
+    gfx2d_transform_corner(params, 0.0f,       params->h,  &bottom_left);
+    gfx2d_transform_corner(params, params->w,  params->h,  &bottom_right);
 
     u_left   = params->flip_x ? (float)tex->Width  : 0.0f;
     u_right  = params->flip_x ? 0.0f               : (float)tex->Width;
@@ -122,16 +124,6 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
                         &top_right,
                         &bottom_left,
                         &bottom_right,
-                        gfx2d_make_rgbaq(params->color));
-}
-
-static void gfx2d_draw_freeform_internal(int tex_id, const gfx2d_draw_params_t *params)
-{
-    gfx2d_draw_vertices(tex_id,
-                        &params->top_left,
-                        &params->top_right,
-                        &params->bottom_left,
-                        &params->bottom_right,
                         gfx2d_make_rgbaq(params->color));
 }
 
@@ -260,8 +252,6 @@ gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h)
 
     memset(&p, 0, sizeof(p));
 
-    p.mode = GFX2D_DRAW_MODE_SPRITE;
-
     p.x = x;
     p.y = y;
     p.z = 0.0f;
@@ -275,49 +265,11 @@ gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h)
     p.scale_y = 1.0f;
 
     p.rotation_rad = 0.0f;
+    p.skew_x_rad = 0.0f;
+    p.skew_y_rad = 0.0f;
 
     p.flip_x = 0;
     p.flip_y = 0;
-
-    p.color.r = 0x80;
-    p.color.g = 0x80;
-    p.color.b = 0x80;
-    p.color.a = 0x80;
-
-    return p;
-}
-
-gfx2d_draw_params_t gfx2d_freeform_params(float x, float y, float z, float w, float h)
-{
-    gfx2d_draw_params_t p;
-
-    memset(&p, 0, sizeof(p));
-
-    p.mode = GFX2D_DRAW_MODE_FREEFORM;
-
-    p.top_left.x = x;
-    p.top_left.y = y;
-    p.top_left.z = z;
-    p.top_left.u = 0.0f;
-    p.top_left.v = 0.0f;
-
-    p.top_right.x = x + w;
-    p.top_right.y = y;
-    p.top_right.z = z;
-    p.top_right.u = w;
-    p.top_right.v = 0.0f;
-
-    p.bottom_left.x = x;
-    p.bottom_left.y = y + h;
-    p.bottom_left.z = z;
-    p.bottom_left.u = 0.0f;
-    p.bottom_left.v = h;
-
-    p.bottom_right.x = x + w;
-    p.bottom_right.y = y + h;
-    p.bottom_right.z = z;
-    p.bottom_right.u = w;
-    p.bottom_right.v = h;
 
     p.color.r = 0x80;
     p.color.g = 0x80;
@@ -335,16 +287,5 @@ void gfx2d_draw(int tex_id, const gfx2d_draw_params_t *params)
     if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
         return;
 
-    switch (params->mode) {
-        case GFX2D_DRAW_MODE_SPRITE:
-            gfx2d_draw_sprite_internal(tex_id, params);
-            break;
-
-        case GFX2D_DRAW_MODE_FREEFORM:
-            gfx2d_draw_freeform_internal(tex_id, params);
-            break;
-
-        default:
-            break;
-    }
+    gfx2d_draw_sprite_internal(tex_id, params);
 }
