@@ -16,12 +16,25 @@ typedef struct gfx2d_color {
     unsigned char a;
 } gfx2d_color_t;
 
-// TODO: 
-// move quad params into structure
-// add Z-index
-typedef struct gfx2d_draw_params {
+typedef struct gfx2d_corner {
     float x;
     float y;
+    float z;
+    float u;
+    float v;
+} gfx2d_corner_t;
+
+typedef enum gfx2d_draw_mode {
+    GFX2D_DRAW_MODE_SPRITE   = 0,
+    GFX2D_DRAW_MODE_FREEFORM = 1
+} gfx2d_draw_mode_t;
+
+typedef struct gfx2d_draw_params {
+    gfx2d_draw_mode_t mode;
+
+    float x;
+    float y;
+    float z;
     float w;
     float h;
 
@@ -36,6 +49,11 @@ typedef struct gfx2d_draw_params {
     int flip_x;
     int flip_y;
 
+    gfx2d_corner_t top_left;
+    gfx2d_corner_t top_right;
+    gfx2d_corner_t bottom_left;
+    gfx2d_corner_t bottom_right;
+
     gfx2d_color_t color;
 } gfx2d_draw_params_t;
 
@@ -48,24 +66,10 @@ void gfx2d_end_frame(void);
 int  gfx2d_load_texture(const char *path, int *out_tex_id);
 void gfx2d_free_texture(int tex_id);
 
-gfx2d_draw_params_t gfx2d_draw_params_default(float x, float y, float w, float h);
+gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h);
+gfx2d_draw_params_t gfx2d_freeform_params(float x, float y, float z, float w, float h);
 
-void gfx2d_draw_sprite_params(int tex_id, const gfx2d_draw_params_t *params);
-void gfx2d_draw_sprite(int tex_id, float x, float y, float w, float h);
-
-void gfx2d_draw_quad_tinted(int tex_id,
-                            float x1, float y1,
-                            float x2, float y2,
-                            float x3, float y3,
-                            float x4, float y4,
-                            unsigned char r, unsigned char g,
-                            unsigned char b, unsigned char a);
-
-void gfx2d_draw_quad(int tex_id,
-                     float x1, float y1,
-                     float x2, float y2,
-                     float x3, float y3,
-                     float x4, float y4);
+void gfx2d_draw(int tex_id, const gfx2d_draw_params_t *params);
 
 #ifdef __cplusplus
 }
