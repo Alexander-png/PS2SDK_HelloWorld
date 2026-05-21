@@ -13,8 +13,19 @@ typedef struct texture_slot {
     GSTEXTURE tex;
 } texture_slot_t;
 
+typedef struct gfx2d_sprite_slot {
+    int used;
+    int tex_id;
+    unsigned int order;
+    gfx2d_draw_params_t params;
+} gfx2d_sprite_slot_t;
+
 static GSGLOBAL *g_gs;
 static texture_slot_t g_textures[GFX2D_MAX_TEXTURES];
+static gfx2d_sprite_slot_t g_sprites[GFX2D_MAX_SPRITES];
+static int g_draw_order[GFX2D_MAX_SPRITES];
+static int g_draw_count = 0;
+static unsigned int g_next_order = 0;
 
 static u64 g_clear_color = GS_SETREG_RGBAQ(0x00, 0x00, 0x00, 0x80, 0x00);
 
@@ -44,11 +55,11 @@ static float gfx2d_resolve_valign(gfx2d_valign_t align, float h)
 }
 
 static void gfx2d_transform_corner(const gfx2d_draw_params_t *params,
-                                      float pivot_x,
-                                      float pivot_y,
-                                      float local_x,
-                                      float local_y,
-                                      gfx2d_corner_t *out)
+                                   float pivot_x,
+                                   float pivot_y,
+                                   float local_x,
+                                   float local_y,
+                                   gfx2d_corner_t *out)
 {
     float sx = tanf(params->skew_x_rad);
     float sy = tanf(params->skew_y_rad);
@@ -77,7 +88,7 @@ static void gfx2d_transform_corner(const gfx2d_draw_params_t *params,
 
     out->x = params->x + rx;
     out->y = params->y + ry;
-    out->z = params->z;
+    out->z = (float)params->layer;
 }
 
 static void gfx2d_draw_vertices(int tex_id,
@@ -116,6 +127,12 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
     float anchor_x, anchor_y;
     float pivot_x, pivot_y;
     float local_left, local_top, local_right, local_bottom;
+
+    if (!g_gs || !params)
+        return;
+
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+        return;
 
     if (params->w == 0.0f || params->h == 0.0f)
         return;
@@ -163,6 +180,59 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
                         gfx2d_make_rgbaq(params->color));
 }
 
+static void gfx2d_draw_slot(const gfx2d_sprite_slot_t *slot)
+{
+    if (!slot || !slot->used)
+        return;
+
+    gfx2d_draw_sprite_internal(slot->tex_id, &slot->params);
+}
+
+static int gfx2d_sprite_before(int lhs_id, int rhs_id)
+{
+    const gfx2d_sprite_slot_t *a = &g_sprites[lhs_id];
+    const gfx2d_sprite_slot_t *b = &g_sprites[rhs_id];
+
+    if (a->params.layer != b->params.layer)
+        return a->params.layer < b->params.layer;
+
+    return a->order < b->order;
+}
+
+static void gfx2d_insert_draw_order(int sprite_id)
+{
+    int i = g_draw_count;
+
+    while (i > 0 && !gfx2d_sprite_before(g_draw_order[i - 1], sprite_id)) {
+        g_draw_order[i] = g_draw_order[i - 1];
+        --i;
+    }
+
+    g_draw_order[i] = sprite_id;
+    ++g_draw_count;
+}
+
+static void gfx2d_remove_draw_order(int sprite_id)
+{
+    int i;
+
+    for (i = 0; i < g_draw_count; ++i) {
+        if (g_draw_order[i] == sprite_id) {
+            for (; i < g_draw_count - 1; ++i)
+                g_draw_order[i] = g_draw_order[i + 1];
+
+            --g_draw_count;
+            return;
+        }
+    }
+}
+
+static void gfx2d_resort_sprite(int sprite_id)
+{
+    gfx2d_remove_draw_order(sprite_id);
+    gfx2d_insert_draw_order(sprite_id);
+}
+
 int gfx2d_init(void)
 {
     g_gs = gsKit_init_global();
@@ -185,10 +255,12 @@ int gfx2d_init(void)
     gsKit_init_screen(g_gs);
 
     g_gs->PrimAlphaEnable = GS_SETTING_ON;
-
+    gsKit_set_test(g_gs, GS_ZTEST_OFF);
     gsKit_mode_switch(g_gs, GS_ONESHOT);
 
     memset(g_textures, 0, sizeof(g_textures));
+    gfx2d_clear_sprites();
+
     return 0;
 }
 
@@ -198,6 +270,8 @@ void gfx2d_shutdown(void)
 
     if (!g_gs)
         return;
+
+    gfx2d_clear_sprites();
 
     for (i = 0; i < GFX2D_MAX_TEXTURES; ++i) {
         if (g_textures[i].used)
@@ -257,12 +331,18 @@ int gfx2d_load_texture(const char *path, int *out_tex_id)
 void gfx2d_free_texture(int tex_id)
 {
     GSTEXTURE *tex;
+    int i;
 
     if (!g_gs
         || tex_id < 0
         || tex_id >= GFX2D_MAX_TEXTURES
         || !g_textures[tex_id].used)
         return;
+
+    for (i = 0; i < GFX2D_MAX_SPRITES; ++i) {
+        if (g_sprites[i].used && g_sprites[i].tex_id == tex_id)
+            gfx2d_remove_sprite(i);
+    }
 
     tex = &g_textures[tex_id].tex;
 
@@ -282,6 +362,88 @@ void gfx2d_free_texture(int tex_id)
     g_textures[tex_id].used = 0;
 }
 
+int gfx2d_add_sprite(int tex_id, const gfx2d_draw_params_t *params, int *out_sprite_id)
+{
+    int i;
+
+    if (!g_gs || !params || !out_sprite_id)
+        return -1;
+
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+        return -1;
+
+    *out_sprite_id = -1;
+
+    for (i = 0; i < GFX2D_MAX_SPRITES; ++i) {
+        if (!g_sprites[i].used) {
+            g_sprites[i].used = 1;
+            g_sprites[i].tex_id = tex_id;
+            g_sprites[i].order = g_next_order++;
+            g_sprites[i].params = *params;
+
+            gfx2d_insert_draw_order(i);
+            *out_sprite_id = i;
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+int gfx2d_update_sprite(int sprite_id, const gfx2d_draw_params_t *params)
+{
+    int old_layer;
+
+    if (!g_gs || !params)
+        return -1;
+
+    if (sprite_id < 0 || sprite_id >= GFX2D_MAX_SPRITES || !g_sprites[sprite_id].used)
+        return -1;
+
+    old_layer = g_sprites[sprite_id].params.layer;
+    g_sprites[sprite_id].params = *params;
+
+    if (g_sprites[sprite_id].params.layer != old_layer)
+        gfx2d_resort_sprite(sprite_id);
+
+    return 0;
+}
+
+int gfx2d_set_sprite_texture(int sprite_id, int tex_id)
+{
+    if (!g_gs)
+        return -1;
+
+    if (sprite_id < 0 || sprite_id >= GFX2D_MAX_SPRITES || !g_sprites[sprite_id].used)
+        return -1;
+
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+        return -1;
+
+    g_sprites[sprite_id].tex_id = tex_id;
+    return 0;
+}
+
+void gfx2d_remove_sprite(int sprite_id)
+{
+    if (!g_gs)
+        return;
+
+    if (sprite_id < 0 || sprite_id >= GFX2D_MAX_SPRITES || !g_sprites[sprite_id].used)
+        return;
+
+    gfx2d_remove_draw_order(sprite_id);
+    memset(&g_sprites[sprite_id], 0, sizeof(g_sprites[sprite_id]));
+}
+
+void gfx2d_clear_sprites(void)
+{
+    memset(g_sprites, 0, sizeof(g_sprites));
+    memset(g_draw_order, 0, sizeof(g_draw_order));
+    g_draw_count = 0;
+    g_next_order = 0;
+}
+
 gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h)
 {
     gfx2d_draw_params_t p;
@@ -290,7 +452,7 @@ gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h)
 
     p.x = x;
     p.y = y;
-    p.z = 0.0f;
+    p.layer = 0;
     p.w = w;
     p.h = h;
 
@@ -321,13 +483,18 @@ gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h)
     return p;
 }
 
-void gfx2d_draw(int tex_id, const gfx2d_draw_params_t *params)
+void gfx2d_draw(void)
 {
-    if (!g_gs || !params)
+    int i;
+
+    if (!g_gs)
         return;
 
-    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
-        return;
+    for (i = 0; i < g_draw_count; ++i) {
+        int sprite_id = g_draw_order[i];
+        const gfx2d_sprite_slot_t *slot = &g_sprites[sprite_id];
 
-    gfx2d_draw_sprite_internal(tex_id, params);
+        if (slot->used)
+            gfx2d_draw_slot(slot);
+    }
 }

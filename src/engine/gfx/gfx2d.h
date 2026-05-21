@@ -5,6 +5,10 @@
 #define GFX2D_MAX_TEXTURES 16
 #endif
 
+#ifndef GFX2D_MAX_SPRITES
+#define GFX2D_MAX_SPRITES 32
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -39,9 +43,10 @@ typedef struct gfx2d_corner {
 typedef struct gfx2d_draw_params {
     float x;
     float y;
-    float z;
     float w;
     float h;
+
+    int layer;
 
     float origin_x;
     float origin_y;
@@ -77,11 +82,20 @@ void gfx2d_begin_frame(void);
 void gfx2d_end_frame(void);
 
 int  gfx2d_load_texture(const char *path, int *out_tex_id);
+/* Freeing a texture also removes any sprites that reference it. */
 void gfx2d_free_texture(int tex_id);
+
+int  gfx2d_add_sprite(int tex_id, const gfx2d_draw_params_t *params, int *out_sprite_id);
+int  gfx2d_update_sprite(int sprite_id, const gfx2d_draw_params_t *params);
+int  gfx2d_set_sprite_texture(int sprite_id, int tex_id);
+/* Sprite removal only affects sprite instances.
+   Textures are persistent resources and must be freed separately. */
+void gfx2d_remove_sprite(int sprite_id);
+void gfx2d_clear_sprites(void);
 
 gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h);
 
-void gfx2d_draw(int tex_id, const gfx2d_draw_params_t *params);
+void gfx2d_draw(void);
 
 #ifdef __cplusplus
 }
