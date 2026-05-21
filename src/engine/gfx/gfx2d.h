@@ -9,6 +9,18 @@
 extern "C" {
 #endif
 
+typedef enum gfx2d_halign {
+    GFX2D_HALIGN_LEFT = 0,
+    GFX2D_HALIGN_CENTER,
+    GFX2D_HALIGN_RIGHT
+} gfx2d_halign_t;
+
+typedef enum gfx2d_valign {
+    GFX2D_VALIGN_TOP = 0,
+    GFX2D_VALIGN_CENTER,
+    GFX2D_VALIGN_BOTTOM
+} gfx2d_valign_t;
+
 typedef struct gfx2d_color {
     unsigned char r;
     unsigned char g;
@@ -43,6 +55,12 @@ typedef struct gfx2d_draw_params {
 
     int flip_x;
     int flip_y;
+
+    gfx2d_halign_t origin_h;
+    gfx2d_valign_t origin_v;
+
+    gfx2d_halign_t anchor_h;
+    gfx2d_valign_t anchor_v;
 
     gfx2d_corner_t top_left;
     gfx2d_corner_t top_right;

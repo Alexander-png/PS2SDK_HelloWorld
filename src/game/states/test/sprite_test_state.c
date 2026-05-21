@@ -45,6 +45,10 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     s_sprite1.tex_id = -1;
     s_sprite1.draw_params = gfx2d_sprite_params(206.0f, 168.0f, 206.0f, 168.0f);
     s_sprite1.draw_params.z = 5.0f;
+
+    //s_sprite1.draw_params.origin_h = GFX2D_HALIGN_RIGHT;
+    //s_sprite1.draw_params.origin_v = GFX2D_VALIGN_TOP;
+
     s_sprite1.speed = 0.0f;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH1, &s_sprite1.tex_id) < 0) {
@@ -100,17 +104,16 @@ static void sprite_test_draw(game_app_t *app)
         &s_sprite.draw_params
     );
 
+    // s_sprite1.draw_params.scale_x += cosf(t) * 0.01f;
+    // s_sprite1.draw_params.scale_y += cosf(t) * 0.01f;
     gfx2d_draw(
         s_sprite1.tex_id,
         &s_sprite1.draw_params
     );
 
-
     s_sprite2.draw_params.skew_x_rad = cosf(t) * 0.7f;
     s_sprite2.draw_params.skew_y_rad = cosf(t * 2.0f) * 0.1f;
     t += 0.7f;
-    // TODO: scale from center of sprite, not from top-left corner
-    //s_sprite2.draw_params.scale_x += 0.1f;
 
     gfx2d_draw(
         s_sprite2.tex_id,

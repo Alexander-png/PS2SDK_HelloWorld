@@ -23,6 +23,63 @@ static u64 gfx2d_make_rgbaq(gfx2d_color_t color)
     return GS_SETREG_RGBAQ(color.r, color.g, color.b, color.a, 0x00);
 }
 
+static float gfx2d_resolve_halign(gfx2d_halign_t align, float w)
+{
+    switch (align) {
+        case GFX2D_HALIGN_LEFT:   return 0.0f;
+        case GFX2D_HALIGN_CENTER: return w * 0.5f;
+        case GFX2D_HALIGN_RIGHT:  return w;
+        default:                  return 0.0f;
+    }
+}
+
+static float gfx2d_resolve_valign(gfx2d_valign_t align, float h)
+{
+    switch (align) {
+        case GFX2D_VALIGN_TOP:    return 0.0f;
+        case GFX2D_VALIGN_CENTER: return h * 0.5f;
+        case GFX2D_VALIGN_BOTTOM: return h;
+        default:                  return 0.0f;
+    }
+}
+
+static void gfx2d_transform_corner(const gfx2d_draw_params_t *params,
+                                      float pivot_x,
+                                      float pivot_y,
+                                      float local_x,
+                                      float local_y,
+                                      gfx2d_corner_t *out)
+{
+    float sx = tanf(params->skew_x_rad);
+    float sy = tanf(params->skew_y_rad);
+    float x, y;
+    float c, s;
+    float rx, ry;
+
+    x = local_x - pivot_x;
+    y = local_y - pivot_y;
+
+    {
+        float skewed_x = x + sx * y;
+        float skewed_y = y + sy * x;
+        x = skewed_x;
+        y = skewed_y;
+    }
+
+    x *= params->scale_x;
+    y *= params->scale_y;
+
+    c = cosf(params->rotation_rad);
+    s = sinf(params->rotation_rad);
+
+    rx = x * c - y * s;
+    ry = x * s + y * c;
+
+    out->x = params->x + rx;
+    out->y = params->y + ry;
+    out->z = params->z;
+}
+
 static void gfx2d_draw_vertices(int tex_id,
                                 const gfx2d_corner_t *top_left,
                                 const gfx2d_corner_t *top_right,
@@ -51,56 +108,35 @@ static void gfx2d_draw_vertices(int tex_id,
     );
 }
 
-static void gfx2d_transform_corner(const gfx2d_draw_params_t *params,
-                                   float local_x,
-                                   float local_y,
-                                   gfx2d_corner_t *out)
-{
-    float sx = tanf(params->skew_x_rad);
-    float sy = tanf(params->skew_y_rad);
-    float x, y;
-    float c, s;
-    float rx, ry;
-
-    x = local_x - params->origin_x;
-    y = local_y - params->origin_y;
-
-    {
-        float skewed_x = x + sx * y;
-        float skewed_y = y + sy * x;
-        x = skewed_x;
-        y = skewed_y;
-    }
-
-    x *= params->scale_x;
-    y *= params->scale_y;
-
-    c = cosf(params->rotation_rad);
-    s = sinf(params->rotation_rad);
-
-    rx = x * c - y * s;
-    ry = x * s + y * c;
-
-    out->x = params->x + rx;
-    out->y = params->y + ry;
-    out->z = params->z;
-}
-
 static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *params)
 {
     GSTEXTURE *tex;
     gfx2d_corner_t top_left, top_right, bottom_left, bottom_right;
     float u_left, u_right, v_top, v_bottom;
+    float anchor_x, anchor_y;
+    float pivot_x, pivot_y;
+    float local_left, local_top, local_right, local_bottom;
 
     if (params->w == 0.0f || params->h == 0.0f)
         return;
 
     tex = &g_textures[tex_id].tex;
 
-    gfx2d_transform_corner(params, 0.0f,       0.0f,       &top_left);
-    gfx2d_transform_corner(params, params->w,  0.0f,       &top_right);
-    gfx2d_transform_corner(params, 0.0f,       params->h,  &bottom_left);
-    gfx2d_transform_corner(params, params->w,  params->h,  &bottom_right);
+    anchor_x = gfx2d_resolve_halign(params->anchor_h, params->w);
+    anchor_y = gfx2d_resolve_valign(params->anchor_v, params->h);
+
+    pivot_x = gfx2d_resolve_halign(params->origin_h, params->w) - anchor_x;
+    pivot_y = gfx2d_resolve_valign(params->origin_v, params->h) - anchor_y;
+
+    local_left   = -anchor_x;
+    local_top    = -anchor_y;
+    local_right  = local_left + params->w;
+    local_bottom = local_top + params->h;
+
+    gfx2d_transform_corner(params, pivot_x, pivot_y, local_left,  local_top,    &top_left);
+    gfx2d_transform_corner(params, pivot_x, pivot_y, local_right, local_top,    &top_right);
+    gfx2d_transform_corner(params, pivot_x, pivot_y, local_left,  local_bottom, &bottom_left);
+    gfx2d_transform_corner(params, pivot_x, pivot_y, local_right, local_bottom, &bottom_right);
 
     u_left   = params->flip_x ? (float)tex->Width  : 0.0f;
     u_right  = params->flip_x ? 0.0f               : (float)tex->Width;
@@ -257,6 +293,12 @@ gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h)
     p.z = 0.0f;
     p.w = w;
     p.h = h;
+
+    p.origin_h = GFX2D_HALIGN_CENTER;
+    p.origin_v = GFX2D_VALIGN_CENTER;
+
+    p.anchor_h = GFX2D_HALIGN_CENTER;
+    p.anchor_v = GFX2D_VALIGN_CENTER;
 
     p.origin_x = 0.0f;
     p.origin_y = 0.0f;
