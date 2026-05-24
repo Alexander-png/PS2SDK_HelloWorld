@@ -28,6 +28,9 @@ static sprite_test_data_t s_sprite;
 static sprite_test_data_t s_sprite1;
 static sprite_test_data_t s_sprite2;
 
+// TODO:
+// fix sprite transparency
+
 static int sprite_test_enter(game_app_t *app, void *userdata)
 {
     (void)app;
@@ -50,8 +53,10 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
 
     s_sprite1.tex_id = -1;
     s_sprite1.draw_params = gfx2d_sprite_params(306.0f, 168.0f, 206.0f, 168.0f);
-    // TODO: fix sprite transparency
-    s_sprite1.draw_params.color.a = 0x80;
+    // s_sprite1.draw_params.color.r = 0x40;
+    // s_sprite1.draw_params.color.g = 0x40;
+    // s_sprite1.draw_params.color.b = 0x40;
+    s_sprite1.draw_params.color.a = 0x40;
     s_sprite1.draw_params.layer = 10;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH1, &s_sprite1.tex_id) < 0) {
@@ -111,13 +116,13 @@ static void sprite_test_draw(game_app_t *app)
 {
     (void)app;
 
-    //s_sprite1.draw_params.scale_x += cosf(t) * 0.01f;
-    //s_sprite1.draw_params.scale_y += cosf(t) * 0.01f;
+    // s_sprite1.draw_params.skew_x_rad = cosf(t) * 0.1f;
+    // s_sprite1.draw_params.skew_y_rad = cosf(t) * 0.1f;
 
     s_sprite2.draw_params.skew_x_rad = cosf(t) * 0.7f;
     s_sprite2.draw_params.skew_y_rad = cosf(t * 2.0f) * 0.4f;
     t += 0.7f;
-    gfx2d_update_sprite(s_sprite1.sprite_id, &s_sprite1.draw_params);
+    //gfx2d_update_sprite(s_sprite1.sprite_id, &s_sprite1.draw_params);
     gfx2d_update_sprite(s_sprite2.sprite_id, &s_sprite2.draw_params);
 
     gfx2d_draw();

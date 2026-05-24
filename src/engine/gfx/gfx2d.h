@@ -67,6 +67,9 @@ typedef struct gfx2d_draw_params {
     gfx2d_halign_t anchor_h;
     gfx2d_valign_t anchor_v;
 
+    gfx2d_halign_t skew_origin_h;
+    gfx2d_valign_t skew_origin_v;
+
     gfx2d_corner_t top_left;
     gfx2d_corner_t top_right;
     gfx2d_corner_t bottom_left;

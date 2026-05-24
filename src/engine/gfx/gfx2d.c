@@ -57,6 +57,8 @@ static float gfx2d_resolve_valign(gfx2d_valign_t align, float h)
 static void gfx2d_transform_corner(const gfx2d_draw_params_t *params,
                                    float pivot_x,
                                    float pivot_y,
+                                   float skew_pivot_x,
+                                   float skew_pivot_y,
                                    float local_x,
                                    float local_y,
                                    gfx2d_corner_t *out)
@@ -67,15 +69,24 @@ static void gfx2d_transform_corner(const gfx2d_draw_params_t *params,
     float c, s;
     float rx, ry;
 
-    x = local_x - pivot_x;
-    y = local_y - pivot_y;
+    x = local_x;
+    y = local_y;
 
+    /* skew around skew pivot */
+    x -= skew_pivot_x;
+    y -= skew_pivot_y;
     {
         float skewed_x = x + sx * y;
         float skewed_y = y + sy * x;
         x = skewed_x;
         y = skewed_y;
     }
+    x += skew_pivot_x;
+    y += skew_pivot_y;
+
+    /* scale + rotate around regular pivot */
+    x -= pivot_x;
+    y -= pivot_y;
 
     x *= params->scale_x;
     y *= params->scale_y;
@@ -126,6 +137,7 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
     float u_left, u_right, v_top, v_bottom;
     float anchor_x, anchor_y;
     float pivot_x, pivot_y;
+    float skew_pivot_x, skew_pivot_y;
     float local_left, local_top, local_right, local_bottom;
 
     if (!g_gs || !params)
@@ -142,18 +154,25 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
     anchor_x = gfx2d_resolve_halign(params->anchor_h, params->w);
     anchor_y = gfx2d_resolve_valign(params->anchor_v, params->h);
 
-    pivot_x = gfx2d_resolve_halign(params->origin_h, params->w) - anchor_x;
-    pivot_y = gfx2d_resolve_valign(params->origin_v, params->h) - anchor_y;
-
     local_left   = -anchor_x;
     local_top    = -anchor_y;
     local_right  = local_left + params->w;
     local_bottom = local_top + params->h;
 
-    gfx2d_transform_corner(params, pivot_x, pivot_y, local_left,  local_top,    &top_left);
-    gfx2d_transform_corner(params, pivot_x, pivot_y, local_right, local_top,    &top_right);
-    gfx2d_transform_corner(params, pivot_x, pivot_y, local_left,  local_bottom, &bottom_left);
-    gfx2d_transform_corner(params, pivot_x, pivot_y, local_right, local_bottom, &bottom_right);
+    pivot_x = gfx2d_resolve_halign(params->origin_h, params->w) - anchor_x;
+    pivot_y = gfx2d_resolve_valign(params->origin_v, params->h) - anchor_y;
+
+    skew_pivot_x = gfx2d_resolve_halign(params->skew_origin_h, params->w) - anchor_x;
+    skew_pivot_y = gfx2d_resolve_valign(params->skew_origin_v, params->h) - anchor_y;
+
+    gfx2d_transform_corner(params, pivot_x, pivot_y, skew_pivot_x, skew_pivot_y,
+                           local_left,  local_top,    &top_left);
+    gfx2d_transform_corner(params, pivot_x, pivot_y, skew_pivot_x, skew_pivot_y,
+                           local_right, local_top,    &top_right);
+    gfx2d_transform_corner(params, pivot_x, pivot_y, skew_pivot_x, skew_pivot_y,
+                           local_left,  local_bottom, &bottom_left);
+    gfx2d_transform_corner(params, pivot_x, pivot_y, skew_pivot_x, skew_pivot_y,
+                           local_right, local_bottom, &bottom_right);
 
     u_left   = params->flip_x ? (float)tex->Width  : 0.0f;
     u_right  = params->flip_x ? 0.0f               : (float)tex->Width;
@@ -240,7 +259,6 @@ int gfx2d_init(void)
         return -1;
 
     g_gs->PSM  = GS_PSM_CT32;
-    g_gs->PSMZ = GS_PSMZ_16S;
     g_gs->Mode = gsKit_check_rom();
     g_gs->Height = (g_gs->Mode == GS_MODE_PAL) ? 512 : 448;
 
@@ -461,6 +479,9 @@ gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h)
 
     p.anchor_h = GFX2D_HALIGN_CENTER;
     p.anchor_v = GFX2D_VALIGN_CENTER;
+
+    p.skew_origin_h = GFX2D_HALIGN_CENTER;
+    p.skew_origin_v = GFX2D_VALIGN_CENTER;
 
     p.origin_x = 0.0f;
     p.origin_y = 0.0f;
