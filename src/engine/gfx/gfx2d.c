@@ -273,6 +273,7 @@ int gfx2d_init(void)
     gsKit_init_screen(g_gs);
 
     g_gs->PrimAlphaEnable = GS_SETTING_ON;
+    gsKit_set_primalpha(g_gs, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
     gsKit_set_test(g_gs, GS_ZTEST_OFF);
     gsKit_mode_switch(g_gs, GS_ONESHOT);
 
@@ -499,7 +500,7 @@ gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h)
     p.color.r = 0x80;
     p.color.g = 0x80;
     p.color.b = 0x80;
-    p.color.a = 0x80;
+    p.color.a = 0x80; 
 
     return p;
 }

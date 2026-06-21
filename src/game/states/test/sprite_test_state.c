@@ -56,7 +56,7 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     // s_sprite1.draw_params.color.r = 0x40;
     // s_sprite1.draw_params.color.g = 0x40;
     // s_sprite1.draw_params.color.b = 0x40;
-    s_sprite1.draw_params.color.a = 0x40;
+     s_sprite1.draw_params.color.a = 0x40;
     s_sprite1.draw_params.layer = 10;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH1, &s_sprite1.tex_id) < 0) {
