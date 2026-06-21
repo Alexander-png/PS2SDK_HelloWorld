@@ -33,7 +33,7 @@ This version correctly scales the PNG alpha channel from the `0..255` range into
 
 ## What to change
 
-Open the file where `gsKit_texture_png` is implemented (usually `gsKit_texture_png.c` or a similarly named source file), then find this branch:
+Open the file where `gsKit_texture_png` is implemented (usually `gsToolkit.c` or a similarly named source file), then find this branch:
 
 ```c
 if(png_get_color_type(png_ptr, info_ptr) == PNG_COLOR_TYPE_RGB_ALPHA)
@@ -115,7 +115,7 @@ Pixels[k++].a = ((int)row_pointers[i][4*j+3] * 128 + 127) / 255;
 
 ## Что нужно поменять
 
-Откройте файл, в котором реализована функция `gsKit_texture_png` (обычно это `gsKit_texture_png.c` или аналогичный файл), и найдите ветку:
+Откройте файл, в котором реализована функция `gsKit_texture_png` (обычно это `gsToolkit.c` или аналогичный файл), и найдите ветку:
 
 ```c
 if(png_get_color_type(png_ptr, info_ptr) == PNG_COLOR_TYPE_RGB_ALPHA)
