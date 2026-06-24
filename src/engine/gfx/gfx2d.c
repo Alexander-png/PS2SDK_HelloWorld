@@ -338,6 +338,20 @@ int gfx2d_load_texture(const char *path, int *out_tex_id)
             if (gsKit_texture_png(g_gs, &g_textures[i].tex, (char*)path) < 0)
                 return -1;
 
+            LOGLN("path:                = %s", path);
+            LOGLN("tex.Width            = %d", g_textures[i].tex.Width);
+            LOGLN("tex.Height           = %d", g_textures[i].tex.Height);
+            LOGLN("tex.PSM              = %d", g_textures[i].tex.PSM);
+            LOGLN("tex.TBW              = %d", g_textures[i].tex.TBW);
+            LOGLN("tex.Filter           = %d", g_textures[i].tex.Filter);
+            LOGLN("tex.Vram             = 0x%08X", g_textures[i].tex.Vram);
+            LOGLN("tex.VramClut         = 0x%08X", g_textures[i].tex.VramClut);
+            LOGLN("tex.ClutPSM          = %d", g_textures[i].tex.ClutPSM);
+            LOGLN("tex.ClutStorageMode  = %d", g_textures[i].tex.ClutStorageMode);
+            LOGLN("tex.Delayed          = %d", g_textures[i].tex.Delayed);
+            LOGLN("tex.Mem              = %p", g_textures[i].tex.Mem);
+            LOGLN("tex.Clut             = %p", g_textures[i].tex.Clut);
+
             g_textures[i].used = 1;
             *out_tex_id = i;
             return 0;

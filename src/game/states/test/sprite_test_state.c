@@ -28,9 +28,6 @@ static sprite_test_data_t s_sprite;
 static sprite_test_data_t s_sprite1;
 static sprite_test_data_t s_sprite2;
 
-// TODO:
-// fix sprite transparency
-
 static int sprite_test_enter(game_app_t *app, void *userdata)
 {
     (void)app;
@@ -53,10 +50,10 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
 
     s_sprite1.tex_id = -1;
     s_sprite1.draw_params = gfx2d_sprite_params(306.0f, 168.0f, 206.0f, 168.0f);
-    // s_sprite1.draw_params.color.r = 0x40;
-    // s_sprite1.draw_params.color.g = 0x40;
-    // s_sprite1.draw_params.color.b = 0x40;
-     s_sprite1.draw_params.color.a = 0x40;
+    // s_sprite1.draw_params.color.r = 0x80;
+    // s_sprite1.draw_params.color.g = 0x80;
+    // s_sprite1.draw_params.color.b = 0x80;
+    // s_sprite1.draw_params.color.a = 0x80;
     s_sprite1.draw_params.layer = 10;
 
     if (gfx2d_load_texture(TEST_SPRITE_PATH1, &s_sprite1.tex_id) < 0) {
