@@ -4,6 +4,7 @@
 #include "engine/audio/audio.h"
 #include "engine/input/input.h"
 #include "engine/streaming/streaming.h"
+#include "engine/streaming/texture_assets.h"
 #include "engine/resources/resources.h"
 #include "engine/gfx/gfx2d.h"
 
@@ -84,14 +85,19 @@ int boot_init(boot_context_t *boot)
         return -4;
     }
 
+    if (texture_assets_init() < 0) {
+        LOGLN("[boot] texture assets init failed");
+        return -5;
+    }
+
     if (resources_init() < 0) {
         LOGLN("[boot] resources init failed");
-        return -5;
+        return -6;
     }
 
     if (gfx2d_init() < 0) {
         LOGLN("[boot] gfx2d init failed");
-        return -6;
+        return -7;
     } else {
         // LOGLN uses scr_printf() that uses PS2SDK’s debug screen drawing path, 
         // and that path is not meant to coexist cleanly with gsKit, which
@@ -151,6 +157,10 @@ void boot_shutdown(boot_context_t *boot)
 
     LOGLN("[boot] resources");
     resources_shutdown();
+
+    LOGLN("[boot] texture assets");
+    texture_assets_shutdown();
+
     LOGLN("[boot] streaming");
     streaming_shutdown();
 

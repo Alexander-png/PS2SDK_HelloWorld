@@ -4,6 +4,7 @@
 #include "engine/input/input.h"
 #include "engine/platform/platform.h"
 #include "engine/streaming/streaming.h"
+#include "engine/streaming/texture_assets.h"
 #include "engine/resources/resources.h"
 #include "engine/gfx/gfx2d.h"
 #include "game/states/test/audio_test_state.h"
@@ -137,6 +138,7 @@ void game_app_tick(void)
 
     streaming_update();
     resources_update();
+    texture_assets_update();
 
     audio_update(g_app.dt);
 

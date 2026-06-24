@@ -44,9 +44,9 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/audio/audio_mixer_stream.c \
                  $(SRC_DIR)/engine/input/input_ps2.c \
                  $(SRC_DIR)/engine/streaming/streaming.c \
+                 $(SRC_DIR)/engine/streaming/texture_assets.c \
                  $(SRC_DIR)/engine/resources/resources.c \
                  $(SRC_DIR)/engine/gfx/gfx2d.c \
-                 $(SRC_DIR)/engine/gfx/texture_resource.c \
                  $(SRC_DIR)/game/states/test/audio_test_state.c \
                  $(SRC_DIR)/game/states/test/resource_test_state.c \
                  $(SRC_DIR)/game/states/test/sprite_test_state.c \

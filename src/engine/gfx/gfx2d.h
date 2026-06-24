@@ -1,6 +1,8 @@
 #ifndef GFX2D_H
 #define GFX2D_H
 
+#include <tamtypes.h>
+
 #ifndef GFX2D_MAX_TEXTURES
 #define GFX2D_MAX_TEXTURES 16
 #endif
@@ -84,8 +86,11 @@ void gfx2d_shutdown(void);
 void gfx2d_begin_frame(void);
 void gfx2d_end_frame(void);
 
-int  gfx2d_load_texture(const char *path, int *out_tex_id);
-/* Freeing a texture also removes any sprites that reference it. */
+//int  gfx2d_load_texture(const char *path, int *out_tex_id);
+int  gfx2d_create_texture_from_png_data(const void *data, u32 size, int *out_tex_id);
+int  gfx2d_touch_texture(int tex_id);
+/* Frees CPU-side texture data and removes any sprites that reference it.
+   VRAM residency is managed dynamically by gsKit_TexManager. */
 void gfx2d_free_texture(int tex_id);
 
 int  gfx2d_add_sprite(int tex_id, const gfx2d_draw_params_t *params, int *out_sprite_id);

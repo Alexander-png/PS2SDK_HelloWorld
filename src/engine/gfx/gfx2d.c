@@ -7,6 +7,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <png.h>
+#include <malloc.h>
+#include <gsTexManager.h>
 
 typedef struct texture_slot {
     int used;
@@ -20,6 +23,20 @@ typedef struct gfx2d_sprite_slot {
     gfx2d_draw_params_t params;
 } gfx2d_sprite_slot_t;
 
+typedef struct gfx2d_png_buffer {
+    const unsigned char *data;
+    u32 size;
+    u32 offset;
+} gfx2d_png_buffer_t;
+
+
+typedef struct gfx2d_rgba32_pixel {
+    u8 r;
+    u8 g;
+    u8 b;
+    u8 a;
+} gfx2d_rgba32_pixel_t;
+
 static GSGLOBAL *g_gs;
 static texture_slot_t g_textures[GFX2D_MAX_TEXTURES];
 static gfx2d_sprite_slot_t g_sprites[GFX2D_MAX_SPRITES];
@@ -28,6 +45,86 @@ static int g_draw_count = 0;
 static unsigned int g_next_order = 0;
 
 static u64 g_clear_color = GS_SETREG_RGBAQ(0x00, 0x00, 0x00, 0x80, 0x00);
+
+static u8 gfx2d_png_alpha_to_gs(u8 alpha)
+{
+    return (u8)(((int)alpha * 128 + 127) / 255);
+}
+
+static void gfx2d_pack_rgba32_for_gs(void *dst_data,
+                                     png_bytep *rows,
+                                     int width,
+                                     int height)
+{
+    gfx2d_rgba32_pixel_t *dst;
+    int x;
+    int y;
+    int k;
+
+    if (!dst_data || !rows || width <= 0 || height <= 0)
+        return;
+
+    dst = (gfx2d_rgba32_pixel_t *)dst_data;
+    k = 0;
+
+    for (y = 0; y < height; ++y) {
+        png_bytep src = rows[y];
+
+        for (x = 0; x < width; ++x) {
+            dst[k].r = src[4 * x + 0];
+            dst[k].g = src[4 * x + 1];
+            dst[k].b = src[4 * x + 2];
+            dst[k].a = gfx2d_png_alpha_to_gs(src[4 * x + 3]);
+            ++k;
+        }
+    }
+}
+
+static void gfx2d_free_png_rows(png_bytep *rows, int height)
+{
+    int y;
+
+    if (!rows)
+        return;
+
+    for (y = 0; y < height; ++y) {
+        if (rows[y])
+            free(rows[y]);
+    }
+
+    free(rows);
+}
+
+static void gfx2d_png_read_fn(png_structp png_ptr, png_bytep out_bytes, png_size_t byte_count)
+{
+    gfx2d_png_buffer_t *buf = (gfx2d_png_buffer_t *)png_get_io_ptr(png_ptr);
+
+    if (!buf || buf->offset + (u32)byte_count > buf->size)
+        png_error(png_ptr, "gfx2d_png_read_fn overflow");
+
+    memcpy(out_bytes, buf->data + buf->offset, byte_count);
+    buf->offset += (u32)byte_count;
+}
+
+static int gfx2d_alloc_texture_slot(int *out_tex_id)
+{
+    int i;
+
+    if (!out_tex_id)
+        return -1;
+
+    *out_tex_id = -1;
+
+    for (i = 0; i < GFX2D_MAX_TEXTURES; ++i) {
+        if (!g_textures[i].used) {
+            memset(&g_textures[i].tex, 0, sizeof(g_textures[i].tex));
+            *out_tex_id = i;
+            return 0;
+        }
+    }
+
+    return -1;
+}
 
 static u64 gfx2d_make_rgbaq(gfx2d_color_t color)
 {
@@ -201,9 +298,23 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
 
 static void gfx2d_draw_slot(const gfx2d_sprite_slot_t *slot)
 {
+    GSTEXTURE *tex;
+
     if (!slot || !slot->used)
         return;
 
+    if (slot->tex_id < 0 || slot->tex_id >= GFX2D_MAX_TEXTURES)
+        return;
+
+    if (!g_textures[slot->tex_id].used)
+        return;
+
+    tex = &g_textures[slot->tex_id].tex;
+
+    if (!tex->Mem)
+        return;
+
+    gsKit_TexManager_bind(g_gs, tex);
     gfx2d_draw_sprite_internal(slot->tex_id, &slot->params);
 }
 
@@ -277,6 +388,8 @@ int gfx2d_init(void)
     gsKit_set_test(g_gs, GS_ZTEST_OFF);
     gsKit_mode_switch(g_gs, GS_ONESHOT);
 
+    gsKit_TexManager_init(g_gs);
+
     memset(g_textures, 0, sizeof(g_textures));
     gfx2d_clear_sprites();
 
@@ -320,47 +433,163 @@ void gfx2d_end_frame(void)
 
     gsKit_queue_exec(g_gs);
     gsKit_sync_flip(g_gs);
+    gsKit_TexManager_nextFrame(g_gs);
 }
 
-int gfx2d_load_texture(const char *path, int *out_tex_id)
+int gfx2d_create_texture_from_png_data(const void *data, u32 size, int *out_tex_id)
 {
-    int i;
+    png_structp png_ptr = NULL;
+    png_infop info_ptr = NULL;
+    png_bytep *rows = NULL;
+    gfx2d_png_buffer_t buf;
+    GSTEXTURE *tex = NULL;
+    void *image_data = NULL;
+    int tex_id = -1;
+    png_uint_32 width = 0;
+    png_uint_32 height = 0;
+    int bit_depth = 0;
+    int color_type = 0;
+    u32 rowbytes = 0;
+    int y;
+    int result = -1;
 
-    if (!g_gs || !path || !out_tex_id)
+    if (!g_gs || !data || size == 0 || !out_tex_id)
         return -1;
 
     *out_tex_id = -1;
 
-    for (i = 0; i < GFX2D_MAX_TEXTURES; ++i) {
-        if (!g_textures[i].used) {
-            memset(&g_textures[i].tex, 0, sizeof(GSTEXTURE));
+    if (gfx2d_alloc_texture_slot(&tex_id) < 0)
+        return -1;
 
-            if (gsKit_texture_png(g_gs, &g_textures[i].tex, (char*)path) < 0)
-                return -1;
+    png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (!png_ptr)
+        goto cleanup;
 
-            LOGLN("path:                = %s", path);
-            LOGLN("tex.Width            = %d", g_textures[i].tex.Width);
-            LOGLN("tex.Height           = %d", g_textures[i].tex.Height);
-            LOGLN("tex.PSM              = %d", g_textures[i].tex.PSM);
-            LOGLN("tex.TBW              = %d", g_textures[i].tex.TBW);
-            LOGLN("tex.Filter           = %d", g_textures[i].tex.Filter);
-            LOGLN("tex.Vram             = 0x%08X", g_textures[i].tex.Vram);
-            LOGLN("tex.VramClut         = 0x%08X", g_textures[i].tex.VramClut);
-            LOGLN("tex.ClutPSM          = %d", g_textures[i].tex.ClutPSM);
-            LOGLN("tex.ClutStorageMode  = %d", g_textures[i].tex.ClutStorageMode);
-            LOGLN("tex.Delayed          = %d", g_textures[i].tex.Delayed);
-            LOGLN("tex.Mem              = %p", g_textures[i].tex.Mem);
-            LOGLN("tex.Clut             = %p", g_textures[i].tex.Clut);
+    info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr)
+        goto cleanup;
 
-            g_textures[i].used = 1;
-            *out_tex_id = i;
-            return 0;
-        }
+    if (setjmp(png_jmpbuf(png_ptr)))
+        goto cleanup;
+
+    buf.data = (const unsigned char *)data;
+    buf.size = size;
+    buf.offset = 0;
+
+    png_set_read_fn(png_ptr, &buf, gfx2d_png_read_fn);
+    png_read_info(png_ptr, info_ptr);
+
+    width = png_get_image_width(png_ptr, info_ptr);
+    height = png_get_image_height(png_ptr, info_ptr);
+    bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+    color_type = png_get_color_type(png_ptr, info_ptr);
+
+    if (width == 0 || height == 0)
+        goto cleanup;
+
+    if (bit_depth == 16)
+        png_set_strip_16(png_ptr);
+
+    if (color_type == PNG_COLOR_TYPE_PALETTE)
+        png_set_palette_to_rgb(png_ptr);
+
+    if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
+        png_set_expand_gray_1_2_4_to_8(png_ptr);
+
+    if (png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS))
+        png_set_tRNS_to_alpha(png_ptr);
+
+    if (color_type == PNG_COLOR_TYPE_GRAY ||
+        color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+        png_set_gray_to_rgb(png_ptr);
+
+    if (!(color_type & PNG_COLOR_MASK_ALPHA))
+        png_set_filler(png_ptr, 0xFF, PNG_FILLER_AFTER);
+
+    png_read_update_info(png_ptr, info_ptr);
+
+    bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+    color_type = png_get_color_type(png_ptr, info_ptr);
+    rowbytes = (u32)png_get_rowbytes(png_ptr, info_ptr);
+
+    if (bit_depth != 8 || color_type != PNG_COLOR_TYPE_RGBA)
+        goto cleanup;
+
+    rows = (png_bytep *)calloc(height, sizeof(png_bytep));
+    if (!rows)
+        goto cleanup;
+
+    for (y = 0; y < (int)height; ++y) {
+        rows[y] = (png_bytep)malloc(rowbytes);
+        if (!rows[y])
+            goto cleanup;
     }
 
-    return -1;
+    png_read_image(png_ptr, rows);
+    png_read_end(png_ptr, NULL);
+
+    image_data = memalign(128, gsKit_texture_size_ee((int)width, (int)height, GS_PSM_CT32));
+    if (!image_data)
+        goto cleanup;
+
+    gfx2d_pack_rgba32_for_gs(image_data, rows, (int)width, (int)height);
+
+    tex = &g_textures[tex_id].tex;
+    memset(tex, 0, sizeof(*tex));
+
+    tex->Width = (int)width;
+    tex->Height = (int)height;
+    tex->PSM = GS_PSM_CT32;
+    tex->Filter = GS_FILTER_LINEAR;
+    tex->Mem = image_data;
+    tex->Clut = NULL;
+    tex->Vram = 0;
+    tex->VramClut = 0;
+
+    gsKit_setup_tbw(tex);
+
+    g_textures[tex_id].used = 1;
+    *out_tex_id = tex_id;
+
+    image_data = NULL;
+    result = 0;
+
+cleanup:
+    gfx2d_free_png_rows(rows, (int)height);
+
+    if (result != 0) {
+        if (tex)
+            memset(tex, 0, sizeof(*tex));
+
+        if (image_data)
+            free(image_data);
+    }
+
+    if (png_ptr || info_ptr)
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+
+    return result;
 }
 
+int gfx2d_touch_texture(int tex_id)
+{
+    GSTEXTURE *tex;
+    unsigned int transfer_mask;
+
+    if (!g_gs)
+        return -1;
+
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+        return -1;
+
+    tex = &g_textures[tex_id].tex;
+
+    if (!tex->Mem)
+        return -1;
+
+    transfer_mask = gsKit_TexManager_bind(g_gs, tex);
+    return (int)transfer_mask;
+}
 void gfx2d_free_texture(int tex_id)
 {
     GSTEXTURE *tex;
@@ -378,6 +607,8 @@ void gfx2d_free_texture(int tex_id)
     }
 
     tex = &g_textures[tex_id].tex;
+
+    gsKit_TexManager_free(g_gs, tex);
 
     if (tex->Mem) {
         free(tex->Mem);
