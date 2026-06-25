@@ -86,7 +86,6 @@ void gfx2d_shutdown(void);
 void gfx2d_begin_frame(void);
 void gfx2d_end_frame(void);
 
-//int  gfx2d_load_texture(const char *path, int *out_tex_id);
 int  gfx2d_create_texture_from_png_data(const void *data, u32 size, int *out_tex_id);
 int  gfx2d_touch_texture(int tex_id);
 /* Frees CPU-side texture data and removes any sprites that reference it.

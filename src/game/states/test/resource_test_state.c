@@ -382,9 +382,6 @@ static void resource_test_update(game_app_t *app, float dt)
     (void)app;
     (void)dt;
 
-    streaming_update();
-    resources_update();
-
     g_test.total_ticks++;
     g_test.phase_ticks++;
 
