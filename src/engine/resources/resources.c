@@ -1,8 +1,8 @@
 #include "resources.h"
 #include "engine/logging/log.h"
+#include "engine/memory/memory.h"
 
 #include <string.h>
-#include <malloc.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -271,7 +271,7 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
         return h;
     }
 
-    data = memalign(64, size);
+    data = mem_alloc(size, 64, MEMTAG_RESOURCE);
     if (!data) {
         u16 generation = r->generation;
         LOGLN("[resources] alloc failed size=%u path=%s", size, desc->path);
@@ -301,7 +301,7 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
     r->stream = streaming_request_file(&stream_desc);
     if (!streaming_is_valid(r->stream)) {
         u16 generation = r->generation;
-        free(r->data);
+        mem_free(r->data, MEMTAG_RESOURCE);
         LOGLN("[resources] stream request failed path=%s", r->path);
         memset(r, 0, sizeof(*r));
         r->generation = generation;
@@ -340,7 +340,7 @@ void resource_release(resource_handle_t handle)
     }
 
     if (r->data) {
-        free(r->data);
+        mem_free(r->data, MEMTAG_RESOURCE);
         r->data = NULL;
     }
 

@@ -1,6 +1,7 @@
 #include "boot.h"
 #include "engine/logging/log.h"
 #include "engine/platform/platform.h"
+#include "engine/memory/memory.h"
 #include "engine/audio/audio.h"
 #include "engine/input/input.h"
 #include "engine/streaming/streaming.h"
@@ -52,11 +53,16 @@ int boot_init(boot_context_t *boot)
         return -2;
     }
 
+    if (memory_init() < 0) {
+        LOGLN("[boot] memory init failed");
+        return -3;
+    }
+
     LOGLN("[boot] starting");
 
     if (platform_init() < 0) {
         LOGLN("[boot] platform init failed");
-        return -3;
+        return -4;
     }
 
     /*
@@ -82,22 +88,22 @@ int boot_init(boot_context_t *boot)
 
     if (streaming_init() < 0) {
         LOGLN("[boot] streaming init failed");
-        return -4;
+        return -5;
     }
 
     if (texture_assets_init() < 0) {
         LOGLN("[boot] texture assets init failed");
-        return -5;
+        return -6;
     }
 
     if (resources_init() < 0) {
         LOGLN("[boot] resources init failed");
-        return -6;
+        return -7;
     }
 
     if (gfx2d_init() < 0) {
         LOGLN("[boot] gfx2d init failed");
-        return -7;
+        return -8;
     } else {
         // LOGLN uses scr_printf() that uses PS2SDK’s debug screen drawing path, 
         // and that path is not meant to coexist cleanly with gsKit, which
@@ -169,6 +175,9 @@ void boot_shutdown(boot_context_t *boot)
     boot->input_available = 0;
 
     boot->initialized = 0;
+
+    LOGLN("[boot] memory");
+    memory_shutdown();
 
     LOGLN("[boot] platform");
     platform_shutdown();

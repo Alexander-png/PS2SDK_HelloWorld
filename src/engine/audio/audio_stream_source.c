@@ -1,7 +1,7 @@
 #include "audio_stream_source.h"
 #include "engine/logging/log.h"
+#include "engine/memory/memory.h"
 
-#include <malloc.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -231,7 +231,7 @@ static void audio_stream_chunk_callback(stream_handle_t handle,
     c->req.index = 0xffffu;
     c->req.generation = 0;
 
-    free(ud);
+    mem_free(ud, MEMTAG_STREAM);
 }
 
 static int submit_chunk_request(audio_stream_source_t *src,
@@ -264,7 +264,7 @@ static int submit_chunk_request(audio_stream_source_t *src,
     c->req.index = 0xffffu;
     c->req.generation = 0;
 
-    ud = (audio_chunk_request_userdata_t *)malloc(sizeof(*ud));
+    ud = (audio_chunk_request_userdata_t *)mem_alloc(sizeof(*ud), 0, MEMTAG_STREAM);
     if (!ud) {
         c->in_flight = 0;
         return -3;
@@ -285,7 +285,7 @@ static int submit_chunk_request(audio_stream_source_t *src,
     c->req = streaming_request_file(&desc);
     if (!streaming_is_valid(c->req)) {
         c->in_flight = 0;
-        free(ud);
+        mem_free(ud, MEMTAG_STREAM);
         return -4;
     }
 
@@ -358,7 +358,7 @@ int audio_stream_source_init(audio_stream_source_t *src,
     src->status = AUDIO_STREAM_SOURCE_STATUS_READY;
 
     for (i = 0; i < AUDIO_STREAM_SOURCE_MAX_CHUNKS; i++) {
-        src->chunks[i].data = (u8 *)memalign(64, chunk_bytes);
+        src->chunks[i].data = (u8 *)mem_alloc(chunk_bytes, 64, MEMTAG_AUDIO);
         if (!src->chunks[i].data) {
             audio_stream_source_destroy(src);
             return -3;
@@ -391,7 +391,7 @@ void audio_stream_source_destroy(audio_stream_source_t *src)
             streaming_release(c->req);
 
         if (c->data)
-            free(c->data);
+            mem_free(c->data, MEMTAG_AUDIO);
     }
 
     memset(src, 0, sizeof(*src));

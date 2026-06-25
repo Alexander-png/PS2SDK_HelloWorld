@@ -1,9 +1,9 @@
 #include "audio_mixer_stream.h"
 #include "engine/platform/platform.h"
+#include "engine/memory/memory.h"
 
 #include <audsrv.h>
 #include <kernel.h>
-#include <malloc.h>
 #include <string.h>
 
 #ifndef AUDIO_MIXER_THREAD_PRIO
@@ -158,31 +158,35 @@ int audio_mixer_init(audio_mixer_t *m, int mixbuf_frames)
         mixbuf_frames = 1024;
     m->mixbuf_frames = mixbuf_frames;
 
-    m->mixbuf = (s16 *)memalign(64, (size_t)(mixbuf_frames * 2 * sizeof(s16)));
+    m->mixbuf = (s16 *)mem_alloc(mixbuf_frames * 2 * sizeof(s16),
+                                 64, MEMTAG_AUDIO);
     if (!m->mixbuf)
         return -2;
 
-    m->accum_l = (s32 *)memalign(64, (size_t)(mixbuf_frames * sizeof(s32)));
+    m->accum_l = (s32 *)mem_alloc(mixbuf_frames * sizeof(s32),
+                                  64, MEMTAG_AUDIO);
     if (!m->accum_l) {
-        free(m->mixbuf);
+        mem_free(m->mixbuf, MEMTAG_AUDIO);
         m->mixbuf = NULL;
         return -3;
     }
 
-    m->accum_r = (s32 *)memalign(64, (size_t)(mixbuf_frames * sizeof(s32)));
+    m->accum_r = (s32 *)mem_alloc(mixbuf_frames * sizeof(s32),
+                                  64, MEMTAG_AUDIO);
     if (!m->accum_r) {
-        free(m->accum_l);
-        free(m->mixbuf);
+        mem_free(m->accum_l, MEMTAG_AUDIO);
+        mem_free(m->mixbuf, MEMTAG_AUDIO);
         m->accum_l = NULL;
         m->mixbuf = NULL;
         return -4;
     }
 
-    m->thread_stack = memalign(16, AUDIO_MIXER_STACK_SIZE);
+    m->thread_stack = mem_alloc(AUDIO_MIXER_STACK_SIZE,
+                                16, MEMTAG_THREAD_STACK);
     if (!m->thread_stack) {
-        free(m->accum_r);
-        free(m->accum_l);
-        free(m->mixbuf);
+        mem_free(m->accum_r, MEMTAG_AUDIO);
+        mem_free(m->accum_l, MEMTAG_AUDIO);
+        mem_free(m->mixbuf, MEMTAG_AUDIO);
         m->accum_r = NULL;
         m->accum_l = NULL;
         m->mixbuf = NULL;
@@ -198,10 +202,10 @@ int audio_mixer_init(audio_mixer_t *m, int mixbuf_frames)
 
     m->thread_id = CreateThread(&th);
     if (m->thread_id < 0) {
-        free(m->thread_stack);
-        free(m->accum_r);
-        free(m->accum_l);
-        free(m->mixbuf);
+        mem_free(m->thread_stack, MEMTAG_THREAD_STACK);
+        mem_free(m->accum_r, MEMTAG_AUDIO);
+        mem_free(m->accum_l, MEMTAG_AUDIO);
+        mem_free(m->mixbuf, MEMTAG_AUDIO);
         m->thread_stack = NULL;
         m->accum_r = NULL;
         m->accum_l = NULL;
@@ -235,13 +239,13 @@ void audio_mixer_destroy(audio_mixer_t *m)
         audio_mixer_remove_stream(m, i);
 
     if (m->thread_stack)
-        free(m->thread_stack);
+        mem_free(m->thread_stack, MEMTAG_THREAD_STACK);
     if (m->accum_r)
-        free(m->accum_r);
+        mem_free(m->accum_r, MEMTAG_AUDIO);
     if (m->accum_l)
-        free(m->accum_l);
+        mem_free(m->accum_l, MEMTAG_AUDIO);
     if (m->mixbuf)
-        free(m->mixbuf);
+        mem_free(m->mixbuf, MEMTAG_AUDIO);
 
     memset(m, 0, sizeof(*m));
     m->thread_id = -1;

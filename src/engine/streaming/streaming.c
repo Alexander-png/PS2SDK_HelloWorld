@@ -1,12 +1,12 @@
 #include "streaming.h"
 #include "engine/logging/log.h"
 #include "engine/platform/platform.h"
+#include "engine/memory/memory.h"
 
 #include <kernel.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <malloc.h>
 
 typedef struct stream_request {
     int used;
@@ -339,7 +339,9 @@ int streaming_init(void)
     for (i = 0; i < STREAMING_WORKER_COUNT; i++) {
         ee_thread_t th;
 
-        g_streaming.worker_stacks[i] = memalign(16, STREAMING_THREAD_STACK_SIZE);
+        g_streaming.worker_stacks[i] = mem_alloc(STREAMING_THREAD_STACK_SIZE,
+                                         16,
+                                         MEMTAG_THREAD_STACK);
         if (!g_streaming.worker_stacks[i]) {
             streaming_shutdown();
             return -3;
@@ -396,7 +398,7 @@ void streaming_shutdown(void)
 
     for (i = 0; i < STREAMING_WORKER_COUNT; i++) {
         if (g_streaming.worker_stacks[i]) {
-            free(g_streaming.worker_stacks[i]);
+            mem_free(g_streaming.worker_stacks[i], MEMTAG_THREAD_STACK);
             g_streaming.worker_stacks[i] = NULL;
         }
     }

@@ -2,7 +2,6 @@
 #include "engine/logging/log.h"
 
 #include <string.h>
-#include <malloc.h>
 
 typedef struct texture_item {
     int used;

@@ -1,4 +1,5 @@
 #include "engine/logging/log.h"
+#include "engine/memory/memory.h"
 #include "gfx2d.h"
 
 #include <gsKit.h>
@@ -8,7 +9,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <png.h>
-#include <malloc.h>
 #include <gsTexManager.h>
 
 typedef struct texture_slot {
@@ -89,10 +89,10 @@ static void gfx2d_free_png_rows(png_bytep *rows, int height)
 
     for (y = 0; y < height; ++y) {
         if (rows[y])
-            free(rows[y]);
+            mem_free(rows[y], MEMTAG_TEMP);
     }
 
-    free(rows);
+    mem_free(rows, MEMTAG_TEMP);
 }
 
 static void gfx2d_png_read_fn(png_structp png_ptr, png_bytep out_bytes, png_size_t byte_count)
@@ -515,12 +515,13 @@ int gfx2d_create_texture_from_png_data(const void *data, u32 size, int *out_tex_
     if (bit_depth != 8 || color_type != PNG_COLOR_TYPE_RGBA)
         goto cleanup;
 
-    rows = (png_bytep *)calloc(height, sizeof(png_bytep));
+    rows = (png_bytep *)mem_calloc(height, sizeof(png_bytep),
+                               0, MEMTAG_TEMP);
     if (!rows)
         goto cleanup;
 
     for (y = 0; y < (int)height; ++y) {
-        rows[y] = (png_bytep)malloc(rowbytes);
+        rows[y] = (png_bytep)mem_alloc(rowbytes, 0, MEMTAG_TEMP);
         if (!rows[y])
             goto cleanup;
     }
@@ -528,7 +529,8 @@ int gfx2d_create_texture_from_png_data(const void *data, u32 size, int *out_tex_
     png_read_image(png_ptr, rows);
     png_read_end(png_ptr, NULL);
 
-    image_data = memalign(128, gsKit_texture_size_ee((int)width, (int)height, GS_PSM_CT32));
+    image_data = mem_alloc(gsKit_texture_size_ee((int)width, (int)height, GS_PSM_CT32),
+                       128, MEMTAG_GFX);
     if (!image_data)
         goto cleanup;
 
@@ -562,7 +564,7 @@ cleanup:
             memset(tex, 0, sizeof(*tex));
 
         if (image_data)
-            free(image_data);
+            mem_free(image_data, MEMTAG_GFX);
     }
 
     if (png_ptr || info_ptr)
@@ -611,12 +613,12 @@ void gfx2d_free_texture(int tex_id)
     gsKit_TexManager_free(g_gs, tex);
 
     if (tex->Mem) {
-        free(tex->Mem);
+        mem_free(tex->Mem, MEMTAG_GFX);
         tex->Mem = NULL;
     }
 
     if (tex->Clut) {
-        free(tex->Clut);
+        mem_free(tex->Clut, MEMTAG_GFX);
         tex->Clut = NULL;
     }
 

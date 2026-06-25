@@ -31,7 +31,7 @@ static int audio_test_enter(game_app_t *app, void *userdata)
     s_audio_test.open_ok = 0;
     s_audio_test.paused = 0;
     s_audio_test.volume = 100;
-    s_audio_test.speed = 1.0f;
+    s_audio_test.speed = 0.7f;
     s_audio_test.last_log_frame = 0;
 
     LOGLN("[state:audio_test] enter");
