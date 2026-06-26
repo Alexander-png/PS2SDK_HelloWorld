@@ -192,7 +192,8 @@ static audio_stream_chunk_t *find_chunk_to_fill(audio_stream_source_t *src, u32 
 
 typedef struct audio_chunk_request_userdata {
     audio_stream_source_t *src;
-    audio_stream_chunk_t *chunk;
+    int chunk_index;
+    u32 source_generation;
 } audio_chunk_request_userdata_t;
 
 static void audio_stream_chunk_callback(stream_handle_t handle,
@@ -201,12 +202,34 @@ static void audio_stream_chunk_callback(stream_handle_t handle,
                                         void *userdata)
 {
     audio_chunk_request_userdata_t *ud = (audio_chunk_request_userdata_t *)userdata;
+    audio_stream_source_t *src;
     audio_stream_chunk_t *c;
 
-    if (!ud || !ud->src || !ud->chunk)
+    if (!ud) {
+        if (streaming_is_valid(handle))
+            streaming_release(handle);
         return;
+    }
 
-    c = ud->chunk;
+    src = ud->src;
+
+    /* Check: source still exists and generation is equal */
+    if (!src || !src->used || src->generation != ud->source_generation) {
+        /* Source already destroyed or reinitialized – just free request */
+        if (streaming_is_valid(handle))
+            streaming_release(handle);
+        mem_free(ud, MEMTAG_STREAM);
+        return;
+    }
+
+    if (ud->chunk_index < 0 || ud->chunk_index >= AUDIO_STREAM_SOURCE_MAX_CHUNKS) {
+        if (streaming_is_valid(handle))
+            streaming_release(handle);
+        mem_free(ud, MEMTAG_STREAM);
+        return;
+    }
+
+    c = &src->chunks[ud->chunk_index];
     c->in_flight = 0;
 
     if (status == STREAM_STATUS_READY && bytes_read > 0) {
@@ -214,15 +237,16 @@ static void audio_stream_chunk_callback(stream_handle_t handle,
         c->frame_count = (u32)bytes_read / AUDIO_FRAME_BYTES;
         c->ready = (c->frame_count > 0) ? 1 : 0;
         c->failed = 0;
-        ud->src->status = c->ready ? AUDIO_STREAM_SOURCE_STATUS_READY
-                                   : AUDIO_STREAM_SOURCE_STATUS_FAILED;
+
+        src->status = c->ready ? AUDIO_STREAM_SOURCE_STATUS_READY
+                               : AUDIO_STREAM_SOURCE_STATUS_FAILED;
     } else if (status == STREAM_STATUS_CANCELLED) {
         c->ready = 0;
         c->failed = 0;
     } else {
         c->ready = 0;
         c->failed = 1;
-        ud->src->status = AUDIO_STREAM_SOURCE_STATUS_FAILED;
+        src->status = AUDIO_STREAM_SOURCE_STATUS_FAILED;
     }
 
     if (streaming_is_valid(handle))
@@ -271,7 +295,8 @@ static int submit_chunk_request(audio_stream_source_t *src,
     }
 
     ud->src = src;
-    ud->chunk = c;
+    ud->chunk_index = (int)(c - src->chunks);
+    ud->source_generation = src->generation;
 
     memset(&desc, 0, sizeof(desc));
     desc.path = src->path;
@@ -336,6 +361,9 @@ int audio_stream_source_init(audio_stream_source_t *src,
         return -1;
 
     memset(src, 0, sizeof(*src));
+    src->generation++;
+    if (src->generation == 0)
+        src->generation = 1;
     strncpy(src->path, wav_path, sizeof(src->path) - 1);
     src->path[sizeof(src->path) - 1] = '\0';
 

@@ -38,6 +38,7 @@ typedef struct audio_stream_chunk {
 
 typedef struct audio_stream_source {
     int used;
+    u32 generation;
     char path[128];
 
     u32 data_offset;
