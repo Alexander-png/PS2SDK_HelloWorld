@@ -122,7 +122,7 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     s_sprite1.draw_params.color.r = 0x80;
     s_sprite1.draw_params.color.g = 0x80;
     s_sprite1.draw_params.color.b = 0x80;
-    s_sprite1.draw_params.color.a = 0x40;
+    s_sprite1.draw_params.color.a = 0x80;
 
     s_sprite2.draw_params = gfx2d_sprite_params(100.0f, 50.0f, 110.0f, 84.0f);
     s_sprite2.draw_params.layer = 0;

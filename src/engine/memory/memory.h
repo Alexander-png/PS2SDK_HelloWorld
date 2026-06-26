@@ -20,8 +20,8 @@ void memory_shutdown(void);
 
 /* alignment MUST be a power of two; align=0 → regular malloc */
 void *mem_alloc(u32 size, u32 align, mem_tag_t tag);
+/* tag is checked against stored header tag */
 void  mem_free(void *ptr, mem_tag_t tag);
-
 
 /* convenient for PNG rows and other temporary data */
 void *mem_calloc(u32 count, u32 size, u32 align, mem_tag_t tag);
