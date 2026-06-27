@@ -101,21 +101,22 @@ static void mem_dump_leaks(void)
 {
     mem_block_header_t *hdr;
     int leak_count = 0;
+    u32 leak_bytes = 0;
 
     for (hdr = s_live_head; hdr; hdr = hdr->next_live) {
-        void *user_ptr = (void *)((unsigned char *)hdr + sizeof(mem_block_header_t));
         LOGLN("[memory] leak ptr=%p size=%u tag=%s align=%u",
-              user_ptr,
+              hdr->user_ptr,
               hdr->size,
               mem_tag_name((mem_tag_t)hdr->tag),
               hdr->alignment);
         leak_count++;
+        leak_bytes += hdr->size;
     }
 
     if (leak_count == 0)
         LOGLN("[memory] no leaks");
     else
-        LOGLN("[memory] leaks total=%d", leak_count);
+        LOGLN("[memory] leaks total=%d bytes=%u", leak_count, leak_bytes);
 }
 
 
@@ -148,6 +149,7 @@ static void mem_stats_on_free(mem_tag_t tag, u32 size)
 int memory_init(void)
 {
     memset(&s_stats, 0, sizeof(s_stats));
+    s_live_head = NULL;
     LOGLN("[memory] init");
     return 0;
 }
@@ -158,7 +160,9 @@ void memory_shutdown(void)
     mem_dump_leaks();
     mem_dump_stats();
     LOGLN("[memory] shutdown");
+
     memset(&s_stats, 0, sizeof(s_stats));
+    s_live_head = NULL;
 }
 
 
@@ -220,8 +224,8 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
     hdr->user_ptr = user_ptr;
     hdr->prev_live = NULL;
     hdr->next_live = NULL;
-    mem_live_list_add(hdr);
 
+    mem_live_list_add(hdr);
     memset(user_ptr, MEMORY_ALLOC_PATTERN, size);
     mem_stats_on_alloc(tag, size);
     return (void *)user_ptr;
@@ -269,14 +273,19 @@ void mem_free(void *ptr, mem_tag_t tag)
     mem_live_list_remove(hdr);
 
     memset(ptr, MEMORY_FREE_PATTERN, hdr->size);
-
     mem_stats_on_free(real_tag, hdr->size);
 
+    void *base_ptr = hdr->base_ptr;
     hdr->magic = MEMORY_BLOCK_FREED_MAGIC;
     hdr->size = 0;
     hdr->tag = 0xffffffffu;
     hdr->alignment = 0;
-    free(hdr->base_ptr);
+    hdr->user_ptr = NULL;
+    hdr->base_ptr = NULL;
+    hdr->prev_live = NULL;
+    hdr->next_live = NULL;
+    
+    free(base_ptr);
 }
 
 
