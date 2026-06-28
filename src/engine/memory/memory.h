@@ -29,7 +29,7 @@ void *mem_calloc(u32 count, u32 size, u32 align, mem_tag_t tag);
 void  mem_dump_stats(void); /* logs via sio/screen */
 
 void  mem_get_stats(mem_stats_t *out);
-void  mem_dump_stats(void); /* логгером в sio/screen */
+void  mem_dump_stats(void); /* into sio/screen via logger*/
 
 #ifdef __cplusplus
 }

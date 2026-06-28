@@ -11,6 +11,7 @@
 #include "game/states/test/resource_test_state.h"
 #include "game/states/test/sprite_test_state.h"
 #include "game/states/test/memory_test_state.h"
+#include "game/states/test/memory_arena_test_state.h"
 
 #include <string.h>
 
@@ -86,6 +87,7 @@ int game_app_init(void)
     rc = game_app_change_state(audio_test_state_desc(), NULL);
     //rc = game_app_change_state(resource_test_state_desc(), NULL);
     //rc = game_app_change_state(memory_test_state_desc(), NULL);
+    //rc = game_app_change_state(memory_arena_test_state_desc(), NULL);
     if (rc < 0) {
         LOGLN("[game_app] failed to enter initial state: %d", rc);
         memset(&g_app, 0, sizeof(g_app));

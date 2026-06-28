@@ -44,6 +44,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/audio/audio_mixer_stream.c \
                  $(SRC_DIR)/engine/input/input_ps2.c \
                  $(SRC_DIR)/engine/memory/memory.c \
+                 $(SRC_DIR)/engine/memory/memory_arena.c \
                  $(SRC_DIR)/engine/streaming/streaming.c \
                  $(SRC_DIR)/engine/streaming/texture_assets.c \
                  $(SRC_DIR)/engine/resources/resources.c \
@@ -51,7 +52,8 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/game/states/test/audio_test_state.c \
                  $(SRC_DIR)/game/states/test/resource_test_state.c \
                  $(SRC_DIR)/game/states/test/sprite_test_state.c \
-                 $(SRC_DIR)/game/states/test/memory_test_state.c
+                 $(SRC_DIR)/game/states/test/memory_test_state.c \
+                 $(SRC_DIR)/game/states/test/memory_arena_test_state.c
 
 
 EE_GEN_SRCS    = $(AUDSRV_IRX_C)             
