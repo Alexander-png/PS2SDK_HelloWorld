@@ -1,5 +1,4 @@
 #include "memory_arena_test_state.h"
-#include "game_app.h"
 
 #include "engine/logging/log.h"
 #include "engine/input/input.h"
