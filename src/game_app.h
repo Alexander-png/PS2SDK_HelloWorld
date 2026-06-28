@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 typedef struct game_app game_app_t;
+typedef struct mem_arena mem_arena_t;
 
 typedef struct game_state_desc {
     const char *name;
@@ -28,6 +29,12 @@ int  game_app_change_state(const game_state_desc_t *state, void *userdata);
 const char *game_app_current_state_name(void);
 unsigned int game_app_frame_index(void);
 float game_app_delta_time(void);
+
+mem_arena_t *game_app_temp_arena(game_app_t *app);
+mem_arena_t *game_app_state_arena(game_app_t *app);
+
+void *game_app_state_userdata(game_app_t *app);
+void game_app_set_state_userdata(game_app_t *app, void *userdata);
 
 #ifdef __cplusplus
 }

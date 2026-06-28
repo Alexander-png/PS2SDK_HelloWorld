@@ -117,20 +117,6 @@ static int game_app_enter_fallback_empty_state(void)
     return 0;
 }
 
-mem_arena_t *game_app_temp_arena(game_app_t *app)
-{
-    if (!app)
-        return NULL;
-    return &app->temp_arena;
-}
-
-mem_arena_t *game_app_state_arena(game_app_t *app)
-{
-    if (!app)
-        return NULL;
-    return &app->state_arena;
-}
-
 int game_app_init(void)
 {
     int rc;
@@ -153,11 +139,11 @@ int game_app_init(void)
 
     game_app_clear_state_arena(&g_app.state_arena);
 
-    rc = game_app_change_state(sprite_test_state_desc(), NULL);
+    //rc = game_app_change_state(sprite_test_state_desc(), NULL);
     //rc = game_app_change_state(audio_test_state_desc(), NULL);
     //rc = game_app_change_state(resource_test_state_desc(), NULL);
     //rc = game_app_change_state(memory_test_state_desc(), NULL);
-    //rc = game_app_change_state(memory_arena_test_state_desc(), NULL);
+    rc = game_app_change_state(memory_arena_test_state_desc(), NULL);
 
     if (rc < 0) {
         LOGLN("[game_app] failed to enter initial state: %d", rc);
@@ -307,4 +293,32 @@ unsigned int game_app_frame_index(void)
 float game_app_delta_time(void)
 {
     return g_app.dt;
+}
+
+mem_arena_t *game_app_temp_arena(game_app_t *app)
+{
+    if (!app)
+        return NULL;
+    return &app->temp_arena;
+}
+
+mem_arena_t *game_app_state_arena(game_app_t *app)
+{
+    if (!app)
+        return NULL;
+    return &app->state_arena;
+}
+
+void *game_app_state_userdata(game_app_t *app)
+{
+    if (!app)
+        return NULL;
+    return app->state_userdata;
+}
+
+void game_app_set_state_userdata(game_app_t *app, void *userdata)
+{
+    if (!app)
+        return;
+    app->state_userdata = userdata;
 }
