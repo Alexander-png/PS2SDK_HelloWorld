@@ -51,6 +51,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/game/states/test/audio_test_state.c \
                  $(SRC_DIR)/game/states/test/resource_test_state.c \
                  $(SRC_DIR)/game/states/test/sprite_test_state.c \
+                 $(SRC_DIR)/game/states/test/memory_test_state.c
 
 
 EE_GEN_SRCS    = $(AUDSRV_IRX_C)             

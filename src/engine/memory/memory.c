@@ -23,6 +23,14 @@
 #define MEMORY_FREE_PATTERN 0xDD
 #endif
 
+#ifndef MEMORY_GUARD_PATTERN
+#define MEMORY_GUARD_PATTERN 0xFD
+#endif
+
+#ifndef MEMORY_GUARD_SIZE
+#define MEMORY_GUARD_SIZE 16u
+#endif
+
 
 typedef struct mem_block_header {
     u32 magic;
@@ -38,30 +46,6 @@ typedef struct mem_block_header {
 
 static mem_stats_t s_stats;
 static mem_block_header_t *s_live_head = NULL;
-
-
-static void mem_live_list_add(mem_block_header_t *hdr)
-{
-    hdr->prev_live = NULL;
-    hdr->next_live = s_live_head;
-    if (s_live_head)
-        s_live_head->prev_live = hdr;
-    s_live_head = hdr;
-}
-
-static void mem_live_list_remove(mem_block_header_t *hdr)
-{
-    if (hdr->prev_live)
-        hdr->prev_live->next_live = hdr->next_live;
-    else
-        s_live_head = hdr->next_live;
-
-    if (hdr->next_live)
-        hdr->next_live->prev_live = hdr->prev_live;
-
-    hdr->prev_live = NULL;
-    hdr->next_live = NULL;
-}
 
 
 static int mem_tag_valid(mem_tag_t tag)
@@ -97,6 +81,85 @@ static const char *mem_tag_name(mem_tag_t tag)
 }
 
 
+static void mem_live_list_add(mem_block_header_t *hdr)
+{
+    hdr->prev_live = NULL;
+    hdr->next_live = s_live_head;
+
+    if (s_live_head)
+        s_live_head->prev_live = hdr;
+
+    s_live_head = hdr;
+}
+
+
+static void mem_live_list_remove(mem_block_header_t *hdr)
+{
+    if (hdr->prev_live)
+        hdr->prev_live->next_live = hdr->next_live;
+    else
+        s_live_head = hdr->next_live;
+
+    if (hdr->next_live)
+        hdr->next_live->prev_live = hdr->prev_live;
+
+    hdr->prev_live = NULL;
+    hdr->next_live = NULL;
+}
+
+
+static unsigned char *mem_front_guard_ptr(const mem_block_header_t *hdr)
+{
+    return (unsigned char *)hdr->user_ptr - MEMORY_GUARD_SIZE;
+}
+
+
+static unsigned char *mem_back_guard_ptr(const mem_block_header_t *hdr)
+{
+    return (unsigned char *)hdr->user_ptr + hdr->size;
+}
+
+
+static int mem_check_guard_region(const unsigned char *p, u32 size)
+{
+    u32 i;
+    for (i = 0; i < size; ++i) {
+        if (p[i] != (unsigned char)MEMORY_GUARD_PATTERN)
+            return 0;
+    }
+    return 1;
+}
+
+
+static int mem_validate_block(const mem_block_header_t *hdr)
+{
+    int front_ok;
+    int back_ok;
+
+    if (!hdr || hdr->magic != MEMORY_BLOCK_MAGIC)
+        return 0;
+
+    front_ok = mem_check_guard_region(mem_front_guard_ptr(hdr), MEMORY_GUARD_SIZE);
+    back_ok  = mem_check_guard_region(mem_back_guard_ptr(hdr), MEMORY_GUARD_SIZE);
+
+    if (!front_ok) {
+        LOGLN("[memory] underrun ptr=%p size=%u tag=%s",
+              hdr->user_ptr,
+              hdr->size,
+              mem_tag_name((mem_tag_t)hdr->tag));
+    }
+
+    if (!back_ok) {
+        LOGLN("[memory] overrun ptr=%p size=%u tag=%s",
+              hdr->user_ptr,
+              hdr->size,
+              mem_tag_name((mem_tag_t)hdr->tag));
+    }
+
+    return front_ok && back_ok;
+}
+
+
 static void mem_dump_leaks(void)
 {
     mem_block_header_t *hdr;
@@ -104,11 +167,15 @@ static void mem_dump_leaks(void)
     u32 leak_bytes = 0;
 
     for (hdr = s_live_head; hdr; hdr = hdr->next_live) {
-        LOGLN("[memory] leak ptr=%p size=%u tag=%s align=%u",
+        int guards_ok = mem_validate_block(hdr);
+
+        LOGLN("[memory] leak ptr=%p size=%u tag=%s align=%u guards=%s",
               hdr->user_ptr,
               hdr->size,
               mem_tag_name((mem_tag_t)hdr->tag),
-              hdr->alignment);
+              hdr->alignment,
+              guards_ok ? "ok" : "corrupt");
+
         leak_count++;
         leak_bytes += hdr->size;
     }
@@ -171,7 +238,7 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
     u32 effective_align;
     u32 total_size;
     unsigned char *base;
-    unsigned char *raw_payload;
+    unsigned char *raw;
     unsigned char *user_ptr;
     mem_block_header_t *hdr;
 
@@ -197,13 +264,21 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
 
     effective_align = align;
 
-    if (size > UINT_MAX - (u32)sizeof(mem_block_header_t) - effective_align) {
+    if (size > UINT_MAX
+             - (u32)sizeof(mem_block_header_t)
+             - MEMORY_GUARD_SIZE
+             - MEMORY_GUARD_SIZE
+             - effective_align) {
         LOGLN("[memory] alloc overflow size=%u align=%u tag=%s",
               size, effective_align, mem_tag_name(tag));
         return NULL;
     }
 
-    total_size = size + (u32)sizeof(mem_block_header_t) + effective_align;
+    total_size = size
+               + (u32)sizeof(mem_block_header_t)
+               + MEMORY_GUARD_SIZE
+               + MEMORY_GUARD_SIZE
+               + effective_align;
 
     base = (unsigned char *)malloc(total_size);
     if (!base) {
@@ -212,9 +287,9 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
         return NULL;
     }
 
-    raw_payload = base + sizeof(mem_block_header_t);
-    user_ptr = (unsigned char *)mem_align_up_ptr((uintptr_t)raw_payload, effective_align);
-    hdr = (mem_block_header_t *)(user_ptr - sizeof(mem_block_header_t));
+    raw = base + sizeof(mem_block_header_t) + MEMORY_GUARD_SIZE;
+    user_ptr = (unsigned char *)mem_align_up_ptr((uintptr_t)raw, effective_align);
+    hdr = (mem_block_header_t *)(user_ptr - MEMORY_GUARD_SIZE - sizeof(mem_block_header_t));
 
     hdr->magic = MEMORY_BLOCK_MAGIC;
     hdr->size = size;
@@ -225,9 +300,13 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
     hdr->prev_live = NULL;
     hdr->next_live = NULL;
 
+    memset(mem_front_guard_ptr(hdr), MEMORY_GUARD_PATTERN, MEMORY_GUARD_SIZE);
+    memset(mem_back_guard_ptr(hdr), MEMORY_GUARD_PATTERN, MEMORY_GUARD_SIZE);
+
     mem_live_list_add(hdr);
     memset(user_ptr, MEMORY_ALLOC_PATTERN, size);
     mem_stats_on_alloc(tag, size);
+
     return (void *)user_ptr;
 }
 
@@ -236,11 +315,12 @@ void mem_free(void *ptr, mem_tag_t tag)
 {
     mem_block_header_t *hdr;
     mem_tag_t real_tag;
+    void *base_ptr;
 
     if (!ptr)
         return;
 
-    hdr = (mem_block_header_t *)((unsigned char *)ptr - sizeof(mem_block_header_t));
+    hdr = (mem_block_header_t *)((unsigned char *)ptr - MEMORY_GUARD_SIZE - sizeof(mem_block_header_t));
 
     if (hdr->magic == MEMORY_BLOCK_FREED_MAGIC) {
         LOGLN("[memory] double free ptr=%p tag=%s",
@@ -270,21 +350,26 @@ void mem_free(void *ptr, mem_tag_t tag)
               hdr->size);
     }
 
+    mem_validate_block(hdr);
     mem_live_list_remove(hdr);
 
     memset(ptr, MEMORY_FREE_PATTERN, hdr->size);
+    memset(mem_front_guard_ptr(hdr), MEMORY_FREE_PATTERN, MEMORY_GUARD_SIZE);
+    memset(mem_back_guard_ptr(hdr), MEMORY_FREE_PATTERN, MEMORY_GUARD_SIZE);
+
     mem_stats_on_free(real_tag, hdr->size);
 
-    void *base_ptr = hdr->base_ptr;
+    base_ptr = hdr->base_ptr;
+
     hdr->magic = MEMORY_BLOCK_FREED_MAGIC;
     hdr->size = 0;
     hdr->tag = 0xffffffffu;
     hdr->alignment = 0;
-    hdr->user_ptr = NULL;
     hdr->base_ptr = NULL;
+    hdr->user_ptr = NULL;
     hdr->prev_live = NULL;
     hdr->next_live = NULL;
-    
+
     free(base_ptr);
 }
 
