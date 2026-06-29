@@ -47,7 +47,7 @@ static texture_handle_t sprite_test_invalid_texture(void)
 
 static sprite_test_state_data_t *sprite_test_data(game_app_t *app)
 {
-    return (sprite_test_state_data_t *)game_app_state_userdata(app);
+    return GAME_APP_STATE_DATA_AS(app, sprite_test_state_data_t);
 }
 
 static void sprite_test_reset_sprite(sprite_test_data_t *s)

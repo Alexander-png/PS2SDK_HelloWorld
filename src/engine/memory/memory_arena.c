@@ -95,20 +95,36 @@ int mem_arena_init_from_buffer(mem_arena_t *arena, void *buffer, u32 capacity, m
 
 void mem_arena_destroy(mem_arena_t *arena)
 {
+    unsigned char *base;
+    u32 used;
+    u32 peak;
+    u32 capacity;
+    mem_tag_t tag;
+    int owns_memory;
+
     if (!arena)
         return;
 
-    if (arena->owns_memory && arena->base) {
-        mem_free(arena->base, arena->tag);
-    }
+    if (!arena->base && arena->capacity == 0)
+        return;
 
-    LOGLN("[arena] destroy used=%u peak=%u capacity=%u tag=%d",
-          arena->offset,
-          arena->peak,
-          arena->capacity,
-          (int)arena->tag);
+    base = arena->base;
+    used = arena->offset;
+    peak = arena->peak;
+    capacity = arena->capacity;
+    tag = arena->tag;
+    owns_memory = arena->owns_memory;
+
+    if (owns_memory && base)
+        mem_free(base, tag);
 
     mem_arena_clear(arena);
+
+    LOGLN("[arena] destroy used=%u peak=%u capacity=%u tag=%d",
+          used,
+          peak,
+          capacity,
+          (int)tag);
 }
 
 void mem_arena_reset(mem_arena_t *arena)

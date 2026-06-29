@@ -17,7 +17,7 @@ typedef struct memory_test_state_data {
 
 static memory_test_state_data_t *memory_test_data(game_app_t *app)
 {
-    return (memory_test_state_data_t *)game_app_state_userdata(app);
+    return GAME_APP_STATE_DATA_AS(app,  memory_test_state_data_t);
 }
 
 static void run_alloc_free_test(game_app_t *app)

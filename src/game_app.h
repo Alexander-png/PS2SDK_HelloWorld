@@ -5,6 +5,12 @@
 extern "C" {
 #endif
 
+#define GAME_APP_STATE_DATA_AS(app, type) \
+    ((type *)game_app_state_userdata((app)))
+
+#define GAME_APP_SET_STATE_DATA(app, ptr) \
+    game_app_set_state_userdata((app), (void *)(ptr))
+
 typedef struct game_app game_app_t;
 typedef struct mem_arena mem_arena_t;
 

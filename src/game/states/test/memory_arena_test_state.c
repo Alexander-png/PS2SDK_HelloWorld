@@ -19,7 +19,7 @@ typedef struct arena_test_state_data {
 
 static arena_test_state_data_t *memory_arena_test_data(game_app_t *app)
 {
-    return (arena_test_state_data_t *)game_app_state_userdata(app);
+    return GAME_APP_STATE_DATA_AS(app,  arena_test_state_data_t);
 }
 
 static void log_arena_stats(game_app_t *app, const char *label)

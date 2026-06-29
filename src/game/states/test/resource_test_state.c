@@ -62,7 +62,7 @@ static resource_handle_t resource_test_invalid_handle(void)
 
 static resource_test_ctx_t *resource_test_data(game_app_t *app)
 {
-    return (resource_test_ctx_t *)game_app_state_userdata(app);
+    return GAME_APP_STATE_DATA_AS(app,  resource_test_ctx_t);
 }
 
 static const char *resource_test_phase_name(resource_test_phase_t phase)
