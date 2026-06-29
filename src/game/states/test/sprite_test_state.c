@@ -4,6 +4,8 @@
 #include "engine/gfx/gfx2d.h"
 #include "engine/streaming/texture_assets.h"
 #include "engine/input/input.h"
+#include "engine/memory/memory_arena.h"
+
 #include <math.h>
 
 #ifndef TEST_SPRITE_PATH
@@ -28,9 +30,12 @@ typedef struct sprite_test_data {
     float speed;
 } sprite_test_data_t;
 
-static sprite_test_data_t s_sprite;
-static sprite_test_data_t s_sprite1;
-static sprite_test_data_t s_sprite2;
+typedef struct sprite_test_state_data {
+    sprite_test_data_t sprite;
+    sprite_test_data_t sprite1;
+    sprite_test_data_t sprite2;
+    float t;
+} sprite_test_state_data_t;
 
 static texture_handle_t sprite_test_invalid_texture(void)
 {
@@ -38,6 +43,11 @@ static texture_handle_t sprite_test_invalid_texture(void)
     h.index = 0xffffu;
     h.generation = 0;
     return h;
+}
+
+static sprite_test_state_data_t *sprite_test_data(game_app_t *app)
+{
+    return (sprite_test_state_data_t *)game_app_state_userdata(app);
 }
 
 static void sprite_test_reset_sprite(sprite_test_data_t *s)
@@ -106,34 +116,49 @@ static int sprite_test_try_create(sprite_test_data_t *s, const char *tag)
 
 static int sprite_test_enter(game_app_t *app, void *userdata)
 {
-    (void)app;
+    sprite_test_state_data_t *data;
+
     (void)userdata;
 
-    sprite_test_reset_sprite(&s_sprite);
-    sprite_test_reset_sprite(&s_sprite1);
-    sprite_test_reset_sprite(&s_sprite2);
+    data = (sprite_test_state_data_t *)mem_arena_calloc(
+        game_app_state_arena(app),
+        1,
+        sizeof(*data),
+        16
+    );
+    if (!data) {
+        LOGLN("[state:sprite_test] enter failed: no state arena memory");
+        return -1;
+    }
 
-    s_sprite.draw_params = gfx2d_sprite_params(226.0f, 140.0f, 16.0f, 16.0f);
-    s_sprite.draw_params.layer = 5;
-    s_sprite.speed = 240.0f;
+    game_app_set_state_userdata(app, data);
 
-    s_sprite1.draw_params = gfx2d_sprite_params(306.0f, 168.0f, 206.0f, 168.0f);
-    s_sprite1.draw_params.layer = 10;
-    s_sprite1.draw_params.color.r = 0x80;
-    s_sprite1.draw_params.color.g = 0x80;
-    s_sprite1.draw_params.color.b = 0x80;
-    s_sprite1.draw_params.color.a = 0x80;
+    sprite_test_reset_sprite(&data->sprite);
+    sprite_test_reset_sprite(&data->sprite1);
+    sprite_test_reset_sprite(&data->sprite2);
+    data->t = 0.0f;
 
-    s_sprite2.draw_params = gfx2d_sprite_params(100.0f, 50.0f, 110.0f, 84.0f);
-    s_sprite2.draw_params.layer = 0;
+    data->sprite.draw_params = gfx2d_sprite_params(226.0f, 140.0f, 16.0f, 16.0f);
+    data->sprite.draw_params.layer = 5;
+    data->sprite.speed = 240.0f;
 
-    s_sprite.texture  = texture_load_png(TEST_SPRITE_PATH,  STREAM_PRIORITY_NORMAL);
-    s_sprite1.texture = texture_load_png(TEST_SPRITE_PATH1, STREAM_PRIORITY_NORMAL);
-    s_sprite2.texture = texture_load_png(TEST_SPRITE_PATH2, STREAM_PRIORITY_NORMAL);
+    data->sprite1.draw_params = gfx2d_sprite_params(306.0f, 168.0f, 206.0f, 168.0f);
+    data->sprite1.draw_params.layer = 10;
+    data->sprite1.draw_params.color.r = 0x80;
+    data->sprite1.draw_params.color.g = 0x80;
+    data->sprite1.draw_params.color.b = 0x80;
+    data->sprite1.draw_params.color.a = 0x80;
 
-    if (!texture_is_valid(s_sprite.texture)
-        || !texture_is_valid(s_sprite1.texture)
-        || !texture_is_valid(s_sprite2.texture)) {
+    data->sprite2.draw_params = gfx2d_sprite_params(100.0f, 50.0f, 110.0f, 84.0f);
+    data->sprite2.draw_params.layer = 0;
+
+    data->sprite.texture  = texture_load_png(TEST_SPRITE_PATH,  STREAM_PRIORITY_NORMAL);
+    data->sprite1.texture = texture_load_png(TEST_SPRITE_PATH1, STREAM_PRIORITY_NORMAL);
+    data->sprite2.texture = texture_load_png(TEST_SPRITE_PATH2, STREAM_PRIORITY_NORMAL);
+
+    if (!texture_is_valid(data->sprite.texture)
+        || !texture_is_valid(data->sprite1.texture)
+        || !texture_is_valid(data->sprite2.texture)) {
         LOGLN("[state:sprite_test] failed to request one or more textures");
         return -1;
     }
@@ -144,59 +169,81 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
 
 static void sprite_test_exit(game_app_t *app)
 {
-    (void)app;
+    sprite_test_state_data_t *data = sprite_test_data(app);
 
-    texture_release(s_sprite.texture);
-    texture_release(s_sprite1.texture);
-    texture_release(s_sprite2.texture);
+    if (!data) {
+        LOGLN("[state:sprite_test] exit");
+        return;
+    }
 
-    sprite_test_reset_sprite(&s_sprite);
-    sprite_test_reset_sprite(&s_sprite1);
-    sprite_test_reset_sprite(&s_sprite2);
+    if (texture_is_valid(data->sprite.texture))
+        texture_release(data->sprite.texture);
+    if (texture_is_valid(data->sprite1.texture))
+        texture_release(data->sprite1.texture);
+    if (texture_is_valid(data->sprite2.texture))
+        texture_release(data->sprite2.texture);
+
+    sprite_test_reset_sprite(&data->sprite);
+    sprite_test_reset_sprite(&data->sprite1);
+    sprite_test_reset_sprite(&data->sprite2);
+    data->t = 0.0f;
+
+    game_app_set_state_userdata(app, NULL);
 
     LOGLN("[state:sprite_test] exit");
 }
 
 static void sprite_test_update(game_app_t *app, float dt)
 {
-    (void)app;
-
+    sprite_test_state_data_t *data = sprite_test_data(app);
     float move;
 
-    sprite_test_try_create(&s_sprite, TEST_SPRITE_PATH);
-    sprite_test_try_create(&s_sprite1, TEST_SPRITE_PATH1);
-    sprite_test_try_create(&s_sprite2, TEST_SPRITE_PATH2);
+    if (input_button_pressed(INPUT_BUTTON_START)) {
+        LOGLN("[state:sprite_test] START pressed, quit");
+        game_app_request_quit();
+        return;
+    }
 
-    if (!s_sprite.sprite_created)
+    if (!data)
         return;
 
-    move = s_sprite.speed * dt;
+    sprite_test_try_create(&data->sprite, TEST_SPRITE_PATH);
+    sprite_test_try_create(&data->sprite1, TEST_SPRITE_PATH1);
+    sprite_test_try_create(&data->sprite2, TEST_SPRITE_PATH2);
+
+    if (!data->sprite.sprite_created)
+        return;
+
+    move = data->sprite.speed * dt;
 
     if (input_button_down(INPUT_BUTTON_LEFT))
-        s_sprite.draw_params.x -= move;
+        data->sprite.draw_params.x -= move;
     if (input_button_down(INPUT_BUTTON_RIGHT))
-        s_sprite.draw_params.x += move;
+        data->sprite.draw_params.x += move;
     if (input_button_down(INPUT_BUTTON_UP))
-        s_sprite.draw_params.y -= move;
+        data->sprite.draw_params.y -= move;
     if (input_button_down(INPUT_BUTTON_DOWN))
-        s_sprite.draw_params.y += move;
+        data->sprite.draw_params.y += move;
 
-    gfx2d_update_sprite(s_sprite.sprite_id, &s_sprite.draw_params);
+    gfx2d_update_sprite(data->sprite.sprite_id, &data->sprite.draw_params);
 }
-
-static float t;
 
 static void sprite_test_draw(game_app_t *app)
 {
+    sprite_test_state_data_t *data = sprite_test_data(app);
+
     (void)app;
 
-    if (s_sprite2.sprite_created) {
-        s_sprite2.draw_params.skew_x_rad = cosf(t) * 0.7f;
-        s_sprite2.draw_params.skew_y_rad = cosf(t * 2.0f) * 0.4f;
-        gfx2d_update_sprite(s_sprite2.sprite_id, &s_sprite2.draw_params);
+    if (!data)
+        return;
+
+    if (data->sprite2.sprite_created) {
+        data->sprite2.draw_params.skew_x_rad = cosf(data->t) * 0.7f;
+        data->sprite2.draw_params.skew_y_rad = cosf(data->t * 2.0f) * 0.4f;
+        gfx2d_update_sprite(data->sprite2.sprite_id, &data->sprite2.draw_params);
     }
 
-    t += 0.7f;
+    data->t += 0.7f;
 
     gfx2d_draw();
 }
