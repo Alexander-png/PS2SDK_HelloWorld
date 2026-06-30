@@ -139,8 +139,8 @@ int game_app_init(void)
 
     game_app_clear_state_arena(&g_app.state_arena);
 
-    rc = game_app_change_state(sprite_test_state_desc(), NULL);
-    //rc = game_app_change_state(audio_test_state_desc(), NULL);
+    //rc = game_app_change_state(sprite_test_state_desc(), NULL);
+    rc = game_app_change_state(audio_test_state_desc(), NULL);
     //rc = game_app_change_state(resource_test_state_desc(), NULL);
     //rc = game_app_change_state(memory_test_state_desc(), NULL);
     //rc = game_app_change_state(memory_arena_test_state_desc(), NULL);

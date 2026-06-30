@@ -4,7 +4,9 @@
 #include "engine/logging/log.h"
 
 #ifndef AUDIO_TEST_WAV_PATH
-#define AUDIO_TEST_WAV_PATH "test.wav"
+//#define AUDIO_TEST_WAV_PATH "test.wav"
+#define AUDIO_TEST_WAV_PATH "scream_mama.wav"
+//#define AUDIO_TEST_WAV_PATH "ut_a.wav"
 #endif
 
 #ifndef AUDIO_TEST_IO_BUFFER_BYTES

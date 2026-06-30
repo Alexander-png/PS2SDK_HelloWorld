@@ -18,13 +18,108 @@
 #define AUDIO_MIXER_IDLE_US 2000
 #endif
 
-#define AUDIO_OUTPUT_RATE 48000
+#ifndef AUDIO_FRAME_BYTES
+#define AUDIO_FRAME_BYTES (sizeof(s16) * 2)
+#endif
 
-static void mix_stream_into(audio_mixer_t *m, int handle, audio_mix_stream_t *s, s32 *accum_l, s32 *accum_r, int frames)
+#ifndef AUDIO_OUTPUT_RATE
+#define AUDIO_OUTPUT_RATE 48000
+#endif
+
+#ifndef AUDIO_LOOP_XFADE_FRAMES
+#define AUDIO_LOOP_XFADE_FRAMES 32
+#endif
+
+#ifndef AUDIO_START_MIN_READY_BYTES
+#define AUDIO_START_MIN_READY_BYTES (AUDIO_FRAME_BYTES * 8)
+#endif
+
+static void audio_mix_stream_reset_runtime(audio_mix_stream_t *s)
 {
-    const double rate_ratio = (double)s->source.src_rate / (double)AUDIO_OUTPUT_RATE;
-    int i;
+    if (!s)
+        return;
+
+    s->src_pos = 0.0;
+    s->decode_frame = 0;
+    s->eof_reached = 0;
+    s->underrun_count = 0;
+    s->underrun_count_logged = 0;
+    s->play_cursor_frames = 0;
+    s->play_frac = 0.0f;
+    s->rb_base_frame = 0;
+    s->startup_pending = 1;
+    s->loop_fade_in_remaining = 0;
+    s->loop_fade_in_total = 0;
+
+    if (s->rb_storage && s->rb_capacity_bytes > 0)
+        ring_buffer_reset(&s->rb);
+}
+
+static void audio_mix_stream_refill(audio_mix_stream_t *s)
+{
+    s16 temp[AUDIO_MIX_STREAM_REFILL_TEMP_FRAMES * 2];
+
+    if (!s || !s->used)
+        return;
+
+    if (!audio_stream_source_is_ready(&s->source))
+        return;
+
+    while (ring_buffer_size(&s->rb) < s->rb_high_watermark_bytes) {
+        u32 free_bytes;
+        u32 free_frames;
+        u32 frames_to_read;
+        u32 got_frames;
+        u32 bytes_to_write;
+        u32 written_bytes;
+
+        free_bytes = ring_buffer_free_space(&s->rb);
+        if (free_bytes < AUDIO_FRAME_BYTES)
+            break;
+
+        free_frames = free_bytes / AUDIO_FRAME_BYTES;
+        frames_to_read = free_frames;
+        if (frames_to_read > AUDIO_MIX_STREAM_REFILL_TEMP_FRAMES)
+            frames_to_read = AUDIO_MIX_STREAM_REFILL_TEMP_FRAMES;
+
+        if (s->decode_frame >= s->source.total_frames) {
+            if (s->loop) {
+                s->decode_frame = 0;
+            } else {
+                s->eof_reached = 1;
+                break;
+            }
+        }
+
+        audio_stream_source_update(&s->source, s->decode_frame);
+
+        got_frames = audio_stream_source_read_frames(&s->source,
+                                                     s->decode_frame,
+                                                     temp,
+                                                     frames_to_read);
+        if (got_frames == 0)
+            break;
+
+        bytes_to_write = got_frames * AUDIO_FRAME_BYTES;
+        written_bytes = ring_buffer_write(&s->rb, temp, bytes_to_write);
+        if (written_bytes == 0)
+            break;
+
+        s->decode_frame += written_bytes / AUDIO_FRAME_BYTES;
+
+        if (written_bytes < bytes_to_write)
+            break;
+    }
+}
+
+static void mix_stream_into(audio_mixer_t *m, int handle,
+                            audio_mix_stream_t *s,
+                            s32 *accum_l, s32 *accum_r, int frames)
+{
+    const float rate_ratio = (float)s->source.src_rate / (float)AUDIO_OUTPUT_RATE;
+    const float step = s->speed * rate_ratio;
     int gain;
+    int i;
 
     if (!s->used || !s->playing || s->paused || s->source.total_frames == 0)
         return;
@@ -32,51 +127,174 @@ static void mix_stream_into(audio_mixer_t *m, int handle, audio_mix_stream_t *s,
     gain = (s->volume * 256) / 100;
 
     for (i = 0; i < frames; i++) {
-        u32 f0, f1;
+        u32 rb_frames;
+        u32 local_index;
+        u32 next_index;
+        u32 byte_offset0, byte_offset1;
+        s16 frame0[2];
+        s16 frame1[2];
+        u32 got0, got1;
         float t;
-        s16 l0, r0, l1, r1;
         s32 l, r;
 
-        while (s->src_pos >= (double)s->source.total_frames) {
-            if (s->loop) {
-                s->src_pos -= (double)s->source.total_frames;
-            } else {
+        rb_frames = ring_buffer_size(&s->rb) / AUDIO_FRAME_BYTES;
+
+        /* startup: как только FIFO хоть немного наполнился — считаем, что старт завершён */
+        if (s->startup_pending && ring_buffer_size(&s->rb) >= AUDIO_START_MIN_READY_BYTES)
+            s->startup_pending = 0;
+
+        if (s->play_cursor_frames < s->rb_base_frame) {
+            s->play_cursor_frames = s->rb_base_frame;
+            s->play_frac = 0.0f;
+        }
+
+        local_index = s->play_cursor_frames - s->rb_base_frame;
+
+        if (local_index >= rb_frames) {
+            if (!s->startup_pending)
+                s->underrun_count++;
+
+            if (s->eof_reached && rb_frames == 0 && !s->loop) {
                 s->playing = 0;
+                s->paused = 0;
+                s->play_cursor_frames = 0;
+                s->play_frac = 0.0f;
+                s->rb_base_frame = 0;
+
                 if (!s->stopped_notified && s->on_stopped) {
                     s->stopped_notified = 1;
                     s->on_stopped(m, handle, s, s->callback_userdata);
                 }
-                goto done;
+                return;
+            }
+
+            continue;
+        }
+
+        next_index = local_index + 1;
+        if (next_index >= rb_frames) {
+            if (s->eof_reached && !s->loop) {
+                next_index = local_index;
+            } else {
+                if (!s->startup_pending)
+                    s->underrun_count++;
+                continue;
             }
         }
 
-        if (s->src_pos < 0.0)
-            s->src_pos = 0.0;
+        byte_offset0 = local_index * AUDIO_FRAME_BYTES;
+        byte_offset1 = next_index * AUDIO_FRAME_BYTES;
 
-        f0 = (u32)s->src_pos;
-        f1 = f0 + 1;
-        if (f1 >= s->source.total_frames)
-            f1 = s->loop ? 0 : f0;
+        got0 = ring_buffer_peek_at(&s->rb, byte_offset0, frame0, AUDIO_FRAME_BYTES);
+        got1 = ring_buffer_peek_at(&s->rb, byte_offset1, frame1, AUDIO_FRAME_BYTES);
 
-        audio_stream_source_update(&s->source, f0);
-
-        if (audio_stream_source_get_frame_pair(&s->source, f0, &l0, &r0) < 0 ||
-            audio_stream_source_get_frame_pair(&s->source, f1, &l1, &r1) < 0) {
-            l0 = r0 = l1 = r1 = 0;
+        if (got0 < AUDIO_FRAME_BYTES || got1 < AUDIO_FRAME_BYTES) {
+            if (!s->startup_pending)
+                s->underrun_count++;
+            continue;
         }
 
-        t = (float)(s->src_pos - (double)f0);
-        l = (s32)((1.0f - t) * l0 + t * l1);
-        r = (s32)((1.0f - t) * r0 + t * r1);
+        t = s->play_frac;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+
+        l = (s32)((1.0f - t) * (float)frame0[0] + t * (float)frame1[0]);
+        r = (s32)((1.0f - t) * (float)frame0[1] + t * (float)frame1[1]);
+
+        /* --- LOOP ANTI-CLICK FADE --- */
+        {
+            float env = 1.0f;
+            u32 frames_left_to_end;
+
+            if (s->play_cursor_frames < s->source.total_frames)
+                frames_left_to_end = s->source.total_frames - s->play_cursor_frames;
+            else
+                frames_left_to_end = 0;
+
+            /* fade-out на последних AUDIO_LOOP_XFADE_FRAMES перед концом */
+            if (s->loop && frames_left_to_end <= AUDIO_LOOP_XFADE_FRAMES) {
+                env = (float)frames_left_to_end / (float)AUDIO_LOOP_XFADE_FRAMES;
+                if (env < 0.0f) env = 0.0f;
+                if (env > 1.0f) env = 1.0f;
+            }
+
+            /* fade-in после wrap; уменьшаем env пока идёт fade-in */
+            if (s->loop_fade_in_remaining > 0 && s->loop_fade_in_total > 0) {
+                float in_env = 1.0f - ((float)s->loop_fade_in_remaining /
+                                       (float)s->loop_fade_in_total);
+                if (in_env < 0.0f) in_env = 0.0f;
+                if (in_env > 1.0f) in_env = 1.0f;
+
+                if (in_env < env)
+                    env = in_env;
+            }
+
+            l = (s32)((float)l * env);
+            r = (s32)((float)r * env);
+        }
+        /* --- END LOOP FADE --- */
 
         accum_l[i] += (l * gain) >> 8;
         accum_r[i] += (r * gain) >> 8;
 
-        s->src_pos += (double)s->speed * rate_ratio;
+        s->play_frac += step;
+        while (s->play_frac >= 1.0f) {
+            s->play_cursor_frames++;
+            s->play_frac -= 1.0f;
+        }
+
+        while (s->play_frac < 0.0f) {
+            if (s->play_cursor_frames > 0)
+                s->play_cursor_frames--;
+            s->play_frac += 1.0f;
+        }
+
+        if (s->loop_fade_in_remaining > 0)
+            s->loop_fade_in_remaining--;
+
+        if (s->play_cursor_frames >= s->source.total_frames) {
+            if (s->loop) {
+                s->play_cursor_frames = 0;
+                s->play_frac = 0.0f;
+                s->rb_base_frame = 0;
+
+                /* подготовка fade-in для нового цикла */
+                s->loop_fade_in_total = AUDIO_LOOP_XFADE_FRAMES;
+                s->loop_fade_in_remaining = AUDIO_LOOP_XFADE_FRAMES;
+
+                ring_buffer_reset(&s->rb);
+                s->decode_frame = 0;
+                s->eof_reached = 0;
+                s->startup_pending = 1;
+
+                audio_stream_source_prewarm(&s->source, 0, 2);
+                audio_mix_stream_refill(s);
+                audio_mix_stream_refill(s);
+            } else if (s->eof_reached) {
+                s->playing = 0;
+                s->paused = 0;
+
+                if (!s->stopped_notified && s->on_stopped) {
+                    s->stopped_notified = 1;
+                    s->on_stopped(m, handle, s, s->callback_userdata);
+                }
+                return;
+            }
+        }
     }
 
-done:
-    ;
+    if (s->play_cursor_frames > s->rb_base_frame) {
+        u32 keep_tail_frames = 1;
+        u32 consumed_frames = s->play_cursor_frames - s->rb_base_frame;
+
+        if (consumed_frames > keep_tail_frames) {
+            u32 skip_frames = consumed_frames - keep_tail_frames;
+            u32 skip_bytes = skip_frames * AUDIO_FRAME_BYTES;
+            u32 skipped = ring_buffer_skip(&s->rb, skip_bytes);
+            u32 skipped_frames = skipped / AUDIO_FRAME_BYTES;
+            s->rb_base_frame += skipped_frames;
+        }
+    }
 }
 
 static void mixer_render(audio_mixer_t *m)
@@ -122,6 +340,8 @@ static void audio_mixer_thread(void *arg)
     m->output_active = 0;
 
     while (!m->thread_exit) {
+        int j;
+
         if (!mixer_has_active_streams(m)) {
             memset(m->mixbuf, 0, bytes);
             audsrv_wait_audio(bytes);
@@ -132,7 +352,28 @@ static void audio_mixer_thread(void *arg)
             continue;
         }
 
+        for (j = 0; j < AUDIO_MIXER_MAX_STREAMS; j++) {
+            audio_mix_stream_t *s = &m->streams[j];
+
+            if (s->used && s->playing && !s->paused)
+                audio_mix_stream_refill(s);
+
+            if (s->used && s->underrun_count != s->underrun_count_logged) {
+                s->underrun_count_logged = s->underrun_count;
+
+                LOGLN("[audio:mixer] stream=%d underruns=%u eof=%d rb_size=%u rb_free=%u playing=%d paused=%d",
+                    j,
+                    s->underrun_count,
+                    s->eof_reached,
+                    ring_buffer_size(&s->rb),
+                    ring_buffer_free_space(&s->rb),
+                    s->playing,
+                    s->paused);
+            }
+        }
+
         mixer_render(m);
+
         audsrv_wait_audio(bytes);
         if (m->thread_exit)
             break;
@@ -275,6 +516,25 @@ int audio_mixer_add_stream(audio_mixer_t *m, const char *wav_path, int io_buf_by
     if (rc < 0)
         return rc;
 
+    s->rb_capacity_bytes = AUDIO_MIX_STREAM_RING_BUFFER_BYTES;
+    s->rb_storage = (u8 *)mem_alloc(s->rb_capacity_bytes, 64, MEMTAG_AUDIO);
+    if (!s->rb_storage) {
+        audio_stream_source_destroy(&s->source);
+        memset(s, 0, sizeof(*s));
+        return -4;
+    }
+
+    if (ring_buffer_init(&s->rb, s->rb_storage, s->rb_capacity_bytes) < 0) {
+        mem_free(s->rb_storage, MEMTAG_AUDIO);
+        audio_stream_source_destroy(&s->source);
+        memset(s, 0, sizeof(*s));
+        return -5;
+    }
+
+    s->rb_low_watermark_bytes = s->rb_capacity_bytes / 4;
+    s->rb_high_watermark_bytes = (s->rb_capacity_bytes * 3) / 4;
+    audio_mix_stream_reset_runtime(s);
+
     s->used = 1;
     return i;
 }
@@ -295,6 +555,8 @@ void audio_mixer_remove_stream(audio_mixer_t *m, int handle)
 
     audio_stream_source_destroy(&s->source);
 
+    if (s->rb_storage)
+        mem_free(s->rb_storage, MEMTAG_AUDIO);
     memset(s, 0, sizeof(*s));
 }
 
@@ -309,7 +571,13 @@ int audio_mixer_preload(audio_mixer_t *m, int handle)
     if (!s->used)
         return -2;
 
-    return audio_stream_source_prewarm(&s->source, 0, 2);
+    int rc = audio_stream_source_prewarm(&s->source, 0, 2);
+    if (rc < 0)
+        return rc;
+
+    audio_mix_stream_reset_runtime(s);
+    audio_mix_stream_refill(s);
+    return 0;
 }
 
 int audio_mixer_stream_is_ready(const audio_mixer_t *m, int handle)
@@ -342,10 +610,15 @@ int audio_mixer_play(audio_mixer_t *m, int handle, int loop)
 
     s->loop = loop ? 1 : 0;
     s->paused = 0;
-    s->playing = 1;
     s->src_pos = 0.0;
 
-    audio_stream_source_update(&s->source, 0);
+    audio_mix_stream_reset_runtime(s);
+    audio_stream_source_prewarm(&s->source, 0, 2);
+    audio_mix_stream_refill(s);
+    // give a chance to fill FIFO. If source ready, this call is often free
+    audio_mix_stream_refill(s); 
+
+    s->playing = 1;
 
     s->started_notified = 0;
     s->stopped_notified = 0;
@@ -389,6 +662,8 @@ void audio_mixer_stop(audio_mixer_t *m, int handle)
         s->playing = 0;
         s->paused = 0;
         s->src_pos = 0.0;
+
+        audio_mix_stream_reset_runtime(s);
 
         if (!s->stopped_notified && s->on_stopped) {
             s->stopped_notified = 1;

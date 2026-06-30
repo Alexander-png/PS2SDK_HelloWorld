@@ -70,6 +70,11 @@ int  audio_stream_source_get_frame_pair(audio_stream_source_t *src,
                                         s16 *l,
                                         s16 *r);
 
+u32  audio_stream_source_read_frames(audio_stream_source_t *src,
+                                     u32 start_frame,
+                                     s16 *dst_interleaved,
+                                     u32 max_frames);                                        
+
 int  audio_stream_source_is_ready(const audio_stream_source_t *src);
 u32  audio_stream_source_total_frames(const audio_stream_source_t *src);
 

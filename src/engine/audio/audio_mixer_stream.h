@@ -3,12 +3,22 @@
 
 #include <tamtypes.h>
 #include "engine/audio/audio_stream_source.h"
+#include "engine/memory/ring_buffer.h"
+#include "engine/logging/log.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define AUDIO_MIXER_MAX_STREAMS 8
+
+#ifndef AUDIO_MIX_STREAM_RING_BUFFER_BYTES
+#define AUDIO_MIX_STREAM_RING_BUFFER_BYTES (64 * 1024)
+#endif
+
+#ifndef AUDIO_MIX_STREAM_REFILL_TEMP_FRAMES
+#define AUDIO_MIX_STREAM_REFILL_TEMP_FRAMES 1024
+#endif
 
 typedef struct audio_mixer audio_mixer_t;
 typedef struct audio_mix_stream audio_mix_stream_t;
@@ -31,6 +41,26 @@ typedef struct audio_mix_stream {
     volatile float speed;
 
     double src_pos;
+
+    u32 decode_frame;
+    int eof_reached;
+    u32 underrun_count;
+    u32 underrun_count_logged;
+
+    int startup_pending;
+
+    int loop_fade_in_remaining;
+    int loop_fade_in_total;
+
+    ring_buffer_t rb;
+    u8 *rb_storage;
+    u32 rb_capacity_bytes;
+    u32 rb_low_watermark_bytes;
+    u32 rb_high_watermark_bytes;
+
+    u32 play_cursor_frames;
+    float play_frac;
+    u32 rb_base_frame;
 
     audio_stream_callback_t on_started;
     audio_stream_callback_t on_stopped;

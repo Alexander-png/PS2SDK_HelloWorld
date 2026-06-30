@@ -519,6 +519,58 @@ int audio_stream_source_get_frame_pair(audio_stream_source_t *src,
     return 0;
 }
 
+u32 audio_stream_source_read_frames(audio_stream_source_t *src,
+                                    u32 start_frame,
+                                    s16 *dst_interleaved,
+                                    u32 max_frames)
+{
+    u32 total_copied_frames = 0;
+
+    if (!src || !src->used || !dst_interleaved || max_frames == 0)
+        return 0;
+
+    if (start_frame >= src->total_frames)
+        return 0;
+
+    while (total_copied_frames < max_frames) {
+        audio_stream_chunk_t *c;
+        u32 frame;
+        u32 rel_frame;
+        u32 available_frames;
+        u32 wanted_frames;
+        u32 copy_frames;
+        u32 copy_samples;
+
+        frame = start_frame + total_copied_frames;
+        if (frame >= src->total_frames)
+            break;
+
+        c = find_ready_chunk(src, frame);
+        if (!c)
+            break;
+
+        rel_frame = frame - c->start_frame;
+        if (rel_frame >= c->frame_count)
+            break;
+
+        available_frames = c->frame_count - rel_frame;
+        wanted_frames = max_frames - total_copied_frames;
+        copy_frames = (available_frames < wanted_frames) ? available_frames : wanted_frames;
+        copy_samples = copy_frames * 2;
+
+        memcpy(dst_interleaved + total_copied_frames * 2,
+               ((const s16 *)c->data) + rel_frame * 2,
+               copy_samples * sizeof(s16));
+
+        total_copied_frames += copy_frames;
+    }
+
+    if (total_copied_frames == 0)
+        audio_stream_source_update(src, start_frame);
+
+    return total_copied_frames;
+}
+
 int audio_stream_source_is_ready(const audio_stream_source_t *src)
 {
     if (!src || !src->used)
