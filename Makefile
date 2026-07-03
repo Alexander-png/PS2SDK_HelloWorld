@@ -37,7 +37,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/boot.c \
                  $(SRC_DIR)/game_app.c \
                  $(SRC_DIR)/engine/platform/platform_ps2.c \
-                 $(SRC_DIR)/engine/logging/log.c \
+                 $(SRC_DIR)/engine/logging/log_ps2.c \
                  $(SRC_DIR)/engine/audio/audio_driver_ps2.c \
                  $(SRC_DIR)/engine/audio/audio.c \
                  $(SRC_DIR)/engine/audio/audio_stream_source.c \
@@ -49,7 +49,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/streaming/streaming.c \
                  $(SRC_DIR)/engine/streaming/texture_assets.c \
                  $(SRC_DIR)/engine/resources/resources.c \
-                 $(SRC_DIR)/engine/gfx/gfx2d.c \
+                 $(SRC_DIR)/engine/gfx/gfx2d_ps2.c \
                  $(SRC_DIR)/game/states/test/audio_test_state.c \
                  $(SRC_DIR)/game/states/test/resource_test_state.c \
                  $(SRC_DIR)/game/states/test/sprite_test_state.c \

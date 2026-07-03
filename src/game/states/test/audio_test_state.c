@@ -4,9 +4,7 @@
 #include "engine/logging/log.h"
 
 #ifndef AUDIO_TEST_WAV_PATH
-//#define AUDIO_TEST_WAV_PATH "test.wav"
-#define AUDIO_TEST_WAV_PATH "scream_mama.wav"
-//#define AUDIO_TEST_WAV_PATH "ut_a.wav"
+#define AUDIO_TEST_WAV_PATH "test.wav"
 #endif
 
 #ifndef AUDIO_TEST_IO_BUFFER_BYTES
@@ -33,7 +31,7 @@ static int audio_test_enter(game_app_t *app, void *userdata)
     s_audio_test.open_ok = 0;
     s_audio_test.paused = 0;
     s_audio_test.volume = 100;
-    s_audio_test.speed = 1.0f;
+    s_audio_test.speed = 0.85f;
     s_audio_test.last_log_frame = 0;
 
     LOGLN("[state:audio_test] enter");
