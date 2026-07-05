@@ -83,6 +83,9 @@ typedef struct gfx2d_draw_params {
 int  gfx2d_init(void);
 void gfx2d_shutdown(void);
 
+void gfx2d_set_enabled(int enabled);
+int  gfx2d_is_enabled(void);
+
 void gfx2d_begin_frame(void);
 void gfx2d_end_frame(void);
 

@@ -37,6 +37,8 @@ typedef struct gfx2d_rgba32_pixel {
     u8 a;
 } gfx2d_rgba32_pixel_t;
 
+static int g_gfx2d_enabled = 1;
+
 static GSGLOBAL *g_gs;
 static texture_slot_t g_textures[GFX2D_MAX_TEXTURES];
 static gfx2d_sprite_slot_t g_sprites[GFX2D_MAX_SPRITES];
@@ -413,11 +415,21 @@ void gfx2d_shutdown(void)
     g_gs = NULL;
 }
 
+void gfx2d_set_enabled(int enabled)
+{
+    g_gfx2d_enabled = enabled ? 1 : 0;
+}
+
+int gfx2d_is_enabled(void)
+{
+    return g_gfx2d_enabled;
+}
+
 void gfx2d_begin_frame(void)
 {
     int oldAlpha;
 
-    if (!g_gs)
+    if (!g_gs || !g_gfx2d_enabled)
         return;
 
     oldAlpha = g_gs->PrimAlphaEnable;
@@ -428,7 +440,7 @@ void gfx2d_begin_frame(void)
 
 void gfx2d_end_frame(void)
 {
-    if (!g_gs)
+    if (!g_gs || !g_gfx2d_enabled)
         return;
 
     gsKit_queue_exec(g_gs);
@@ -756,7 +768,7 @@ void gfx2d_draw(void)
 {
     int i;
 
-    if (!g_gs)
+    if (!g_gs || !g_gfx2d_enabled)
         return;
 
     for (i = 0; i < g_draw_count; ++i) {
