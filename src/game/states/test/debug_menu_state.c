@@ -13,6 +13,7 @@
 
 typedef struct debug_menu_state_data {
     int selected;
+    int needs_redraw;
 } debug_menu_state_data_t;
 
 typedef struct debug_menu_entry {
@@ -54,6 +55,17 @@ static void debug_menu_render(debug_menu_state_data_t *data)
                    (data && data->selected == i) ? '>' : ' ',
                    g_menu[i].label);
     }
+
+    if (data)
+        data->needs_redraw = 0;
+}
+
+static void debug_menu_request_redraw(debug_menu_state_data_t *data)
+{
+    if (!data)
+        return;
+
+    data->needs_redraw = 1;
 }
 
 static int debug_menu_enter(game_app_t *app, void *userdata)
@@ -74,14 +86,9 @@ static int debug_menu_enter(game_app_t *app, void *userdata)
     }
 
     data->selected = 0;
+    data->needs_redraw = 1;
     game_app_set_state_userdata(app, data);
 
-    // scr_printf prints output into draw queue and
-    // setup debug screen subsystem, that breaks gsKit.
-    // So on entering debug menu:
-    // call gfx2d_shutdown
-    // And on exiting:
-    // call gfx2d_init
     gfx2d_shutdown();
     log_enable_screen(1);
     init_scr();
@@ -126,6 +133,7 @@ static void debug_menu_update(game_app_t *app, float dt)
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
         LOGLN("[state:debug_menu] START pressed, quit");
+        input_consume();
         game_app_request_quit();
         return;
     }
@@ -134,21 +142,25 @@ static void debug_menu_update(game_app_t *app, float dt)
         data->selected--;
         if (data->selected < 0)
             data->selected = DEBUG_MENU_COUNT - 1;
-        debug_menu_render(data);
+        debug_menu_request_redraw(data);
     }
 
     if (input_button_pressed(INPUT_BUTTON_DOWN)) {
         data->selected++;
         if (data->selected >= DEBUG_MENU_COUNT)
             data->selected = 0;
-        debug_menu_render(data);
+        debug_menu_request_redraw(data);
     }
+
+    if (data->needs_redraw)
+        debug_menu_render(data);
 
     if (input_button_pressed(INPUT_BUTTON_CROSS)) {
         const game_state_desc_t *next = g_menu[data->selected].state_fn();
         LOGLN("[state:debug_menu] enter item=%d name=%s",
               data->selected,
               next && next->name ? next->name : "unnamed");
+        input_consume();
         game_app_request_state_change(next, NULL);
         return;
     }
@@ -156,14 +168,14 @@ static void debug_menu_update(game_app_t *app, float dt)
 
 static void debug_menu_draw(game_app_t *app, float alpha)
 {
-    debug_menu_state_data_t *data = debug_menu_data(app);
     (void)app;
     (void)alpha;
 
-    if (!data)
-        return;
-
-    /* scr_printf menu rendered from update/enter only */
+    /*
+     * Intentionally empty:
+     * debug menu is rendered via scr_printf from enter/update only.
+     * draw() is not used because debug screen and gsKit do not mix.
+     */
 }
 
 static const game_state_desc_t s_debug_menu_state = {

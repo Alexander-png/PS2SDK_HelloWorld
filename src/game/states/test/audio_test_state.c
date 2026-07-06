@@ -13,13 +13,17 @@
 #define AUDIO_TEST_IO_BUFFER_BYTES (128 * 1024)
 #endif
 
+#ifndef AUDIO_TEST_LOG_INTERVAL_SEC
+#define AUDIO_TEST_LOG_INTERVAL_SEC 1.0f
+#endif
+
 typedef struct audio_test_state {
     int stream;
     int open_ok;
     int paused;
     int volume;
     float speed;
-    unsigned int last_log_frame;
+    float log_timer;
 } audio_test_state_t;
 
 static audio_test_state_t s_audio_test;
@@ -34,7 +38,7 @@ static int audio_test_enter(game_app_t *app, void *userdata)
     s_audio_test.paused = 0;
     s_audio_test.volume = 100;
     s_audio_test.speed = 0.85f;
-    s_audio_test.last_log_frame = 0;
+    s_audio_test.log_timer = 0.0f;
 
     LOGLN("[state:audio_test] enter");
     LOGLN("[state:audio_test] wav path: %s", AUDIO_TEST_WAV_PATH);
@@ -58,9 +62,12 @@ static int audio_test_enter(game_app_t *app, void *userdata)
     s_audio_test.open_ok = 1;
 
     LOGLN("[state:audio_test] calling audio_stream_preload...");
-    if (audio_stream_preload(s_audio_test.stream) < 0){
+    if (audio_stream_preload(s_audio_test.stream) < 0) {
         LOGLN("[state:audio_test] audio_stream_preload failed: %d",
               s_audio_test.stream);
+        audio_stream_close(s_audio_test.stream);
+        s_audio_test.stream = -1;
+        s_audio_test.open_ok = 0;
         return 0;
     }
 
@@ -92,6 +99,8 @@ static void audio_test_exit(game_app_t *app)
 
     s_audio_test.stream = -1;
     s_audio_test.open_ok = 0;
+    s_audio_test.paused = 0;
+    s_audio_test.log_timer = 0.0f;
 }
 
 static void audio_test_fixed_update(game_app_t *app, float dt)
@@ -102,14 +111,11 @@ static void audio_test_fixed_update(game_app_t *app, float dt)
 
 static void audio_test_update(game_app_t *app, float dt)
 {
-    unsigned int frame;
-
-    (void)dt;
-
-    frame = game_app_frame_index();
+    (void)app;
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
         LOGLN("[state:audio_test] START pressed, return to menu");
+        input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
     }
@@ -172,27 +178,28 @@ static void audio_test_update(game_app_t *app, float dt)
         }
     }
 
-    /*
-     * Log roughly once per second with current fixed 60 FPS app pacing.
-     */
-    if (frame - s_audio_test.last_log_frame >= 60) {
-        s_audio_test.last_log_frame = frame;
+    s_audio_test.log_timer += dt;
+    if (s_audio_test.log_timer < AUDIO_TEST_LOG_INTERVAL_SEC)
+        return;
 
-        if (!audio_is_available()) {
-            LOGLN("[state:audio_test] frame=%u audio unavailable", frame);
-            return;
-        }
+    while (s_audio_test.log_timer >= AUDIO_TEST_LOG_INTERVAL_SEC)
+        s_audio_test.log_timer -= AUDIO_TEST_LOG_INTERVAL_SEC;
 
-        if (!s_audio_test.open_ok || s_audio_test.stream < 0) {
-            LOGLN("[state:audio_test] frame=%u no stream", frame);
-            return;
-        }
-
-        LOGLN("[state:audio_test] frame=%u playing=%d paused=%d",
-              frame,
-              audio_stream_is_playing(s_audio_test.stream),
-              audio_stream_is_paused(s_audio_test.stream));
+    if (!audio_is_available()) {
+        LOGLN("[state:audio_test] audio unavailable");
+        return;
     }
+
+    if (!s_audio_test.open_ok || s_audio_test.stream < 0) {
+        LOGLN("[state:audio_test] no stream");
+        return;
+    }
+
+    LOGLN("[state:audio_test] playing=%d paused=%d volume=%d speed=%d/100",
+          audio_stream_is_playing(s_audio_test.stream),
+          audio_stream_is_paused(s_audio_test.stream),
+          s_audio_test.volume,
+          (int)(s_audio_test.speed * 100.0f));
 }
 
 static void audio_test_draw(game_app_t *app, float alpha)

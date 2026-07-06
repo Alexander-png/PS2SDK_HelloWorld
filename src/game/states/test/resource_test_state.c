@@ -12,8 +12,12 @@
 #define TEST_RESOURCE_PATH "assets/test/test.bin"
 #endif
 
-#ifndef RESOURCE_TEST_TIMEOUT_FRAMES
-#define RESOURCE_TEST_TIMEOUT_FRAMES 300
+#ifndef RESOURCE_TEST_TIMEOUT_SEC
+#define RESOURCE_TEST_TIMEOUT_SEC 5.0f
+#endif
+
+#ifndef RESOURCE_TEST_LOG_INTERVAL_SEC
+#define RESOURCE_TEST_LOG_INTERVAL_SEC 0.5f
 #endif
 
 #ifndef RESOURCE_TEST_INVALID_HANDLE_INDEX
@@ -50,6 +54,9 @@ typedef struct resource_test_ctx {
 
     int phase_ticks;
     int total_ticks;
+    float phase_time;
+    float total_time;
+    float last_wait_log_time;
 } resource_test_ctx_t;
 
 static resource_handle_t resource_test_invalid_handle(void)
@@ -62,7 +69,7 @@ static resource_handle_t resource_test_invalid_handle(void)
 
 static resource_test_ctx_t *resource_test_data(game_app_t *app)
 {
-    return GAME_APP_STATE_DATA_AS(app,  resource_test_ctx_t);
+    return GAME_APP_STATE_DATA_AS(app, resource_test_ctx_t);
 }
 
 static const char *resource_test_phase_name(resource_test_phase_t phase)
@@ -95,6 +102,8 @@ static void resource_test_set_phase(resource_test_ctx_t *ctx,
               resource_test_phase_name(phase));
         ctx->phase = phase;
         ctx->phase_ticks = 0;
+        ctx->phase_time = 0.0f;
+        ctx->last_wait_log_time = 0.0f;
     }
 }
 
@@ -195,14 +204,15 @@ static int resource_test_queue(resource_test_ctx_t *ctx,
 
 static int resource_test_wait_for_terminal(resource_test_ctx_t *ctx,
                                            resource_handle_t handle,
-                                           int phase_ticks,
-                                           int timeout_frames,
+                                           float phase_time,
+                                           float timeout_sec,
                                            const char *tag,
                                            resource_status_t *out_status)
 {
     resource_status_t st;
 
-    (void)ctx;
+    if (!ctx)
+        return -100;
 
     if (!resource_is_valid(handle)) {
         LOGLN("[state:resource_test] %s wait invalid handle", tag);
@@ -216,18 +226,19 @@ static int resource_test_wait_for_terminal(resource_test_ctx_t *ctx,
     if (st == RESOURCE_STATUS_READY || st == RESOURCE_STATUS_FAILED)
         return 1;
 
-    if (phase_ticks >= timeout_frames) {
-        LOGLN("[state:resource_test] %s wait timeout frames=%d path=%s",
+    if (phase_time >= timeout_sec) {
+        LOGLN("[state:resource_test] %s wait timeout sec=%d/1000 path=%s",
               tag,
-              phase_ticks,
+              (int)(phase_time * 1000.0f),
               resource_path(handle));
         return -2;
     }
 
-    if ((phase_ticks % 30) == 0) {
-        LOGLN("[state:resource_test] %s waiting frames=%d status=%s path=%s",
+    if ((phase_time - ctx->last_wait_log_time) >= RESOURCE_TEST_LOG_INTERVAL_SEC) {
+        ctx->last_wait_log_time = phase_time;
+        LOGLN("[state:resource_test] %s waiting ms=%d status=%s path=%s",
               tag,
-              phase_ticks,
+              (int)(phase_time * 1000.0f),
               resource_status_name(st),
               resource_path(handle));
     }
@@ -402,9 +413,9 @@ static int resource_test_enter(game_app_t *app, void *userdata)
     game_app_set_state_userdata(app, ctx);
 
     LOGLN("[state:resource_test] enter");
-    LOGLN("[state:resource_test] automatic test begin path=%s timeout=%d frames",
+    LOGLN("[state:resource_test] automatic test begin path=%s timeout_ms=%d",
           TEST_RESOURCE_PATH,
-          RESOURCE_TEST_TIMEOUT_FRAMES);
+          (int)(RESOURCE_TEST_TIMEOUT_SEC * 1000.0f));
     LOGLN("[state:resource_test] phases: raw -> release -> sprite_bank -> release");
     LOGLN("[state:resource_test] START pressed, quit");
 
@@ -436,13 +447,15 @@ static void resource_test_update(game_app_t *app, float dt)
     resource_status_t st;
     int rc;
 
-    (void)dt;
+    (void)app;
 
     if (!ctx)
         return;
 
     ctx->total_ticks++;
     ctx->phase_ticks++;
+    ctx->total_time += dt;
+    ctx->phase_time += dt;
 
     switch (ctx->phase) {
     case RESOURCE_TEST_PHASE_RAW_QUEUE:
@@ -456,8 +469,8 @@ static void resource_test_update(game_app_t *app, float dt)
     case RESOURCE_TEST_PHASE_RAW_WAIT:
         rc = resource_test_wait_for_terminal(ctx,
                                              ctx->handle,
-                                             ctx->phase_ticks,
-                                             RESOURCE_TEST_TIMEOUT_FRAMES,
+                                             ctx->phase_time,
+                                             RESOURCE_TEST_TIMEOUT_SEC,
                                              "raw",
                                              &st);
         if (rc < 0) {
@@ -493,8 +506,8 @@ static void resource_test_update(game_app_t *app, float dt)
     case RESOURCE_TEST_PHASE_SPRITE_WAIT:
         rc = resource_test_wait_for_terminal(ctx,
                                              ctx->handle,
-                                             ctx->phase_ticks,
-                                             RESOURCE_TEST_TIMEOUT_FRAMES,
+                                             ctx->phase_time,
+                                             RESOURCE_TEST_TIMEOUT_SEC,
                                              "sprite_bank",
                                              &st);
         if (rc < 0) {
@@ -516,8 +529,9 @@ static void resource_test_update(game_app_t *app, float dt)
 
     case RESOURCE_TEST_PHASE_SPRITE_RELEASE:
         resource_test_release_current(ctx, "sprite_bank");
-        LOGLN("[state:resource_test] all tests passed total_ticks=%d callbacks=%d",
+        LOGLN("[state:resource_test] all tests passed total_ticks=%d total_ms=%d callbacks=%d",
               ctx->total_ticks,
+              (int)(ctx->total_time * 1000.0f),
               ctx->callback_count);
         resource_test_set_phase(ctx, RESOURCE_TEST_PHASE_DONE);
         break;
@@ -532,6 +546,7 @@ static void resource_test_update(game_app_t *app, float dt)
     if (input_button_pressed(INPUT_BUTTON_START)) {
         LOGLN("[state:resource_test] START pressed, quit phase=%s",
               resource_test_phase_name(ctx->phase));
+        input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
     }
