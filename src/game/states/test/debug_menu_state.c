@@ -109,6 +109,12 @@ static void debug_menu_exit(game_app_t *app)
     LOGLN("[state:debug_menu] exit");
 }
 
+static void debug_menu_fixed_update(game_app_t *app, float dt)
+{
+    (void)app;
+    (void)dt;
+}
+
 static void debug_menu_update(game_app_t *app, float dt)
 {
     debug_menu_state_data_t *data = debug_menu_data(app);
@@ -148,10 +154,11 @@ static void debug_menu_update(game_app_t *app, float dt)
     }
 }
 
-static void debug_menu_draw(game_app_t *app)
+static void debug_menu_draw(game_app_t *app, float alpha)
 {
     debug_menu_state_data_t *data = debug_menu_data(app);
     (void)app;
+    (void)alpha;
 
     if (!data)
         return;
@@ -163,6 +170,7 @@ static const game_state_desc_t s_debug_menu_state = {
     "debug_menu",
     debug_menu_enter,
     debug_menu_exit,
+    debug_menu_fixed_update,
     debug_menu_update,
     debug_menu_draw
 };

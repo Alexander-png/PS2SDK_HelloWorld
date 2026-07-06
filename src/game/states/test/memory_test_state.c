@@ -135,6 +135,12 @@ static void memory_test_exit(game_app_t *app)
     LOGLN("[state:memory_test] exit");
 }
 
+static void memory_test_fixed_update(game_app_t *app, float dt)
+{
+    (void)app;
+    (void)dt;
+}
+
 static void memory_test_update(game_app_t *app, float dt)
 {
     (void)dt;
@@ -158,15 +164,17 @@ static void memory_test_update(game_app_t *app, float dt)
         run_leak_test(app);
 }
 
-static void memory_test_draw(game_app_t *app)
+static void memory_test_draw(game_app_t *app, float alpha)
 {
     (void)app;
+    (void)alpha;
 }
 
 static const game_state_desc_t g_memory_test_state = {
     "memory_test",
     memory_test_enter,
     memory_test_exit,
+    memory_test_fixed_update,
     memory_test_update,
     memory_test_draw
 };

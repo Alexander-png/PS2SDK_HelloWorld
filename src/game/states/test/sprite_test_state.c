@@ -193,6 +193,12 @@ static void sprite_test_exit(game_app_t *app)
     LOGLN("[state:sprite_test] exit");
 }
 
+static void sprite_test_fixed_update(game_app_t *app, float dt)
+{
+    (void)app;
+    (void)dt;
+}
+
 static void sprite_test_update(game_app_t *app, float dt)
 {
     sprite_test_state_data_t *data = sprite_test_data(app);
@@ -228,11 +234,12 @@ static void sprite_test_update(game_app_t *app, float dt)
     gfx2d_update_sprite(data->sprite.sprite_id, &data->sprite.draw_params);
 }
 
-static void sprite_test_draw(game_app_t *app)
+static void sprite_test_draw(game_app_t *app, float alpha)
 {
     sprite_test_state_data_t *data = sprite_test_data(app);
 
     (void)app;
+    (void)alpha;
 
     if (!data)
         return;
@@ -252,6 +259,7 @@ static const game_state_desc_t s_sprite_test_state = {
     "sprite_test",
     sprite_test_enter,
     sprite_test_exit,
+    sprite_test_fixed_update,
     sprite_test_update,
     sprite_test_draw
 };

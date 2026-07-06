@@ -424,6 +424,12 @@ static void resource_test_exit(game_app_t *app)
     LOGLN("[state:resource_test] exit");
 }
 
+static void resource_test_fixed_update(game_app_t *app, float dt)
+{
+    (void)app;
+    (void)dt;
+}
+
 static void resource_test_update(game_app_t *app, float dt)
 {
     resource_test_ctx_t *ctx = resource_test_data(app);
@@ -531,15 +537,17 @@ static void resource_test_update(game_app_t *app, float dt)
     }
 }
 
-static void resource_test_draw(game_app_t *app)
+static void resource_test_draw(game_app_t *app, float alpha)
 {
     (void)app;
+    (void)alpha;
 }
 
 static const game_state_desc_t g_resource_test_state = {
     "resource_test",
     resource_test_enter,
     resource_test_exit,
+    resource_test_fixed_update,
     resource_test_update,
     resource_test_draw
 };

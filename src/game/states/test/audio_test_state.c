@@ -94,6 +94,12 @@ static void audio_test_exit(game_app_t *app)
     s_audio_test.open_ok = 0;
 }
 
+static void audio_test_fixed_update(game_app_t *app, float dt)
+{
+    (void)app;
+    (void)dt;
+}
+
 static void audio_test_update(game_app_t *app, float dt)
 {
     unsigned int frame;
@@ -189,15 +195,17 @@ static void audio_test_update(game_app_t *app, float dt)
     }
 }
 
-static void audio_test_draw(game_app_t *app)
+static void audio_test_draw(game_app_t *app, float alpha)
 {
     (void)app;
+    (void)alpha;
 }
 
 static const game_state_desc_t g_audio_test_state = {
     "audio_test",
     audio_test_enter,
     audio_test_exit,
+    audio_test_fixed_update,
     audio_test_update,
     audio_test_draw
 };

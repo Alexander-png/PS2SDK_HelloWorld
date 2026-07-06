@@ -240,7 +240,7 @@ static void run_alignment_test(game_app_t *app)
     log_arena_stats(app, "after alignment");
 }
 
-int memory_arena_test_enter(game_app_t *app, void *userdata)
+static int memory_arena_test_enter(game_app_t *app, void *userdata)
 {
     arena_test_state_data_t *data;
 
@@ -274,7 +274,7 @@ int memory_arena_test_enter(game_app_t *app, void *userdata)
     return 0;
 }
 
-void memory_arena_test_exit(game_app_t *app)
+static void memory_arena_test_exit(game_app_t *app)
 {
     arena_test_state_data_t *data = memory_arena_test_data(app);
 
@@ -297,7 +297,13 @@ void memory_arena_test_exit(game_app_t *app)
     LOGLN("[state:memory_arena_test] exit");
 }
 
-void memory_arena_test_update(game_app_t *app, float dt)
+static void memory_arena_test_fixed_update(game_app_t *app, float dt)
+{
+    (void)app;
+    (void)dt;
+}
+
+static void memory_arena_test_update(game_app_t *app, float dt)
 {
     arena_test_state_data_t *data = memory_arena_test_data(app);
 
@@ -328,15 +334,17 @@ void memory_arena_test_update(game_app_t *app, float dt)
         run_alignment_test(app);
 }
 
-static void memory_arena_test_draw(game_app_t *app)
+static void memory_arena_test_draw(game_app_t *app, float alpha)
 {
     (void)app;
+    (void)alpha;
 }
 
 static const game_state_desc_t g_memory_arena_test_state = {
     "memory_arena_test",
     memory_arena_test_enter,
     memory_arena_test_exit,
+    memory_arena_test_fixed_update,
     memory_arena_test_update,
     memory_arena_test_draw
 };

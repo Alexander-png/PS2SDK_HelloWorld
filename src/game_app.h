@@ -19,8 +19,10 @@ typedef struct game_state_desc {
 
     int  (*enter)(game_app_t *app, void *userdata);
     void (*exit)(game_app_t *app);
-    void (*update)(game_app_t *app, float dt);
-    void (*draw)(game_app_t *app);
+
+    void (*fixed_update)(game_app_t *app, float fixed_dt);
+    void (*update)(game_app_t *app, float frame_dt);
+    void (*draw)(game_app_t *app, float alpha);
 } game_state_desc_t;
 
 int  game_app_init(void);
@@ -35,7 +37,10 @@ int  game_app_request_state_change(const game_state_desc_t *state, void *userdat
 
 const char *game_app_current_state_name(void);
 unsigned int game_app_frame_index(void);
+
 float game_app_delta_time(void);
+float game_app_fixed_delta_time(void);
+float game_app_draw_alpha(void);
 
 mem_arena_t *game_app_temp_arena(game_app_t *app);
 mem_arena_t *game_app_state_arena(game_app_t *app);

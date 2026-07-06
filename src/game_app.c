@@ -16,8 +16,12 @@
 #define GAME_APP_FIXED_DT (1.0f / 60.0f)
 #endif
 
-#ifndef GAME_APP_FRAME_DELAY_US
-#define GAME_APP_FRAME_DELAY_US 16666
+#ifndef GAME_APP_MAX_FRAME_DT
+#define GAME_APP_MAX_FRAME_DT (0.25f)
+#endif
+
+#ifndef GAME_APP_MAX_FIXED_STEPS
+#define GAME_APP_MAX_FIXED_STEPS 4
 #endif
 
 #ifndef GAME_APP_TEMP_ARENA_SIZE
@@ -43,7 +47,14 @@ struct game_app {
     mem_arena_t state_arena;
 
     unsigned int frame_index;
-    float dt;
+
+    float frame_dt;
+    float fixed_dt;
+    float accumulator;
+    float max_frame_dt;
+    int max_fixed_steps_per_frame;
+
+    unsigned long long last_time_us;
 };
 
 static game_app_t g_app;
@@ -52,7 +63,6 @@ static int empty_state_enter(game_app_t *app, void *userdata)
 {
     (void)app;
     (void)userdata;
-
     LOGLN("[state:empty] enter");
     return 0;
 }
@@ -60,8 +70,13 @@ static int empty_state_enter(game_app_t *app, void *userdata)
 static void empty_state_exit(game_app_t *app)
 {
     (void)app;
-
     LOGLN("[state:empty] exit");
+}
+
+static void empty_state_fixed_update(game_app_t *app, float dt)
+{
+    (void)app;
+    (void)dt;
 }
 
 static void empty_state_update(game_app_t *app, float dt)
@@ -70,15 +85,17 @@ static void empty_state_update(game_app_t *app, float dt)
     (void)dt;
 }
 
-static void empty_state_draw(game_app_t *app)
+static void empty_state_draw(game_app_t *app, float alpha)
 {
     (void)app;
+    (void)alpha;
 }
 
 static const game_state_desc_t g_empty_state = {
     "empty",
     empty_state_enter,
     empty_state_exit,
+    empty_state_fixed_update,
     empty_state_update,
     empty_state_draw
 };
@@ -117,6 +134,32 @@ static int game_app_enter_fallback_empty_state(void)
     return 0;
 }
 
+static int game_app_apply_pending_state_change(void)
+{
+    const game_state_desc_t *pending_state;
+    void *pending_userdata;
+    int change_rc;
+
+    if (!g_app.has_pending_state_change)
+        return 0;
+
+    pending_state = g_app.pending_state;
+    pending_userdata = g_app.pending_state_userdata;
+
+    g_app.pending_state = NULL;
+    g_app.pending_state_userdata = NULL;
+    g_app.has_pending_state_change = 0;
+
+    change_rc = game_app_change_state(pending_state, pending_userdata);
+    if (change_rc < 0) {
+        LOGLN("[game_app] deferred state change failed rc=%d", change_rc);
+        return change_rc;
+    }
+
+    input_consume();
+    return 0;
+}
+
 int game_app_init(void)
 {
     int rc;
@@ -125,7 +168,11 @@ int game_app_init(void)
 
     g_app.initialized = 1;
     g_app.running = 1;
-    g_app.dt = GAME_APP_FIXED_DT;
+    g_app.frame_dt = GAME_APP_FIXED_DT;
+    g_app.fixed_dt = GAME_APP_FIXED_DT;
+    g_app.accumulator = 0.0f;
+    g_app.max_frame_dt = GAME_APP_MAX_FRAME_DT;
+    g_app.max_fixed_steps_per_frame = GAME_APP_MAX_FIXED_STEPS;
     g_app.state = &g_empty_state;
     g_app.state_userdata = NULL;
 
@@ -139,16 +186,11 @@ int game_app_init(void)
 
     game_app_clear_state_arena(&g_app.state_arena);
 
-    rc = game_app_change_state(debug_menu_state_desc(), NULL);
-    //rc = game_app_change_state(sprite_test_state_desc(), NULL);
-    //rc = game_app_change_state(audio_test_state_desc(), NULL);
-    //rc = game_app_change_state(resource_test_state_desc(), NULL);
-    //rc = game_app_change_state(memory_test_state_desc(), NULL);
-    //rc = game_app_change_state(memory_arena_test_state_desc(), NULL);
+    g_app.last_time_us = platform_time_now_us();
 
+    rc = game_app_change_state(debug_menu_state_desc(), NULL);
     if (rc < 0) {
         LOGLN("[game_app] failed to enter initial state: %d", rc);
-
         mem_arena_destroy(&g_app.state_arena);
         mem_arena_destroy(&g_app.temp_arena);
         memset(&g_app, 0, sizeof(g_app));
@@ -177,54 +219,73 @@ void game_app_shutdown(void)
 
 void game_app_tick(void)
 {
-    const game_state_desc_t *pending_state;
-    void *pending_userdata;
-    int change_rc;
+    unsigned long long now_us;
+    float frame_dt;
+    int fixed_steps = 0;
 
     if (!g_app.initialized || !g_app.running)
         return;
+
+    now_us = platform_time_now_us();
+
+    if (g_app.last_time_us == 0)
+        g_app.last_time_us = now_us;
+
+    frame_dt = (float)(now_us - g_app.last_time_us) / 1000000.0f;
+    g_app.last_time_us = now_us;
+
+    if (frame_dt < 0.0f)
+        frame_dt = 0.0f;
+    if (frame_dt > g_app.max_frame_dt)
+        frame_dt = g_app.max_frame_dt;
+
+    g_app.frame_dt = frame_dt;
+    g_app.accumulator += frame_dt;
 
     input_update();
 
     streaming_update();
     resources_update();
     texture_assets_update();
-
-    audio_update(g_app.dt);
+    audio_update(frame_dt);
 
     if (g_app.state && g_app.state->update)
-        g_app.state->update(&g_app, g_app.dt);
+        g_app.state->update(&g_app, frame_dt);
+
+    while (g_app.accumulator >= g_app.fixed_dt &&
+           fixed_steps < g_app.max_fixed_steps_per_frame) {
+        if (g_app.state && g_app.state->fixed_update)
+            g_app.state->fixed_update(&g_app, g_app.fixed_dt);
+
+        g_app.accumulator -= g_app.fixed_dt;
+        fixed_steps++;
+    }
+
+    if (g_app.accumulator >= g_app.fixed_dt) {
+        LOGLN("[game_app] fixed-step overload: dropping lag");
+        g_app.accumulator = 0.0f;
+    }
 
     gfx2d_begin_frame();
 
-    if (g_app.state && g_app.state->draw)
-        g_app.state->draw(&g_app);
+    if (g_app.state && g_app.state->draw) {
+        float alpha = 0.0f;
+
+        if (g_app.fixed_dt > 0.0f)
+            alpha = g_app.accumulator / g_app.fixed_dt;
+
+        if (alpha < 0.0f) alpha = 0.0f;
+        if (alpha > 1.0f) alpha = 1.0f;
+
+        g_app.state->draw(&g_app, alpha);
+    }
 
     gfx2d_end_frame();
 
-    if (g_app.has_pending_state_change) {
-        pending_state = g_app.pending_state;
-        pending_userdata = g_app.pending_state_userdata;
-
-        g_app.pending_state = NULL;
-        g_app.pending_state_userdata = NULL;
-        g_app.has_pending_state_change = 0;
-
-        change_rc = game_app_change_state(pending_state, pending_userdata);
-        if (change_rc < 0)
-            LOGLN("[game_app] deferred state change failed rc=%d", change_rc);
-
-        input_consume();
-    }
+    game_app_apply_pending_state_change();
 
     mem_arena_reset(&g_app.temp_arena);
-
     g_app.frame_index++;
-
-    /*
-     * Temporary pacing until vblank/timer-based frame timing exists.
-     */
-    platform_delay_us(GAME_APP_FRAME_DELAY_US);
 }
 
 int game_app_is_running(void)
@@ -250,7 +311,7 @@ int game_app_change_state(const game_state_desc_t *state, void *userdata)
     if (!state)
         state = &g_empty_state;
 
-    if (g_app.state == state)
+    if (g_app.state == state && g_app.state_userdata == userdata)
         return 0;
 
     LOGLN("[game_app] state change: %s -> %s",
@@ -326,7 +387,20 @@ unsigned int game_app_frame_index(void)
 
 float game_app_delta_time(void)
 {
-    return g_app.dt;
+    return g_app.frame_dt;
+}
+
+float game_app_fixed_delta_time(void)
+{
+    return g_app.fixed_dt;
+}
+
+float game_app_draw_alpha(void)
+{
+    if (g_app.fixed_dt <= 0.0f)
+        return 0.0f;
+
+    return g_app.accumulator / g_app.fixed_dt;
 }
 
 mem_arena_t *game_app_temp_arena(game_app_t *app)
