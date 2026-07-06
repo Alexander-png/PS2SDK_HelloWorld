@@ -34,6 +34,10 @@
 #define AUDIO_START_MIN_READY_BYTES (AUDIO_FRAME_BYTES * 8)
 #endif
 
+#ifndef TAIL_FRAMES_TO_KEEP
+#define TAIL_FRAMES_TO_KEEP 1
+#endif
+
 static void audio_mix_stream_reset_runtime(audio_mix_stream_t *s)
 {
     if (!s)
@@ -284,7 +288,7 @@ static void mix_stream_into(audio_mixer_t *m, int handle,
     }
 
     if (s->play_cursor_frames > s->rb_base_frame) {
-        u32 keep_tail_frames = 1;
+        u32 keep_tail_frames = TAIL_FRAMES_TO_KEEP;
         u32 consumed_frames = s->play_cursor_frames - s->rb_base_frame;
 
         if (consumed_frames > keep_tail_frames) {

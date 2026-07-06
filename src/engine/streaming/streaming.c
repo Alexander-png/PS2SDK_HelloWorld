@@ -419,6 +419,8 @@ void streaming_update(void)
 stream_handle_t streaming_request_file(const stream_request_desc_t *desc)
 {
     int i;
+    //int j;
+    //int used_count = 0;
     stream_request_t *r;
     stream_handle_t h;
 
@@ -435,7 +437,14 @@ stream_handle_t streaming_request_file(const stream_request_desc_t *desc)
             break;
     }
 
+    // for (j = 0; j < STREAMING_MAX_REQUESTS; j++) {
+    //     if (g_streaming.requests[j].used)
+    //         used_count++;
+    // }
+    // LOGLN("[streaming] used=%d/%d before request", used_count, STREAMING_MAX_REQUESTS);
+
     if (i >= STREAMING_MAX_REQUESTS) {
+        //LOGLN("[streaming] NO FREE REQUEST SLOTS");
         stream_unlock();
         return stream_make_invalid_handle();
     }
