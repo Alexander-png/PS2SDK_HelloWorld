@@ -16,12 +16,20 @@
 #define GAME_APP_FIXED_DT (1.0f / 60.0f)
 #endif
 
+#ifndef GAME_APP_RENDER_DT
+#define GAME_APP_RENDER_DT (1.0f / 30.0f)
+#endif
+
 #ifndef GAME_APP_MAX_FRAME_DT
 #define GAME_APP_MAX_FRAME_DT (0.25f)
 #endif
 
 #ifndef GAME_APP_MAX_FIXED_STEPS
 #define GAME_APP_MAX_FIXED_STEPS 4
+#endif
+
+#ifndef GAME_APP_IDLE_SLEEP_US
+#define GAME_APP_IDLE_SLEEP_US 1000
 #endif
 
 #ifndef GAME_APP_TEMP_ARENA_SIZE
@@ -53,6 +61,9 @@ struct game_app {
     float accumulator;
     float max_frame_dt;
     int max_fixed_steps_per_frame;
+
+    float render_dt;
+    float render_accumulator;
 
     unsigned long long last_time_us;
 };
@@ -173,6 +184,8 @@ int game_app_init(void)
     g_app.accumulator = 0.0f;
     g_app.max_frame_dt = GAME_APP_MAX_FRAME_DT;
     g_app.max_fixed_steps_per_frame = GAME_APP_MAX_FIXED_STEPS;
+    g_app.render_dt = GAME_APP_RENDER_DT;
+    g_app.render_accumulator = 0.0f;
     g_app.state = &g_empty_state;
     g_app.state_userdata = NULL;
 
@@ -222,6 +235,7 @@ void game_app_tick(void)
     unsigned long long now_us;
     float frame_dt;
     int fixed_steps = 0;
+    int should_render = 0;
 
     if (!g_app.initialized || !g_app.running)
         return;
@@ -241,16 +255,17 @@ void game_app_tick(void)
 
     g_app.frame_dt = frame_dt;
     g_app.accumulator += frame_dt;
+    g_app.render_accumulator += frame_dt;
 
     input_update();
+
+    if (g_app.state && g_app.state->update)
+        g_app.state->update(&g_app, frame_dt);
 
     streaming_update();
     resources_update();
     texture_assets_update();
     audio_update(frame_dt);
-
-    if (g_app.state && g_app.state->update)
-        g_app.state->update(&g_app, frame_dt);
 
     while (g_app.accumulator >= g_app.fixed_dt &&
            fixed_steps < g_app.max_fixed_steps_per_frame) {
@@ -266,26 +281,37 @@ void game_app_tick(void)
         g_app.accumulator = 0.0f;
     }
 
-    gfx2d_begin_frame();
+    if (g_app.render_accumulator >= g_app.render_dt) {
+        should_render = 1;
+        g_app.render_accumulator -= g_app.render_dt;
 
-    if (g_app.state && g_app.state->draw) {
-        float alpha = 0.0f;
-
-        if (g_app.fixed_dt > 0.0f)
-            alpha = g_app.accumulator / g_app.fixed_dt;
-
-        if (alpha < 0.0f) alpha = 0.0f;
-        if (alpha > 1.0f) alpha = 1.0f;
-
-        g_app.state->draw(&g_app, alpha);
+        if (g_app.render_accumulator >= g_app.render_dt)
+            g_app.render_accumulator = 0.0f;
     }
 
-    gfx2d_end_frame();
+    if (should_render) {
+        float alpha = 0.0f;
+
+        gfx2d_begin_frame();
+
+        if (g_app.state && g_app.state->draw) {
+            if (g_app.fixed_dt > 0.0f)
+                alpha = g_app.accumulator / g_app.fixed_dt;
+
+            if (alpha < 0.0f) alpha = 0.0f;
+            if (alpha > 1.0f) alpha = 1.0f;
+
+            g_app.state->draw(&g_app, alpha);
+        }
+
+        gfx2d_end_frame();
+        g_app.frame_index++;
+    } else {
+        platform_delay_us(GAME_APP_IDLE_SLEEP_US);
+    }
 
     game_app_apply_pending_state_change();
-
     mem_arena_reset(&g_app.temp_arena);
-    g_app.frame_index++;
 }
 
 int game_app_is_running(void)
