@@ -46,7 +46,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/memory/memory.c \
                  $(SRC_DIR)/engine/memory/memory_arena.c \
                  $(SRC_DIR)/engine/memory/ring_buffer.c \
-                 $(SRC_DIR)/engine/streaming/streaming.c \
+                 $(SRC_DIR)/engine/streaming/streaming_ps2.c \
                  $(SRC_DIR)/engine/streaming/texture_assets.c \
                  $(SRC_DIR)/engine/resources/resources.c \
                  $(SRC_DIR)/engine/gfx/gfx2d_ps2.c \
