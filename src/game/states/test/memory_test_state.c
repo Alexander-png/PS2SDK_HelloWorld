@@ -8,7 +8,7 @@
 #include <string.h>
 
 typedef struct memory_test_state_data {
-    unsigned int enter_frame;
+    float enter_time_sec;
     unsigned int alloc_free_runs;
     unsigned int overrun_runs;
     unsigned int underrun_runs;
@@ -17,7 +17,7 @@ typedef struct memory_test_state_data {
 
 static memory_test_state_data_t *memory_test_data(game_app_t *app)
 {
-    return GAME_APP_STATE_DATA_AS(app,  memory_test_state_data_t);
+    return GAME_APP_STATE_DATA_AS(app, memory_test_state_data_t);
 }
 
 static void run_alloc_free_test(game_app_t *app)
@@ -110,7 +110,7 @@ static int memory_test_enter(game_app_t *app, void *userdata)
         return -1;
     }
 
-    data->enter_frame = game_app_frame_index();
+    data->enter_time_sec = 0.0f;
     game_app_set_state_userdata(app, data);
 
     LOGLN("[state:memory_test] enter");
@@ -123,8 +123,8 @@ static void memory_test_exit(game_app_t *app)
     memory_test_state_data_t *data = memory_test_data(app);
 
     if (data) {
-        LOGLN("[state:memory_test] summary enter_frame=%u alloc_free=%u overrun=%u underrun=%u leak=%u",
-              data->enter_frame,
+        LOGLN("[state:memory_test] summary time_ms=%d alloc_free=%u overrun=%u underrun=%u leak=%u",
+              (int)(data->enter_time_sec * 1000.0f),
               data->alloc_free_runs,
               data->overrun_runs,
               data->underrun_runs,
@@ -143,24 +143,28 @@ static void memory_test_fixed_update(game_app_t *app, float dt)
 
 static void memory_test_update(game_app_t *app, float dt)
 {
-    (void)dt;
+    memory_test_state_data_t *data = memory_test_data(app);
+
+    if (data)
+        data->enter_time_sec += dt;
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
         LOGLN("[state:memory_test] START pressed, return to menu");
+        input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
     }
 
-    if (input_button_down(INPUT_BUTTON_CROSS))
+    if (input_button_pressed(INPUT_BUTTON_CROSS))
         run_alloc_free_test(app);
 
-    if (input_button_down(INPUT_BUTTON_CIRCLE))
+    if (input_button_pressed(INPUT_BUTTON_CIRCLE))
         run_overrun_test(app);
 
-    if (input_button_down(INPUT_BUTTON_TRIANGLE))
+    if (input_button_pressed(INPUT_BUTTON_TRIANGLE))
         run_underrun_test(app);
 
-    if (input_button_down(INPUT_BUTTON_SQUARE))
+    if (input_button_pressed(INPUT_BUTTON_SQUARE))
         run_leak_test(app);
 }
 

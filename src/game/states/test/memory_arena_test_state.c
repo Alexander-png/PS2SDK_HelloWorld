@@ -19,7 +19,7 @@ typedef struct arena_test_state_data {
 
 static arena_test_state_data_t *memory_arena_test_data(game_app_t *app)
 {
-    return GAME_APP_STATE_DATA_AS(app,  arena_test_state_data_t);
+    return GAME_APP_STATE_DATA_AS(app, arena_test_state_data_t);
 }
 
 static void log_arena_stats(game_app_t *app, const char *label)
@@ -314,23 +314,24 @@ static void memory_arena_test_update(game_app_t *app, float dt)
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
         LOGLN("[state:memory_arena_test] START pressed, return to menu");
+        input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
     }
 
-    if (input_button_down(INPUT_BUTTON_CROSS))
+    if (input_button_pressed(INPUT_BUTTON_CROSS))
         run_basic_alloc_test(app);
 
-    if (input_button_down(INPUT_BUTTON_CIRCLE))
+    if (input_button_pressed(INPUT_BUTTON_CIRCLE))
         run_mark_release_test(app);
 
-    if (input_button_down(INPUT_BUTTON_TRIANGLE))
+    if (input_button_pressed(INPUT_BUTTON_TRIANGLE))
         run_reset_test(app);
 
-    if (input_button_down(INPUT_BUTTON_SQUARE))
+    if (input_button_pressed(INPUT_BUTTON_SQUARE))
         run_oom_test(app);
 
-    if (input_button_down(INPUT_BUTTON_L1))
+    if (input_button_pressed(INPUT_BUTTON_L1))
         run_alignment_test(app);
 }
 

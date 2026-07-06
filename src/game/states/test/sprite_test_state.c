@@ -20,6 +20,10 @@
 #define TEST_SPRITE_PATH2 "cryingguy0.png"
 #endif
 
+#ifndef SPRITE_TEST_ANIM_SPEED
+#define SPRITE_TEST_ANIM_SPEED 4.2f
+#endif
+
 typedef struct sprite_test_data {
     texture_handle_t texture;
     int tex_id;
@@ -206,6 +210,7 @@ static void sprite_test_update(game_app_t *app, float dt)
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
         LOGLN("[state:sprite_test] START pressed, return to menu");
+        input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
     }
@@ -216,6 +221,14 @@ static void sprite_test_update(game_app_t *app, float dt)
     sprite_test_try_create(&data->sprite, TEST_SPRITE_PATH);
     sprite_test_try_create(&data->sprite1, TEST_SPRITE_PATH1);
     sprite_test_try_create(&data->sprite2, TEST_SPRITE_PATH2);
+
+    data->t += SPRITE_TEST_ANIM_SPEED * dt;
+
+    if (data->sprite2.sprite_created) {
+        data->sprite2.draw_params.skew_x_rad = cosf(data->t) * 0.7f;
+        data->sprite2.draw_params.skew_y_rad = cosf(data->t * 2.0f) * 0.4f;
+        gfx2d_update_sprite(data->sprite2.sprite_id, &data->sprite2.draw_params);
+    }
 
     if (!data->sprite.sprite_created)
         return;
@@ -236,21 +249,8 @@ static void sprite_test_update(game_app_t *app, float dt)
 
 static void sprite_test_draw(game_app_t *app, float alpha)
 {
-    sprite_test_state_data_t *data = sprite_test_data(app);
-
     (void)app;
     (void)alpha;
-
-    if (!data)
-        return;
-
-    if (data->sprite2.sprite_created) {
-        data->sprite2.draw_params.skew_x_rad = cosf(data->t) * 0.7f;
-        data->sprite2.draw_params.skew_y_rad = cosf(data->t * 2.0f) * 0.4f;
-        gfx2d_update_sprite(data->sprite2.sprite_id, &data->sprite2.draw_params);
-    }
-
-    data->t += 0.7f;
 
     gfx2d_draw();
 }
