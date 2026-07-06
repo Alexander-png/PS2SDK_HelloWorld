@@ -1,4 +1,4 @@
-#include "memory_arena_test_state.h"
+#include "game/states/test/debug_menu_state.h"
 
 #include "engine/logging/log.h"
 #include "engine/input/input.h"
@@ -306,9 +306,9 @@ void memory_arena_test_update(game_app_t *app, float dt)
     if (!data || !data->initialized)
         return;
 
-    if (input_button_down(INPUT_BUTTON_START)) {
-        LOGLN("[state:memory_arena_test] START pressed, quit");
-        game_app_request_quit();
+    if (input_button_pressed(INPUT_BUTTON_START)) {
+        LOGLN("[state:memory_arena_test] START pressed, return to menu");
+        game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
     }
 

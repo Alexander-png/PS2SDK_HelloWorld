@@ -30,6 +30,8 @@ int  input_init(void);
 void input_shutdown(void);
 void input_update(void);
 
+void input_consume(void);
+
 int  input_is_available(void);
 u16  input_buttons_down(void);
 u16  input_buttons_pressed(void);

@@ -31,6 +31,7 @@ int  game_app_is_running(void);
 void game_app_request_quit(void);
 
 int  game_app_change_state(const game_state_desc_t *state, void *userdata);
+int  game_app_request_state_change(const game_state_desc_t *state, void *userdata);
 
 const char *game_app_current_state_name(void);
 unsigned int game_app_frame_index(void);

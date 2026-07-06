@@ -189,6 +189,16 @@ void input_update(void)
     g_input.released = (u16)(~g_input.current & g_input.previous);
 }
 
+void input_consume(void)
+{
+    if (!g_input.initialized)
+        return;
+
+    g_input.previous = g_input.current;
+    g_input.pressed = 0;
+    g_input.released = 0;
+}
+
 int input_is_available(void)
 {
     return g_input.available;

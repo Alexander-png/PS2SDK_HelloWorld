@@ -1,4 +1,4 @@
-#include "resource_test_state.h"
+#include "game/states/test/debug_menu_state.h"
 
 #include "engine/logging/log.h"
 #include "engine/input/input.h"
@@ -526,7 +526,7 @@ static void resource_test_update(game_app_t *app, float dt)
     if (input_button_pressed(INPUT_BUTTON_START)) {
         LOGLN("[state:resource_test] START pressed, quit phase=%s",
               resource_test_phase_name(ctx->phase));
-        game_app_request_quit();
+        game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
     }
 }

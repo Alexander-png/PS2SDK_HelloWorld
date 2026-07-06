@@ -1,4 +1,4 @@
-#include "sprite_test_state.h"
+#include "game/states/test/debug_menu_state.h"
 
 #include "engine/logging/log.h"
 #include "engine/gfx/gfx2d.h"
@@ -199,8 +199,8 @@ static void sprite_test_update(game_app_t *app, float dt)
     float move;
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
-        LOGLN("[state:sprite_test] START pressed, quit");
-        game_app_request_quit();
+        LOGLN("[state:sprite_test] START pressed, return to menu");
+        game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
     }
 

@@ -1,4 +1,4 @@
-#include "memory_test_state.h"
+#include "game/states/test/debug_menu_state.h"
 
 #include "engine/logging/log.h"
 #include "engine/input/input.h"
@@ -90,7 +90,7 @@ static void run_leak_test(game_app_t *app)
     }
 
     memset(p, 0x44, 64);
-    LOGLN("[state:memory_test] leak: intentionally leaked 64 bytes, shutdown should report leak");
+    LOGLN("[state:memory_test] leak: intentionally leaked 64 bytes, exit should report leak");
 }
 
 static int memory_test_enter(game_app_t *app, void *userdata)
@@ -139,9 +139,9 @@ static void memory_test_update(game_app_t *app, float dt)
 {
     (void)dt;
 
-    if (input_button_down(INPUT_BUTTON_START)) {
-        LOGLN("[state:memory_test] START pressed, quit");
-        game_app_request_quit();
+    if (input_button_pressed(INPUT_BUTTON_START)) {
+        LOGLN("[state:memory_test] START pressed, return to menu");
+        game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
     }
 

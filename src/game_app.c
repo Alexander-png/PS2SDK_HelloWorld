@@ -8,11 +8,7 @@
 #include "engine/memory/memory_arena.h"
 #include "engine/resources/resources.h"
 #include "engine/gfx/gfx2d.h"
-#include "game/states/test/audio_test_state.h"
-#include "game/states/test/resource_test_state.h"
-#include "game/states/test/sprite_test_state.h"
-#include "game/states/test/memory_test_state.h"
-#include "game/states/test/memory_arena_test_state.h"
+#include "game/states/test/debug_menu_state.h"
 
 #include <string.h>
 
@@ -38,6 +34,10 @@ struct game_app {
 
     const game_state_desc_t *state;
     void *state_userdata;
+
+    const game_state_desc_t *pending_state;
+    void *pending_state_userdata;
+    int has_pending_state_change;
 
     mem_arena_t temp_arena;
     mem_arena_t state_arena;
@@ -139,7 +139,8 @@ int game_app_init(void)
 
     game_app_clear_state_arena(&g_app.state_arena);
 
-    rc = game_app_change_state(sprite_test_state_desc(), NULL);
+    rc = game_app_change_state(debug_menu_state_desc(), NULL);
+    //rc = game_app_change_state(sprite_test_state_desc(), NULL);
     //rc = game_app_change_state(audio_test_state_desc(), NULL);
     //rc = game_app_change_state(resource_test_state_desc(), NULL);
     //rc = game_app_change_state(memory_test_state_desc(), NULL);
@@ -176,6 +177,10 @@ void game_app_shutdown(void)
 
 void game_app_tick(void)
 {
+    const game_state_desc_t *pending_state;
+    void *pending_userdata;
+    int change_rc;
+
     if (!g_app.initialized || !g_app.running)
         return;
 
@@ -197,13 +202,28 @@ void game_app_tick(void)
 
     gfx2d_end_frame();
 
+    if (g_app.has_pending_state_change) {
+        pending_state = g_app.pending_state;
+        pending_userdata = g_app.pending_state_userdata;
+
+        g_app.pending_state = NULL;
+        g_app.pending_state_userdata = NULL;
+        g_app.has_pending_state_change = 0;
+
+        change_rc = game_app_change_state(pending_state, pending_userdata);
+        if (change_rc < 0)
+            LOGLN("[game_app] deferred state change failed rc=%d", change_rc);
+
+        input_consume();
+    }
+
     mem_arena_reset(&g_app.temp_arena);
 
     g_app.frame_index++;
 
     /*
      * Temporary pacing until vblank/timer-based frame timing exists.
-     */ 
+     */
     platform_delay_us(GAME_APP_FRAME_DELAY_US);
 }
 
@@ -274,6 +294,20 @@ int game_app_change_state(const game_state_desc_t *state, void *userdata)
         }
     }
 
+    return 0;
+}
+
+int game_app_request_state_change(const game_state_desc_t *state, void *userdata)
+{
+    if (!g_app.initialized)
+        return -1;
+
+    if (!state)
+        state = &g_empty_state;
+
+    g_app.pending_state = state;
+    g_app.pending_state_userdata = userdata;
+    g_app.has_pending_state_change = 1;
     return 0;
 }
 
