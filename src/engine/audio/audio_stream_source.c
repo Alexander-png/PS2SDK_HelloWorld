@@ -1,129 +1,13 @@
 #include "audio_stream_source.h"
 #include "engine/logging/log.h"
 #include "engine/memory/memory.h"
+#include "engine/audio/audio_wav.h"
 
 #include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-#ifndef WAV_RIFF
-#define WAV_RIFF 0x46464952u
-#endif
-
-#ifndef WAV_WAVE
-#define WAV_WAVE 0x45564157u
-#endif
-
-#ifndef WAV_FMT
-#define WAV_FMT  0x20746d66u
-#endif
-
-#ifndef WAV_DATA 
-#define WAV_DATA 0x61746164u
-#endif
 
 #ifndef AUDIO_FRAME_BYTES
 #define AUDIO_FRAME_BYTES (sizeof(s16) * 2)
 #endif
-
-static u32 rd32(const u8 *p)
-{
-    return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
-}
-
-static u16 rd16(const u8 *p)
-{
-    return (u16)p[0] | ((u16)p[1] << 8);
-}
-
-static int parse_wav_header(audio_stream_source_t *src, int fd)
-{
-    u8 head[12];
-    int found_fmt = 0;
-    int found_data = 0;
-    u16 audio_format = 0;
-
-    if (lseek(fd, 0, SEEK_SET) < 0)
-        return -2;
-
-    if (read(fd, head, sizeof(head)) != (int)sizeof(head))
-        return -3;
-
-    if (rd32(head + 0) != WAV_RIFF || rd32(head + 8) != WAV_WAVE)
-        return -4;
-
-    while (1) {
-        u8 chunk_hdr[8];
-        u32 id, chunk_size;
-        off_t chunk_data_pos;
-
-        if (read(fd, chunk_hdr, sizeof(chunk_hdr)) != (int)sizeof(chunk_hdr))
-            break;
-
-        id = rd32(chunk_hdr + 0);
-        chunk_size = rd32(chunk_hdr + 4);
-        chunk_data_pos = lseek(fd, 0, SEEK_CUR);
-        if (chunk_data_pos < 0)
-            return -5;
-
-        if (id == WAV_FMT) {
-            u8 fmtbuf[40];
-
-            if (chunk_size < 16)
-                return -6;
-
-            if (chunk_size > sizeof(fmtbuf)) {
-                if (read(fd, fmtbuf, sizeof(fmtbuf)) != (int)sizeof(fmtbuf))
-                    return -7;
-                if (lseek(fd, chunk_data_pos + chunk_size + (chunk_size & 1), SEEK_SET) < 0)
-                    return -8;
-            } else {
-                if (read(fd, fmtbuf, chunk_size) != (int)chunk_size)
-                    return -7;
-                if (chunk_size & 1) {
-                    if (lseek(fd, 1, SEEK_CUR) < 0)
-                        return -8;
-                }
-            }
-
-            audio_format    = rd16(fmtbuf + 0);
-            src->channels   = rd16(fmtbuf + 2);
-            src->src_rate   = (int)rd32(fmtbuf + 4);
-            src->bits       = rd16(fmtbuf + 14);
-            found_fmt = 1;
-        }
-        else if (id == WAV_DATA) {
-            src->data_offset = (u32)chunk_data_pos;
-            src->data_size   = chunk_size;
-
-            if (lseek(fd, chunk_data_pos + chunk_size + (chunk_size & 1), SEEK_SET) < 0)
-                return -9;
-
-            found_data = 1;
-        }
-        else {
-            if (lseek(fd, chunk_data_pos + chunk_size + (chunk_size & 1), SEEK_SET) < 0)
-                return -10;
-        }
-
-        if (found_fmt && found_data)
-            break;
-    }
-
-    if (!found_fmt || !found_data)
-        return -11;
-    if (audio_format != 1)
-        return -12;
-    if (src->channels != 2)
-        return -13;
-    if (src->bits != 16)
-        return -14;
-    if (src->src_rate <= 0)
-        return -15;
-
-    src->total_frames = src->data_size / AUDIO_FRAME_BYTES;
-    return 0;
-}
 
 static int chunk_contains_frame(const audio_stream_chunk_t *c, u32 frame)
 {
@@ -328,28 +212,33 @@ int audio_stream_source_init(audio_stream_source_t *src,
                              const char *wav_path,
                              u32 chunk_bytes)
 {
-    int fd;
     int i;
     int rc;
+    audio_wav_info_t info;
 
     if (!src || !wav_path)
         return -1;
 
     memset(src, 0, sizeof(*src));
+
     strncpy(src->path, wav_path, sizeof(src->path) - 1);
     src->path[sizeof(src->path) - 1] = '\0';
 
-    fd = open(src->path, O_RDONLY);
-    if (fd < 0)
-        return -2;
-
-    rc = parse_wav_header(src, fd);
-    close(fd);
+    memset(&info, 0, sizeof(info));
+    rc = audio_wav_parse_file(src->path, &info);
     if (rc < 0)
         return rc;
 
+    src->data_offset  = info.data_offset;
+    src->data_size    = info.data_size;
+    src->total_frames = info.total_frames;
+    src->src_rate     = info.src_rate;
+    src->channels     = info.channels;
+    src->bits         = info.bits;
+
     if (chunk_bytes == 0)
         chunk_bytes = 128 * 1024;
+
     chunk_bytes &= ~((u32)AUDIO_FRAME_BYTES - 1);
     if (chunk_bytes < 4096)
         chunk_bytes = 4096;
@@ -358,15 +247,24 @@ int audio_stream_source_init(audio_stream_source_t *src,
     src->status = AUDIO_STREAM_SOURCE_STATUS_READY;
 
     for (i = 0; i < AUDIO_STREAM_SOURCE_MAX_CHUNKS; i++) {
-        src->chunks[i].data = (u8 *)mem_alloc(chunk_bytes, 64, MEMTAG_AUDIO);
-        if (!src->chunks[i].data) {
+        audio_stream_chunk_t *c = &src->chunks[i];
+
+        c->data = (u8 *)mem_alloc(chunk_bytes, 64, MEMTAG_AUDIO);
+        if (!c->data) {
             audio_stream_source_destroy(src);
             return -3;
         }
 
-        src->chunks[i].capacity_bytes = chunk_bytes;
-        src->chunks[i].req.index = 0xffffu;
-        src->chunks[i].req.generation = 0;
+        c->capacity_bytes = chunk_bytes;
+        c->file_offset = 0;
+        c->valid_bytes = 0;
+        c->start_frame = 0;
+        c->frame_count = 0;
+        c->ready = 0;
+        c->in_flight = 0;
+        c->failed = 0;
+        c->req.index = 0xffffu;
+        c->req.generation = 0;
     }
 
     src->used = 1;
