@@ -215,14 +215,14 @@ static void mix_stream_into(audio_mixer_t *m, int handle,
             else
                 frames_left_to_end = 0;
 
-            /* fade-out на последних AUDIO_LOOP_XFADE_FRAMES перед концом */
+            /* fade-out on last AUDIO_LOOP_XFADE_FRAMES before end */
             if (s->loop && frames_left_to_end <= AUDIO_LOOP_XFADE_FRAMES) {
                 env = (float)frames_left_to_end / (float)AUDIO_LOOP_XFADE_FRAMES;
                 if (env < 0.0f) env = 0.0f;
                 if (env > 1.0f) env = 1.0f;
             }
 
-            /* fade-in после wrap; уменьшаем env пока идёт fade-in */
+            /* fade-in after wrap; reducing env while fade-in */
             if (s->loop_fade_in_remaining > 0 && s->loop_fade_in_total > 0) {
                 float in_env = 1.0f - ((float)s->loop_fade_in_remaining /
                                        (float)s->loop_fade_in_total);
@@ -262,7 +262,7 @@ static void mix_stream_into(audio_mixer_t *m, int handle,
                 s->play_frac = 0.0f;
                 s->rb_base_frame = 0;
 
-                /* подготовка fade-in для нового цикла */
+                /* preparing fade-in for new cycle */
                 s->loop_fade_in_total = AUDIO_LOOP_XFADE_FRAMES;
                 s->loop_fade_in_remaining = AUDIO_LOOP_XFADE_FRAMES;
 
