@@ -3,6 +3,7 @@
 #include "engine/platform/platform.h"
 #include "engine/memory/memory.h"
 #include "engine/logging/log.h"
+#include "engine/audio/audio_sfx_bank.h"
 
 #include <audsrv.h>
 #include <kernel.h>
@@ -43,6 +44,13 @@
 #ifndef TAIL_FRAMES_TO_KEEP
 #define TAIL_FRAMES_TO_KEEP 1
 #endif
+
+static int mixer_is_valid_sfx_asset(const audio_mixer_t *m, int asset_handle)
+{
+    if (!m || asset_handle < 0 || asset_handle >= AUDIO_MIXER_MAX_SFX_ASSETS)
+        return 0;
+    return m->sfx_assets[asset_handle].used && !m->sfx_assets[asset_handle].closing;
+}
 
 static int mixer_is_valid_stream_asset(const audio_mixer_t *m, int asset_handle)
 {
@@ -140,7 +148,7 @@ void audio_mixer_free_voice(audio_mixer_t *m, int voice_handle)
     if (v->kind == AUDIO_VOICE_KIND_STREAM)
         audio_mixer_release_stream_voice_resources(v);
 
-    memset(v, 0, sizeof(*v));
+    audio_voice_clear(v);
 }
 
 static int audio_mixer_init_stream_voice(audio_mixer_t *m, int voice_handle, int asset_handle)
@@ -443,6 +451,90 @@ static void audio_mixer_mix_stream_voice(audio_mixer_t *m,
     }
 }
 
+static void audio_mixer_mix_sfx_voice(audio_mixer_t *m,
+                                      int voice_handle,
+                                      audio_voice_t *v,
+                                      s32 *accum_l,
+                                      s32 *accum_r,
+                                      int frames)
+{
+    audio_sfx_asset_t *a;
+    float step;
+    int gain;
+    int i;
+
+    if (!m || !v || v->kind != AUDIO_VOICE_KIND_SFX)
+        return;
+    if (!v->used || !v->playing || v->paused)
+        return;
+
+    if (!mixer_is_valid_sfx_asset(m, v->u.sfx.asset_handle))
+        return;
+
+    a = &m->sfx_assets[v->u.sfx.asset_handle];
+    if (!a->pcm || a->total_frames == 0)
+        return;
+
+    step = v->speed * ((float)a->src_rate / (float)AUDIO_OUTPUT_RATE);
+    gain = (v->volume * 256) / 100;
+
+    for (i = 0; i < frames; i++) {
+        u32 frame0_index, frame1_index;
+        s16 l0, r0, l1, r1;
+        float t;
+        s32 l, r;
+
+        if (v->play_cursor_frames >= a->total_frames) {
+            if (v->loop) {
+                v->play_cursor_frames = 0;
+                v->play_frac = 0.0f;
+            } else {
+                v->playing = 0;
+                v->paused = 0;
+                audio_mixer_notify_stopped(m, voice_handle, v);
+                return;
+            }
+        }
+
+        frame0_index = v->play_cursor_frames;
+        frame1_index = frame0_index + 1;
+
+        if (frame1_index >= a->total_frames) {
+            if (v->loop)
+                frame1_index = 0;
+            else
+                frame1_index = frame0_index;
+        }
+
+        l0 = a->pcm[frame0_index * 2 + 0];
+        r0 = a->pcm[frame0_index * 2 + 1];
+        l1 = a->pcm[frame1_index * 2 + 0];
+        r1 = a->pcm[frame1_index * 2 + 1];
+
+        t = v->play_frac;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+
+        l = (s32)((1.0f - t) * (float)l0 + t * (float)l1);
+        r = (s32)((1.0f - t) * (float)r0 + t * (float)r1);
+
+        accum_l[i] += (l * gain) >> 8;
+        accum_r[i] += (r * gain) >> 8;
+
+        v->play_frac += step;
+        while (v->play_frac >= 1.0f) {
+            v->play_cursor_frames++;
+            v->play_frac -= 1.0f;
+        }
+
+        while (v->play_frac < 0.0f) {
+            if (v->play_cursor_frames > 0)
+                v->play_cursor_frames--;
+            v->play_frac += 1.0f;
+        }
+    }
+}
+
 static void audio_mixer_render(audio_mixer_t *m)
 {
     int i, j;
@@ -456,8 +548,11 @@ static void audio_mixer_render(audio_mixer_t *m)
         if (!v->used || !v->playing)
             continue;
 
-        if (v->kind == AUDIO_VOICE_KIND_STREAM)
+        if (v->kind == AUDIO_VOICE_KIND_STREAM) {
             audio_mixer_mix_stream_voice(m, j, v, m->accum_l, m->accum_r, m->mixbuf_frames);
+        } else if (v->kind == AUDIO_VOICE_KIND_SFX) {
+            audio_mixer_mix_sfx_voice(m, j, v, m->accum_l, m->accum_r, m->mixbuf_frames);
+        }
     }
 
     for (i = 0; i < m->mixbuf_frames; i++) {
@@ -900,22 +995,74 @@ int audio_mixer_stream_asset_is_paused(const audio_mixer_t *m, int asset_handle)
 
 int audio_mixer_add_sfx_asset(audio_mixer_t *m, const char *wav_path)
 {
-    (void)m;
-    (void)wav_path;
-    return -1;
+    int i, rc;
+    audio_sfx_asset_t *a;
+    audio_sfx_data_t data;
+
+    if (!m || !wav_path)
+        return -1;
+
+    for (i = 0; i < AUDIO_MIXER_MAX_SFX_ASSETS; i++) {
+        if (!m->sfx_assets[i].used)
+            break;
+    }
+    if (i >= AUDIO_MIXER_MAX_SFX_ASSETS)
+        return -2;
+
+    memset(&data, 0, sizeof(data));
+    rc = audio_sfx_bank_load_wav(wav_path, &data);
+    if (rc < 0)
+        return rc;
+
+    a = &m->sfx_assets[i];
+    memset(a, 0, sizeof(*a));
+
+    a->pcm = data.pcm;
+    a->total_frames = data.total_frames;
+    a->src_rate = data.src_rate;
+    a->channels = data.channels;
+    a->bits = data.bits;
+    a->default_volume = 100;
+    a->default_speed = 1.0f;
+    a->used = 1;
+
+    return i;
 }
 
 void audio_mixer_remove_sfx_asset(audio_mixer_t *m, int asset_handle)
 {
-    (void)m;
-    (void)asset_handle;
+    int i;
+    audio_sfx_asset_t *a;
+
+    if (!mixer_is_valid_sfx_asset(m, asset_handle))
+        return;
+
+    a = &m->sfx_assets[asset_handle];
+    a->closing = 1;
+
+    for (i = 0; i < AUDIO_MIXER_MAX_VOICES; i++) {
+        audio_voice_t *v = &m->voices[i];
+
+        if (!v->used || v->kind != AUDIO_VOICE_KIND_SFX)
+            continue;
+
+        if (v->u.sfx.asset_handle == asset_handle) {
+            audio_mixer_stop_voice(m, i);
+            audio_mixer_free_voice(m, i);
+        }
+    }
+
+    if (a->pcm)
+        mem_free(a->pcm, MEMTAG_AUDIO);
+
+    memset(a, 0, sizeof(*a));
 }
 
 int audio_mixer_sfx_asset_is_ready(const audio_mixer_t *m, int asset_handle)
 {
-    (void)m;
-    (void)asset_handle;
-    return 0;
+    if (!mixer_is_valid_sfx_asset(m, asset_handle))
+        return 0;
+    return m->sfx_assets[asset_handle].pcm != NULL;
 }
 
 int audio_mixer_play_sfx(audio_mixer_t *m,
@@ -924,12 +1071,42 @@ int audio_mixer_play_sfx(audio_mixer_t *m,
                          float speed,
                          int loop)
 {
-    (void)m;
-    (void)asset_handle;
-    (void)volume_percent;
-    (void)speed;
-    (void)loop;
-    return -1;
+    audio_sfx_asset_t *a;
+    audio_voice_t *v;
+    int voice_handle;
+
+    if (!mixer_is_valid_sfx_asset(m, asset_handle))
+        return -1;
+
+    a = &m->sfx_assets[asset_handle];
+    if (!a->pcm || a->total_frames == 0)
+        return -2;
+
+    if (volume_percent < 0) volume_percent = 0;
+    if (volume_percent > 100) volume_percent = 100;
+
+    if (speed <= 0.0f)
+        speed = a->default_speed;
+    if (speed < (1.0f / 3.0f)) speed = (1.0f / 3.0f);
+    if (speed > 3.0f) speed = 3.0f;
+
+    voice_handle = audio_mixer_alloc_voice(m, AUDIO_VOICE_KIND_SFX);
+    if (voice_handle < 0)
+        return voice_handle;
+
+    v = &m->voices[voice_handle];
+    v->u.sfx.asset_handle = asset_handle;
+    v->u.sfx.priority = 0;
+    v->loop = loop ? 1 : 0;
+    v->paused = 0;
+    v->volume = volume_percent;
+    v->speed = speed;
+
+    audio_voice_reset_playback(v);
+    v->playing = 1;
+
+    audio_mixer_notify_started(m, voice_handle, v);
+    return voice_handle;
 }
 
 void audio_mixer_stop_voice(audio_mixer_t *m, int voice_handle)

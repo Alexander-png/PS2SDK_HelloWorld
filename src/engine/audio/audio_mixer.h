@@ -44,6 +44,9 @@ typedef struct audio_sfx_asset {
     int src_rate;
     int channels;
     int bits;
+
+    int default_volume;
+    float default_speed;
 } audio_sfx_asset_t;
 
 typedef struct audio_mixer {

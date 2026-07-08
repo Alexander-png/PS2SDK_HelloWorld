@@ -29,5 +29,4 @@ int main(void)
 }
 
 // TODO:
-// Add callbacks to audio.h (audio mixer supports callbacks)
 // Fix app sometimes hang on shutdown 
