@@ -38,6 +38,10 @@
 #define AUDIO_MIX_TEST_BURST_COUNT 3
 #endif
 
+#ifndef AUDIO_MIX_TEST_PAN_STEP
+#define AUDIO_MIX_TEST_PAN_STEP 0.2f
+#endif
+
 typedef struct audio_mix_test_state {
     int music_asset;
     int music_asset_ok;
@@ -45,6 +49,7 @@ typedef struct audio_mix_test_state {
     int music_paused;
     int music_volume;
     float music_speed;
+    float music_pan;
 
     int sfx1;
     int sfx2;
@@ -53,6 +58,8 @@ typedef struct audio_mix_test_state {
     int sfx1_ok;
     int sfx2_ok;
     int sfx3_ok;
+
+    float sfx_pan;
 
     int last_sfx_voice;
     int last_sfx_voice_playing;
@@ -69,6 +76,15 @@ typedef struct audio_mix_test_state {
 
 static audio_mix_test_state_t s_audio_mix_test;
 
+static float audio_mix_test_clamp_pan(float pan)
+{
+    if (pan < -1.0f)
+        return -1.0f;
+    if (pan > 1.0f)
+        return 1.0f;
+    return pan;
+}
+
 static void audio_mix_test_reset_state(void)
 {
     int i;
@@ -79,6 +95,7 @@ static void audio_mix_test_reset_state(void)
     s_audio_mix_test.music_paused = 0;
     s_audio_mix_test.music_volume = 80;
     s_audio_mix_test.music_speed = 1.0f;
+    s_audio_mix_test.music_pan = 0.0f;
 
     s_audio_mix_test.sfx1 = -1;
     s_audio_mix_test.sfx2 = -1;
@@ -87,6 +104,8 @@ static void audio_mix_test_reset_state(void)
     s_audio_mix_test.sfx1_ok = 0;
     s_audio_mix_test.sfx2_ok = 0;
     s_audio_mix_test.sfx3_ok = 0;
+
+    s_audio_mix_test.sfx_pan = 0.0f;
 
     s_audio_mix_test.last_sfx_voice = -1;
     s_audio_mix_test.last_sfx_voice_playing = 0;
@@ -143,9 +162,13 @@ static int audio_mix_test_start_music_voice(void)
     s_audio_mix_test.music_voice = voice;
     s_audio_mix_test.music_paused = 0;
 
-    LOGLN("[state:audio_mix_test] music playing asset=%d voice=%d loop=1",
+    audio_voice_set_pan(s_audio_mix_test.music_voice,
+                        s_audio_mix_test.music_pan);
+
+    LOGLN("[state:audio_mix_test] music playing asset=%d voice=%d loop=1 pan=%d/100",
           s_audio_mix_test.music_asset,
-          s_audio_mix_test.music_voice);
+          s_audio_mix_test.music_voice,
+          (int)(s_audio_mix_test.music_pan * 100.0f));
     return 0;
 }
 
@@ -186,14 +209,18 @@ static void audio_mix_test_redraw_screen(void)
                               music_playing,
                               music_paused);
 
-        screen_console_printf("music vol=%d speed=%d/100\n",
+        screen_console_printf("music vol=%d speed=%d/100 pan=%d/100\n",
                               s_audio_mix_test.music_volume,
-                              (int)(s_audio_mix_test.music_speed * 100.0f));
+                              (int)(s_audio_mix_test.music_speed * 100.0f),
+                              (int)(s_audio_mix_test.music_pan * 100.0f));
 
         screen_console_printf("sfx1=%d(%d) sfx2=%d(%d) sfx3=%d(%d)\n",
                               s_audio_mix_test.sfx1, s_audio_mix_test.sfx1_ok,
                               s_audio_mix_test.sfx2, s_audio_mix_test.sfx2_ok,
                               s_audio_mix_test.sfx3, s_audio_mix_test.sfx3_ok);
+
+        screen_console_printf("sfx pan=%d/100\n",
+                              (int)(s_audio_mix_test.sfx_pan * 100.0f));
 
         screen_console_printf("last_voice=%d last_play=%d\n",
                               s_audio_mix_test.last_sfx_voice,
@@ -207,12 +234,19 @@ static void audio_mix_test_redraw_screen(void)
 
         screen_console_begin(
             "audio_mix_test [page 2/2]",
-            "CROSS=pause/resume music  TRIANGLE=stop/play music\n"
-            "SQUARE=sfx1  CIRCLE=sfx2  R1=sfx3  L1=burst sfx1 x3 L2=page\n"
-            "UP/DOWN=music volume      LEFT/RIGHT=music speed\n"
+            "LEFT/RIGHT=music pan  UP/DOWN=sfx pan\n"
+            "SQUARE/CIRCLE/R1=play sfx with current sfx pan\n"
+            "TRIANGLE=center pans  L1=burst sfx1 x3  L2=page\n"
             "START=quit"
         );
 
+        screen_console_printf("music pan=%d/100\n",
+                              (int)(s_audio_mix_test.music_pan * 100.0f));
+        screen_console_printf("sfx pan=%d/100\n",
+                              (int)(s_audio_mix_test.sfx_pan * 100.0f));
+        screen_console_printf("last_voice=%d last_play=%d\n",
+                              s_audio_mix_test.last_sfx_voice,
+                              s_audio_mix_test.last_sfx_voice_playing);
         screen_console_printf("recent_voice_widx=%d\n",
                               s_audio_mix_test.recent_voice_write_index);
         screen_console_printf("recent_playing=%d\n\n",
@@ -344,10 +378,8 @@ static void audio_mix_test_exit(game_app_t *app)
     if (s_audio_mix_test.sfx3_ok && s_audio_mix_test.sfx3 >= 0)
         audio_asset_unload(s_audio_mix_test.sfx3);
 
-    if (s_audio_mix_test.music_voice >= 0) {
+    if (s_audio_mix_test.music_voice >= 0)
         audio_voice_stop(s_audio_mix_test.music_voice);
-        s_audio_mix_test.music_voice = -1;
-    }
 
     if (s_audio_mix_test.music_asset_ok && s_audio_mix_test.music_asset >= 0)
         audio_asset_unload(s_audio_mix_test.music_asset);
@@ -381,12 +413,15 @@ static void audio_mix_test_trigger_sfx(int sfx_handle,
         return;
     }
 
+    audio_voice_set_pan(voice, s_audio_mix_test.sfx_pan);
+
     s_audio_mix_test.last_sfx_voice = voice;
     s_audio_mix_test.sfx_trigger_count++;
     audio_mix_test_push_recent_voice(voice);
     s_audio_mix_test.screen_dirty = 1;
 
-    LOGLN("[state:audio_mix_test] %s voice=%d", tag, voice);
+    LOGLN("[state:audio_mix_test] %s voice=%d pan=%d/100",
+          tag, voice, (int)(s_audio_mix_test.sfx_pan * 100.0f));
 }
 
 static void audio_mix_test_trigger_burst(int sfx_handle,
@@ -410,33 +445,22 @@ static void audio_mix_test_trigger_burst(int sfx_handle,
             continue;
         }
 
+        audio_voice_set_pan(voice, s_audio_mix_test.sfx_pan);
+
         s_audio_mix_test.last_sfx_voice = voice;
         s_audio_mix_test.sfx_trigger_count++;
         audio_mix_test_push_recent_voice(voice);
         ok_count++;
     }
 
-    LOGLN("[state:audio_mix_test] %s burst count=%d ok=%d",
-          tag, count, ok_count);
+    LOGLN("[state:audio_mix_test] %s burst count=%d ok=%d pan=%d/100",
+          tag, count, ok_count, (int)(s_audio_mix_test.sfx_pan * 100.0f));
 
     s_audio_mix_test.screen_dirty = 1;
 }
 
-static void audio_mix_test_update(game_app_t *app, float dt)
+static void audio_mix_test_update_page0_music_controls(void)
 {
-    int do_periodic_log = 0;
-
-    (void)app;
-
-    s_audio_mix_test.uptime_sec += dt;
-
-    if (input_button_pressed(INPUT_BUTTON_START)) {
-        LOGLN("[state:audio_mix_test] START pressed, return to menu");
-        input_consume();
-        game_app_request_state_change(debug_menu_state_desc(), NULL);
-        return;
-    }
-
     if (s_audio_mix_test.music_asset_ok && s_audio_mix_test.music_asset >= 0) {
         if (input_button_pressed(INPUT_BUTTON_CROSS)) {
             if (s_audio_mix_test.music_paused) {
@@ -514,7 +538,69 @@ static void audio_mix_test_update(game_app_t *app, float dt)
             s_audio_mix_test.screen_dirty = 1;
         }
     }
+}
 
+static void audio_mix_test_update_page1_pan_controls(void)
+{
+    if (input_button_pressed(INPUT_BUTTON_RIGHT)) {
+        s_audio_mix_test.music_pan =
+            audio_mix_test_clamp_pan(s_audio_mix_test.music_pan + AUDIO_MIX_TEST_PAN_STEP);
+
+        if (s_audio_mix_test.music_voice >= 0)
+            audio_voice_set_pan(s_audio_mix_test.music_voice,
+                                s_audio_mix_test.music_pan);
+
+        LOGLN("[state:audio_mix_test] music pan=%d/100",
+              (int)(s_audio_mix_test.music_pan * 100.0f));
+        s_audio_mix_test.screen_dirty = 1;
+    }
+
+    if (input_button_pressed(INPUT_BUTTON_LEFT)) {
+        s_audio_mix_test.music_pan =
+            audio_mix_test_clamp_pan(s_audio_mix_test.music_pan - AUDIO_MIX_TEST_PAN_STEP);
+
+        if (s_audio_mix_test.music_voice >= 0)
+            audio_voice_set_pan(s_audio_mix_test.music_voice,
+                                s_audio_mix_test.music_pan);
+
+        LOGLN("[state:audio_mix_test] music pan=%d/100",
+              (int)(s_audio_mix_test.music_pan * 100.0f));
+        s_audio_mix_test.screen_dirty = 1;
+    }
+
+    if (input_button_pressed(INPUT_BUTTON_UP)) {
+        s_audio_mix_test.sfx_pan =
+            audio_mix_test_clamp_pan(s_audio_mix_test.sfx_pan + AUDIO_MIX_TEST_PAN_STEP);
+
+        LOGLN("[state:audio_mix_test] sfx pan=%d/100",
+              (int)(s_audio_mix_test.sfx_pan * 100.0f));
+        s_audio_mix_test.screen_dirty = 1;
+    }
+
+    if (input_button_pressed(INPUT_BUTTON_DOWN)) {
+        s_audio_mix_test.sfx_pan =
+            audio_mix_test_clamp_pan(s_audio_mix_test.sfx_pan - AUDIO_MIX_TEST_PAN_STEP);
+
+        LOGLN("[state:audio_mix_test] sfx pan=%d/100",
+              (int)(s_audio_mix_test.sfx_pan * 100.0f));
+        s_audio_mix_test.screen_dirty = 1;
+    }
+
+    if (input_button_pressed(INPUT_BUTTON_TRIANGLE)) {
+        s_audio_mix_test.music_pan = 0.0f;
+        s_audio_mix_test.sfx_pan = 0.0f;
+
+        if (s_audio_mix_test.music_voice >= 0)
+            audio_voice_set_pan(s_audio_mix_test.music_voice,
+                                s_audio_mix_test.music_pan);
+
+        LOGLN("[state:audio_mix_test] pans centered");
+        s_audio_mix_test.screen_dirty = 1;
+    }
+}
+
+static void audio_mix_test_update_common_sfx_controls(void)
+{
     if (input_button_pressed(INPUT_BUTTON_SQUARE)) {
         audio_mix_test_trigger_sfx(s_audio_mix_test.sfx1,
                                    s_audio_mix_test.sfx1_ok,
@@ -546,6 +632,29 @@ static void audio_mix_test_update(game_app_t *app, float dt)
             s_audio_mix_test.page = 0;
         s_audio_mix_test.screen_dirty = 1;
     }
+}
+
+static void audio_mix_test_update(game_app_t *app, float dt)
+{
+    int do_periodic_log = 0;
+
+    (void)app;
+
+    s_audio_mix_test.uptime_sec += dt;
+
+    if (input_button_pressed(INPUT_BUTTON_START)) {
+        LOGLN("[state:audio_mix_test] START pressed, return to menu");
+        input_consume();
+        game_app_request_state_change(debug_menu_state_desc(), NULL);
+        return;
+    }
+
+    if (s_audio_mix_test.page == 0)
+        audio_mix_test_update_page0_music_controls();
+    else
+        audio_mix_test_update_page1_pan_controls();
+
+    audio_mix_test_update_common_sfx_controls();
 
     s_audio_mix_test.log_timer += dt;
     if (s_audio_mix_test.log_timer >= AUDIO_MIX_TEST_LOG_INTERVAL_SEC) {
@@ -556,13 +665,15 @@ static void audio_mix_test_update(game_app_t *app, float dt)
     }
 
     if (do_periodic_log) {
-        LOGLN("[state:audio_mix_test] music playing=%d paused=%d vol=%d speed=%d/100 last_voice=%d last_voice_playing=%d recent_playing=%d sfx_count=%d",
+        LOGLN("[state:audio_mix_test] music playing=%d paused=%d vol=%d speed=%d/100 music_pan=%d/100 sfx_pan=%d/100 last_voice=%d last_voice_playing=%d recent_playing=%d sfx_count=%d",
               (s_audio_mix_test.music_voice >= 0)
                   ? audio_voice_is_playing(s_audio_mix_test.music_voice) : 0,
               (s_audio_mix_test.music_voice >= 0)
                   ? audio_voice_is_paused(s_audio_mix_test.music_voice) : 0,
               s_audio_mix_test.music_volume,
               (int)(s_audio_mix_test.music_speed * 100.0f),
+              (int)(s_audio_mix_test.music_pan * 100.0f),
+              (int)(s_audio_mix_test.sfx_pan * 100.0f),
               s_audio_mix_test.last_sfx_voice,
               (s_audio_mix_test.last_sfx_voice >= 0)
                   ? audio_voice_is_playing(s_audio_mix_test.last_sfx_voice) : 0,

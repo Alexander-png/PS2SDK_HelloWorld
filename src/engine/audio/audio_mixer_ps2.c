@@ -132,6 +132,36 @@ static void audio_mixer_notify_stopped(audio_mixer_t *m, int voice_handle, audio
     }
 }
 
+static void audio_mixer_finish_voice(audio_mixer_t *m, int voice_handle)
+{
+    audio_voice_t *v;
+    int stream_idx = -1;
+
+    if (!mixer_is_valid_voice(m, voice_handle))
+        return;
+
+    v = &m->voices[voice_handle];
+
+    if (v->kind == AUDIO_VOICE_KIND_STREAM)
+        stream_idx = v->u.stream.asset_handle;
+
+    v->playing = 0;
+    v->paused = 0;
+
+    if (stream_idx >= 0 &&
+        mixer_is_valid_stream_asset_index(m, stream_idx) &&
+        m->stream_assets[stream_idx].bound_voice == voice_handle) {
+        m->stream_assets[stream_idx].bound_voice = -1;
+    }
+
+    audio_mixer_notify_stopped(m, voice_handle, v);
+
+    if (v->kind == AUDIO_VOICE_KIND_STREAM)
+        audio_mixer_release_stream_voice_resources(v);
+
+    audio_voice_clear(v);
+}
+
 static int audio_mixer_init_stream_voice(audio_mixer_t *m, int voice_handle, int stream_idx)
 {
     audio_voice_t *v;
@@ -295,18 +325,7 @@ static void audio_mixer_mix_stream_voice(audio_mixer_t *m,
                 st->underrun_count++;
 
             if (st->eof_reached && rb_frames == 0 && !v->loop) {
-                v->playing = 0;
-                v->paused = 0;
-                v->play_cursor_frames = 0;
-                v->play_frac = 0.0f;
-                st->rb_base_frame = 0;
-
-                if (mixer_is_valid_stream_asset_index(m, st->asset_handle) &&
-                    m->stream_assets[st->asset_handle].bound_voice == voice_handle) {
-                    m->stream_assets[st->asset_handle].bound_voice = -1;
-                }
-
-                audio_mixer_notify_stopped(m, voice_handle, v);
+                audio_mixer_finish_voice(m, voice_handle);
                 return;
             }
 
@@ -407,15 +426,7 @@ static void audio_mixer_mix_stream_voice(audio_mixer_t *m,
                 audio_stream_voice_refill(m, v);
                 audio_stream_voice_refill(m, v);
             } else if (st->eof_reached) {
-                v->playing = 0;
-                v->paused = 0;
-
-                if (mixer_is_valid_stream_asset_index(m, st->asset_handle) &&
-                    m->stream_assets[st->asset_handle].bound_voice == voice_handle) {
-                    m->stream_assets[st->asset_handle].bound_voice = -1;
-                }
-
-                audio_mixer_notify_stopped(m, voice_handle, v);
+                audio_mixer_finish_voice(m, voice_handle);
                 return;
             }
         }
@@ -472,9 +483,7 @@ static void audio_mixer_mix_sfx_voice(audio_mixer_t *m,
                 v->play_cursor_frames = 0;
                 v->play_frac = 0.0f;
             } else {
-                v->playing = 0;
-                v->paused = 0;
-                audio_mixer_notify_stopped(m, voice_handle, v);
+                audio_mixer_finish_voice(m, voice_handle);
                 return;
             }
         }
