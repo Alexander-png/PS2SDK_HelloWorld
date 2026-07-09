@@ -98,6 +98,15 @@ int  audio_mixer_play_asset(audio_mixer_t *m,
                             float speed,
                             int loop);
 
+int audio_mixer_play_asset_ex(audio_mixer_t *m,
+                              int asset_handle,
+                              int volume_percent,
+                              float speed,
+                              int loop,
+                              audio_voice_callback_t on_started,
+                              audio_voice_callback_t on_stopped,
+                              void *userdata);
+
 /* voices */
 int  audio_mixer_alloc_voice(audio_mixer_t *m, audio_voice_kind_t kind);
 void audio_mixer_free_voice(audio_mixer_t *m, int voice_handle);

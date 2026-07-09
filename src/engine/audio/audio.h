@@ -5,10 +5,20 @@
 extern "C" {
 #endif
 
+typedef struct audio_mixer audio_mixer_t;
+typedef struct audio_voice audio_voice_t;
+
 typedef enum audio_asset_kind {
     AUDIO_ASSET_KIND_STREAM = 0,
     AUDIO_ASSET_KIND_SFX
 } audio_asset_kind_t;
+
+typedef void (*audio_voice_callback_t)(
+    audio_mixer_t *m,
+    int voice_handle,
+    audio_voice_t *voice,
+    void *userdata
+);
 
 int  audio_init(void);
 void audio_shutdown(void);
@@ -33,6 +43,14 @@ audio_asset_kind_t audio_asset_get_kind(int asset_handle);
 
 /* returns voice handle */
 int  audio_play(int asset_handle, int volume_percent, float speed, int loop);
+
+int  audio_play_ex(int asset_handle,
+                   int volume_percent,
+                   float speed,
+                   int loop,
+                   audio_voice_callback_t on_started,
+                   audio_voice_callback_t on_stopped,
+                   void *userdata);
 
 void audio_voice_stop(int voice_handle);
 void audio_voice_pause(int voice_handle);

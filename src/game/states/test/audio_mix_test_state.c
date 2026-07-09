@@ -76,6 +76,59 @@ typedef struct audio_mix_test_state {
 
 static audio_mix_test_state_t s_audio_mix_test;
 
+static void audio_mix_test_on_voice_started(audio_mixer_t *m,
+                                            int voice_handle,
+                                            audio_voice_t *voice,
+                                            void *userdata)
+{
+    audio_mix_test_state_t *s = (audio_mix_test_state_t *)userdata;
+    (void)m;
+    (void)voice;
+
+    if (!s)
+        return;
+
+    if (voice_handle == s->music_voice) {
+        LOGLN("[state:audio_mix_test] callback started music voice=%d",
+            voice_handle);
+    } else{
+        LOGLN("[state:audio_mix_test] callback started sfx voice=%d",
+            voice_handle);
+    }
+}
+
+static void audio_mix_test_on_voice_stopped(audio_mixer_t *m,
+                                            int voice_handle,
+                                            audio_voice_t *voice,
+                                            void *userdata)
+{
+    audio_mix_test_state_t *s = (audio_mix_test_state_t *)userdata;
+    (void)m;
+    (void)voice;
+
+    if (!s)
+        return;
+
+    if (voice_handle == s->music_voice) {
+        LOGLN("[state:audio_mix_test] callback stopped music voice=%d",
+            voice_handle);
+    } else {
+        LOGLN("[state:audio_mix_test] callback stopped sfx voice=%d",
+            voice_handle);
+    }
+}
+
+// static void audio_mix_test_bind_voice_callbacks(audio_mix_test_state_t *s, int voice_handle)
+// {
+//     if (!s || voice_handle < 0)
+//         return;
+
+//     audio_voice_set_callbacks(voice_handle,
+//                               audio_mix_test_on_voice_started,
+//                               audio_mix_test_on_voice_stopped,
+//                               s);
+// }
+
 static float audio_mix_test_clamp_pan(float pan)
 {
     if (pan < -1.0f)
@@ -150,10 +203,14 @@ static int audio_mix_test_start_music_voice(void)
     if (!s_audio_mix_test.music_asset_ok || s_audio_mix_test.music_asset < 0)
         return -1;
 
-    voice = audio_play(s_audio_mix_test.music_asset,
-                       s_audio_mix_test.music_volume,
-                       s_audio_mix_test.music_speed,
-                       1);
+    voice = audio_play_ex(s_audio_mix_test.music_asset,
+        s_audio_mix_test.music_volume,
+        s_audio_mix_test.music_speed,
+        1,
+        audio_mix_test_on_voice_started,
+        audio_mix_test_on_voice_stopped,
+        &s_audio_mix_test);
+
     if (voice < 0) {
         LOGLN("[state:audio_mix_test] music audio_play failed rc=%d", voice);
         return -1;
@@ -407,7 +464,14 @@ static void audio_mix_test_trigger_sfx(int sfx_handle,
         return;
     }
 
-    voice = audio_play(sfx_handle, 100, 1.0f, 0);
+    voice = audio_play_ex(sfx_handle,
+        100,
+        1.0f,
+        0,
+        audio_mix_test_on_voice_started,
+        audio_mix_test_on_voice_stopped,
+        &s_audio_mix_test);
+
     if (voice < 0) {
         LOGLN("[state:audio_mix_test] %s play failed rc=%d", tag, voice);
         return;
@@ -438,7 +502,14 @@ static void audio_mix_test_trigger_burst(int sfx_handle,
     }
 
     for (i = 0; i < count; i++) {
-        int voice = audio_play(sfx_handle, 100, 1.0f, 0);
+        int voice = audio_play_ex(sfx_handle,
+            100,
+            1.0f,
+            0,
+            audio_mix_test_on_voice_started,
+            audio_mix_test_on_voice_stopped,
+            &s_audio_mix_test);
+
         if (voice < 0) {
             LOGLN("[state:audio_mix_test] %s burst[%d] failed rc=%d",
                   tag, i, voice);

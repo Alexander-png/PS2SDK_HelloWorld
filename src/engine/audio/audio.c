@@ -137,6 +137,27 @@ int audio_play(int asset_handle, int volume_percent, float speed, int loop)
                                   loop);
 }
 
+int audio_play_ex(int asset_handle,
+                  int volume_percent,
+                  float speed,
+                  int loop,
+                  audio_voice_callback_t on_started,
+                  audio_voice_callback_t on_stopped,
+                  void *userdata)
+{
+    if (!g_audio.available)
+        return -1;
+
+    return audio_mixer_play_asset_ex(&g_audio.mixer,
+                                     asset_handle,
+                                     volume_percent,
+                                     speed,
+                                     loop,
+                                     on_started,
+                                     on_stopped,
+                                     userdata);
+}
+
 void audio_voice_stop(int voice_handle)
 {
     if (!g_audio.available)
@@ -210,4 +231,19 @@ int audio_voice_is_paused(int voice_handle)
         return 0;
 
     return audio_mixer_voice_is_paused(&g_audio.mixer, voice_handle);
+}
+
+void audio_voice_set_callbacks(int voice_handle,
+                               audio_voice_callback_t on_started,
+                               audio_voice_callback_t on_stopped,
+                               void *userdata)
+{
+    if (!g_audio.available)
+        return;
+
+    audio_mixer_set_voice_callbacks(&g_audio.mixer,
+                                    voice_handle,
+                                    on_started,
+                                    on_stopped,
+                                    userdata);
 }

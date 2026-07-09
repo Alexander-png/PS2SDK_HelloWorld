@@ -1083,6 +1083,27 @@ int audio_mixer_play_asset(audio_mixer_t *m,
                            float speed,
                            int loop)
 {
+    return audio_mixer_play_asset_ex(m,
+                                     asset_handle,
+                                     volume_percent,
+                                     speed,
+                                     loop,
+                                     NULL,
+                                     NULL,
+                                     NULL);
+}
+
+int audio_mixer_play_asset_ex(audio_mixer_t *m,
+                              int asset_handle,
+                              int volume_percent,
+                              float speed,
+                              int loop,
+                              audio_voice_callback_t on_started,
+                              audio_voice_callback_t on_stopped,
+                              void *userdata)
+{
+    int voice_handle;
+
     if (!m)
         return -1;
 
@@ -1096,18 +1117,109 @@ int audio_mixer_play_asset(audio_mixer_t *m,
 
     if (mixer_is_stream_handle(asset_handle)) {
         int stream_idx = mixer_stream_index_from_handle(asset_handle);
-        int voice = audio_mixer_play_stream_asset(m, stream_idx, loop);
-        if (voice < 0)
-            return voice;
+        audio_stream_asset_t *a;
+        audio_voice_t *v;
+        int rc;
 
-        audio_mixer_set_voice_volume(m, voice, volume_percent);
-        audio_mixer_set_voice_speed(m, voice, speed);
-        return voice;
+        if (!mixer_is_valid_stream_asset_index(m, stream_idx))
+            return -1;
+
+        a = &m->stream_assets[stream_idx];
+
+        if (!audio_stream_source_is_ready(&a->source))
+            return -2;
+
+        if (a->bound_voice >= 0 && mixer_is_valid_voice(m, a->bound_voice)) {
+            audio_mixer_stop_voice(m, a->bound_voice);
+            audio_mixer_free_voice(m, a->bound_voice);
+            a->bound_voice = -1;
+        }
+
+        voice_handle = audio_mixer_alloc_voice(m, AUDIO_VOICE_KIND_STREAM);
+        if (voice_handle < 0)
+            return voice_handle;
+
+        rc = audio_mixer_init_stream_voice(m, voice_handle, stream_idx);
+        if (rc < 0) {
+            audio_mixer_free_voice(m, voice_handle);
+            return rc;
+        }
+
+        v = &m->voices[voice_handle];
+        v->loop = loop ? 1 : 0;
+        v->paused = 0;
+        v->volume = a->default_volume;
+        v->volume_l = 100;
+        v->volume_r = 100;
+        v->pan = 0.0f;
+        v->speed = a->default_speed;
+
+        v->on_started = on_started;
+        v->on_stopped = on_stopped;
+        v->callback_userdata = userdata;
+
+        audio_voice_stream_reset_runtime(v);
+
+        rc = audio_stream_source_prewarm(&a->source, 0, 2);
+        if (rc < 0) {
+            audio_mixer_free_voice(m, voice_handle);
+            return rc;
+        }
+
+        audio_stream_voice_refill(m, v);
+        audio_stream_voice_refill(m, v);
+
+        v->playing = 1;
+        a->bound_voice = voice_handle;
+
+        audio_mixer_set_voice_volume(m, voice_handle, volume_percent);
+        audio_mixer_set_voice_speed(m, voice_handle, speed);
+
+        audio_mixer_notify_started(m, voice_handle, v);
+        return voice_handle;
     }
 
     if (mixer_is_sfx_handle(asset_handle)) {
         int sfx_idx = mixer_sfx_index_from_handle(asset_handle);
-        return audio_mixer_play_sfx(m, sfx_idx, volume_percent, speed, loop);
+        audio_sfx_asset_t *a;
+        audio_voice_t *v;
+
+        if (!mixer_is_valid_sfx_asset_index(m, sfx_idx))
+            return -1;
+
+        a = &m->sfx_assets[sfx_idx];
+        if (!a->pcm || a->total_frames == 0)
+            return -2;
+
+        if (speed <= 0.0f)
+            speed = a->default_speed;
+        if (speed < (1.0f / 3.0f)) speed = (1.0f / 3.0f);
+        if (speed > 3.0f) speed = 3.0f;
+
+        voice_handle = audio_mixer_alloc_voice(m, AUDIO_VOICE_KIND_SFX);
+        if (voice_handle < 0)
+            return voice_handle;
+
+        v = &m->voices[voice_handle];
+        v->u.sfx.asset_handle = sfx_idx;
+        v->u.sfx.priority = 0;
+        v->loop = loop ? 1 : 0;
+        v->paused = 0;
+        v->volume = volume_percent;
+        v->volume_l = 100;
+        v->volume_r = 100;
+        v->pan = 0.0f;
+        v->speed = speed;
+
+        v->on_started = on_started;
+        v->on_stopped = on_stopped;
+        v->callback_userdata = userdata;
+
+        audio_voice_reset_playback(v);
+        v->playing = 1;
+
+        audio_mixer_notify_started(m, voice_handle, v);
+        return voice_handle;
     }
 
     return -1;
