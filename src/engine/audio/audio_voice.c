@@ -15,6 +15,9 @@ static void audio_voice_reset_playback_common(audio_voice_t *v)
 
 void audio_voice_reset_playback(audio_voice_t *v)
 {
+    if (!v)
+        return;
+
     audio_voice_reset_playback_common(v);
 }
 
@@ -24,6 +27,15 @@ void audio_voice_clear(audio_voice_t *v)
         return;
 
     memset(v, 0, sizeof(*v));
+
+    v->kind = AUDIO_VOICE_KIND_NONE;
+
+    v->volume = 100;
+    v->volume_l = 100;
+    v->volume_r = 100;
+    v->pan = 0.0f;
+    v->speed = 1.0f;
+
     v->u.stream.asset_handle = -1;
 }
 

@@ -1,4 +1,3 @@
-
 #include "game/states/test/debug_menu_state.h"
 
 #include "audio_mix_test_state.h"
@@ -40,8 +39,9 @@
 #endif
 
 typedef struct audio_mix_test_state {
-    int music_stream;
-    int music_open_ok;
+    int music_asset;
+    int music_asset_ok;
+    int music_voice;
     int music_paused;
     int music_volume;
     float music_speed;
@@ -73,8 +73,9 @@ static void audio_mix_test_reset_state(void)
 {
     int i;
 
-    s_audio_mix_test.music_stream = -1;
-    s_audio_mix_test.music_open_ok = 0;
+    s_audio_mix_test.music_asset = -1;
+    s_audio_mix_test.music_asset_ok = 0;
+    s_audio_mix_test.music_voice = -1;
     s_audio_mix_test.music_paused = 0;
     s_audio_mix_test.music_volume = 80;
     s_audio_mix_test.music_speed = 1.0f;
@@ -123,15 +124,40 @@ static int audio_mix_test_count_recent_playing(void)
     return count;
 }
 
+static int audio_mix_test_start_music_voice(void)
+{
+    int voice;
+
+    if (!s_audio_mix_test.music_asset_ok || s_audio_mix_test.music_asset < 0)
+        return -1;
+
+    voice = audio_play(s_audio_mix_test.music_asset,
+                       s_audio_mix_test.music_volume,
+                       s_audio_mix_test.music_speed,
+                       1);
+    if (voice < 0) {
+        LOGLN("[state:audio_mix_test] music audio_play failed rc=%d", voice);
+        return -1;
+    }
+
+    s_audio_mix_test.music_voice = voice;
+    s_audio_mix_test.music_paused = 0;
+
+    LOGLN("[state:audio_mix_test] music playing asset=%d voice=%d loop=1",
+          s_audio_mix_test.music_asset,
+          s_audio_mix_test.music_voice);
+    return 0;
+}
+
 static void audio_mix_test_redraw_screen(void)
 {
     int audio_available = audio_is_available();
     int music_playing = 0;
     int music_paused = 0;
 
-    if (s_audio_mix_test.music_open_ok && s_audio_mix_test.music_stream >= 0) {
-        music_playing = audio_stream_is_playing(s_audio_mix_test.music_stream);
-        music_paused = audio_stream_is_paused(s_audio_mix_test.music_stream);
+    if (s_audio_mix_test.music_voice >= 0) {
+        music_playing = audio_voice_is_playing(s_audio_mix_test.music_voice);
+        music_paused = audio_voice_is_paused(s_audio_mix_test.music_voice);
     }
 
     if (s_audio_mix_test.last_sfx_voice >= 0)
@@ -153,9 +179,10 @@ static void audio_mix_test_redraw_screen(void)
                               audio_available,
                               (int)(s_audio_mix_test.uptime_sec * 1000.0f));
 
-        screen_console_printf("music handle=%d open=%d play=%d pause=%d\n",
-                              s_audio_mix_test.music_stream,
-                              s_audio_mix_test.music_open_ok,
+        screen_console_printf("music asset=%d ok=%d voice=%d play=%d pause=%d\n",
+                              s_audio_mix_test.music_asset,
+                              s_audio_mix_test.music_asset_ok,
+                              s_audio_mix_test.music_voice,
                               music_playing,
                               music_paused);
 
@@ -206,44 +233,36 @@ static void audio_mix_test_redraw_screen(void)
 
 static int audio_mix_test_open_music(void)
 {
-    s_audio_mix_test.music_stream = audio_stream_open(
+    s_audio_mix_test.music_asset = audio_asset_load_stream(
         AUDIO_MIX_TEST_MUSIC_WAV_PATH,
         AUDIO_MIX_TEST_MUSIC_IO_BUFFER_BYTES
     );
 
-    if (s_audio_mix_test.music_stream < 0) {
-        LOGLN("[state:audio_mix_test] audio_stream_open failed: %d",
-              s_audio_mix_test.music_stream);
-        s_audio_mix_test.music_stream = -1;
+    if (s_audio_mix_test.music_asset < 0) {
+        LOGLN("[state:audio_mix_test] audio_asset_load_stream failed: %d",
+              s_audio_mix_test.music_asset);
+        s_audio_mix_test.music_asset = -1;
         return -1;
     }
 
-    s_audio_mix_test.music_open_ok = 1;
+    s_audio_mix_test.music_asset_ok = 1;
 
-    if (audio_stream_preload(s_audio_mix_test.music_stream) < 0) {
-        LOGLN("[state:audio_mix_test] audio_stream_preload failed: %d",
-              s_audio_mix_test.music_stream);
-        audio_stream_close(s_audio_mix_test.music_stream);
-        s_audio_mix_test.music_stream = -1;
-        s_audio_mix_test.music_open_ok = 0;
+    if (audio_asset_preload(s_audio_mix_test.music_asset) < 0) {
+        LOGLN("[state:audio_mix_test] audio_asset_preload failed: %d",
+              s_audio_mix_test.music_asset);
+        audio_asset_unload(s_audio_mix_test.music_asset);
+        s_audio_mix_test.music_asset = -1;
+        s_audio_mix_test.music_asset_ok = 0;
         return -1;
     }
 
-    audio_stream_set_volume(s_audio_mix_test.music_stream,
-                            s_audio_mix_test.music_volume);
-    audio_stream_set_speed(s_audio_mix_test.music_stream,
-                           s_audio_mix_test.music_speed);
-
-    if (audio_stream_play(s_audio_mix_test.music_stream, 1) < 0) {
-        LOGLN("[state:audio_mix_test] audio_stream_play failed");
-        audio_stream_close(s_audio_mix_test.music_stream);
-        s_audio_mix_test.music_stream = -1;
-        s_audio_mix_test.music_open_ok = 0;
+    if (audio_mix_test_start_music_voice() < 0) {
+        audio_asset_unload(s_audio_mix_test.music_asset);
+        s_audio_mix_test.music_asset = -1;
+        s_audio_mix_test.music_asset_ok = 0;
         return -1;
     }
 
-    LOGLN("[state:audio_mix_test] music playing handle=%d loop=1",
-          s_audio_mix_test.music_stream);
     return 0;
 }
 
@@ -252,7 +271,7 @@ static void audio_mix_test_load_sfx_one(const char *tag,
                                         int *out_handle,
                                         int *out_ok)
 {
-    *out_handle = audio_sfx_load(path);
+    *out_handle = audio_asset_load_sfx(path);
     if (*out_handle < 0) {
         *out_ok = 0;
         LOGLN("[state:audio_mix_test] %s load failed path=%s rc=%d",
@@ -319,16 +338,19 @@ static void audio_mix_test_exit(game_app_t *app)
         audio_voice_stop(s_audio_mix_test.last_sfx_voice);
 
     if (s_audio_mix_test.sfx1_ok && s_audio_mix_test.sfx1 >= 0)
-        audio_sfx_unload(s_audio_mix_test.sfx1);
+        audio_asset_unload(s_audio_mix_test.sfx1);
     if (s_audio_mix_test.sfx2_ok && s_audio_mix_test.sfx2 >= 0)
-        audio_sfx_unload(s_audio_mix_test.sfx2);
+        audio_asset_unload(s_audio_mix_test.sfx2);
     if (s_audio_mix_test.sfx3_ok && s_audio_mix_test.sfx3 >= 0)
-        audio_sfx_unload(s_audio_mix_test.sfx3);
+        audio_asset_unload(s_audio_mix_test.sfx3);
 
-    if (s_audio_mix_test.music_open_ok && s_audio_mix_test.music_stream >= 0) {
-        audio_stream_stop(s_audio_mix_test.music_stream);
-        audio_stream_close(s_audio_mix_test.music_stream);
+    if (s_audio_mix_test.music_voice >= 0) {
+        audio_voice_stop(s_audio_mix_test.music_voice);
+        s_audio_mix_test.music_voice = -1;
     }
+
+    if (s_audio_mix_test.music_asset_ok && s_audio_mix_test.music_asset >= 0)
+        audio_asset_unload(s_audio_mix_test.music_asset);
 
     audio_mix_test_reset_state();
     s_audio_mix_test.screen_dirty = 0;
@@ -353,7 +375,7 @@ static void audio_mix_test_trigger_sfx(int sfx_handle,
         return;
     }
 
-    voice = audio_sfx_play(sfx_handle);
+    voice = audio_play(sfx_handle, 100, 1.0f, 0);
     if (voice < 0) {
         LOGLN("[state:audio_mix_test] %s play failed rc=%d", tag, voice);
         return;
@@ -381,7 +403,7 @@ static void audio_mix_test_trigger_burst(int sfx_handle,
     }
 
     for (i = 0; i < count; i++) {
-        int voice = audio_sfx_play(sfx_handle);
+        int voice = audio_play(sfx_handle, 100, 1.0f, 0);
         if (voice < 0) {
             LOGLN("[state:audio_mix_test] %s burst[%d] failed rc=%d",
                   tag, i, voice);
@@ -415,14 +437,16 @@ static void audio_mix_test_update(game_app_t *app, float dt)
         return;
     }
 
-    if (s_audio_mix_test.music_open_ok && s_audio_mix_test.music_stream >= 0) {
+    if (s_audio_mix_test.music_asset_ok && s_audio_mix_test.music_asset >= 0) {
         if (input_button_pressed(INPUT_BUTTON_CROSS)) {
             if (s_audio_mix_test.music_paused) {
-                audio_stream_resume(s_audio_mix_test.music_stream);
+                if (s_audio_mix_test.music_voice >= 0)
+                    audio_voice_resume(s_audio_mix_test.music_voice);
                 s_audio_mix_test.music_paused = 0;
                 LOGLN("[state:audio_mix_test] music resume");
             } else {
-                audio_stream_pause(s_audio_mix_test.music_stream);
+                if (s_audio_mix_test.music_voice >= 0)
+                    audio_voice_pause(s_audio_mix_test.music_voice);
                 s_audio_mix_test.music_paused = 1;
                 LOGLN("[state:audio_mix_test] music pause");
             }
@@ -430,14 +454,14 @@ static void audio_mix_test_update(game_app_t *app, float dt)
         }
 
         if (input_button_pressed(INPUT_BUTTON_TRIANGLE)) {
-            if (audio_stream_is_playing(s_audio_mix_test.music_stream)) {
-                audio_stream_stop(s_audio_mix_test.music_stream);
+            if (s_audio_mix_test.music_voice >= 0 &&
+                audio_voice_is_playing(s_audio_mix_test.music_voice)) {
+                audio_voice_stop(s_audio_mix_test.music_voice);
                 s_audio_mix_test.music_paused = 0;
                 LOGLN("[state:audio_mix_test] music stop");
             } else {
-                audio_stream_play(s_audio_mix_test.music_stream, 1);
-                s_audio_mix_test.music_paused = 0;
-                LOGLN("[state:audio_mix_test] music play");
+                if (audio_mix_test_start_music_voice() == 0)
+                    LOGLN("[state:audio_mix_test] music play");
             }
             s_audio_mix_test.screen_dirty = 1;
         }
@@ -446,8 +470,9 @@ static void audio_mix_test_update(game_app_t *app, float dt)
             s_audio_mix_test.music_volume += 10;
             if (s_audio_mix_test.music_volume > 100)
                 s_audio_mix_test.music_volume = 100;
-            audio_stream_set_volume(s_audio_mix_test.music_stream,
-                                    s_audio_mix_test.music_volume);
+            if (s_audio_mix_test.music_voice >= 0)
+                audio_voice_set_volume(s_audio_mix_test.music_voice,
+                                       s_audio_mix_test.music_volume);
             LOGLN("[state:audio_mix_test] music volume=%d",
                   s_audio_mix_test.music_volume);
             s_audio_mix_test.screen_dirty = 1;
@@ -457,8 +482,9 @@ static void audio_mix_test_update(game_app_t *app, float dt)
             s_audio_mix_test.music_volume -= 10;
             if (s_audio_mix_test.music_volume < 0)
                 s_audio_mix_test.music_volume = 0;
-            audio_stream_set_volume(s_audio_mix_test.music_stream,
-                                    s_audio_mix_test.music_volume);
+            if (s_audio_mix_test.music_voice >= 0)
+                audio_voice_set_volume(s_audio_mix_test.music_voice,
+                                       s_audio_mix_test.music_volume);
             LOGLN("[state:audio_mix_test] music volume=%d",
                   s_audio_mix_test.music_volume);
             s_audio_mix_test.screen_dirty = 1;
@@ -468,8 +494,9 @@ static void audio_mix_test_update(game_app_t *app, float dt)
             s_audio_mix_test.music_speed += 0.25f;
             if (s_audio_mix_test.music_speed > 3.0f)
                 s_audio_mix_test.music_speed = 3.0f;
-            audio_stream_set_speed(s_audio_mix_test.music_stream,
-                                   s_audio_mix_test.music_speed);
+            if (s_audio_mix_test.music_voice >= 0)
+                audio_voice_set_speed(s_audio_mix_test.music_voice,
+                                      s_audio_mix_test.music_speed);
             LOGLN("[state:audio_mix_test] music speed=%d/100",
                   (int)(s_audio_mix_test.music_speed * 100.0f));
             s_audio_mix_test.screen_dirty = 1;
@@ -479,8 +506,9 @@ static void audio_mix_test_update(game_app_t *app, float dt)
             s_audio_mix_test.music_speed -= 0.25f;
             if (s_audio_mix_test.music_speed < (1.0f / 3.0f))
                 s_audio_mix_test.music_speed = (1.0f / 3.0f);
-            audio_stream_set_speed(s_audio_mix_test.music_stream,
-                                   s_audio_mix_test.music_speed);
+            if (s_audio_mix_test.music_voice >= 0)
+                audio_voice_set_speed(s_audio_mix_test.music_voice,
+                                      s_audio_mix_test.music_speed);
             LOGLN("[state:audio_mix_test] music speed=%d/100",
                   (int)(s_audio_mix_test.music_speed * 100.0f));
             s_audio_mix_test.screen_dirty = 1;
@@ -529,10 +557,10 @@ static void audio_mix_test_update(game_app_t *app, float dt)
 
     if (do_periodic_log) {
         LOGLN("[state:audio_mix_test] music playing=%d paused=%d vol=%d speed=%d/100 last_voice=%d last_voice_playing=%d recent_playing=%d sfx_count=%d",
-              (s_audio_mix_test.music_open_ok && s_audio_mix_test.music_stream >= 0)
-                  ? audio_stream_is_playing(s_audio_mix_test.music_stream) : 0,
-              (s_audio_mix_test.music_open_ok && s_audio_mix_test.music_stream >= 0)
-                  ? audio_stream_is_paused(s_audio_mix_test.music_stream) : 0,
+              (s_audio_mix_test.music_voice >= 0)
+                  ? audio_voice_is_playing(s_audio_mix_test.music_voice) : 0,
+              (s_audio_mix_test.music_voice >= 0)
+                  ? audio_voice_is_paused(s_audio_mix_test.music_voice) : 0,
               s_audio_mix_test.music_volume,
               (int)(s_audio_mix_test.music_speed * 100.0f),
               s_audio_mix_test.last_sfx_voice,

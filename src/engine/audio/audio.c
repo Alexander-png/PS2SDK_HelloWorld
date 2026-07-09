@@ -70,10 +70,10 @@ int audio_is_available(void)
 }
 
 /* ------------------------------------------------------------------------- */
-/* stream facade                                                              */
+/* Asset API                                                                  */
 /* ------------------------------------------------------------------------- */
 
-int audio_stream_open(const char *wav_path, int io_buf_bytes)
+int audio_asset_load_stream(const char *wav_path, int io_buf_bytes)
 {
     if (!g_audio.available)
         return -1;
@@ -81,163 +81,7 @@ int audio_stream_open(const char *wav_path, int io_buf_bytes)
     return audio_mixer_add_stream_asset(&g_audio.mixer, wav_path, io_buf_bytes);
 }
 
-void audio_stream_close(int handle)
-{
-    if (!g_audio.available)
-        return;
-
-    audio_mixer_remove_stream_asset(&g_audio.mixer, handle);
-}
-
-int audio_stream_preload(int handle)
-{
-    if (!g_audio.available)
-        return -1;
-
-    return audio_mixer_preload_stream_asset(&g_audio.mixer, handle);
-}
-
-int audio_stream_is_ready(int handle)
-{
-    if (!g_audio.available)
-        return 0;
-
-    return audio_mixer_stream_asset_is_ready(&g_audio.mixer, handle);
-}
-
-int audio_stream_play(int handle, int loop)
-{
-    if (!g_audio.available)
-        return -1;
-
-    return audio_mixer_play_stream_asset(&g_audio.mixer, handle, loop);
-}
-
-void audio_stream_stop(int handle)
-{
-    if (!g_audio.available)
-        return;
-
-    audio_mixer_stop_stream_asset(&g_audio.mixer, handle);
-}
-
-void audio_stream_pause(int handle)
-{
-    if (!g_audio.available)
-        return;
-
-    audio_mixer_pause_stream_asset(&g_audio.mixer, handle);
-}
-
-void audio_stream_resume(int handle)
-{
-    if (!g_audio.available)
-        return;
-
-    audio_mixer_resume_stream_asset(&g_audio.mixer, handle);
-}
-
-void audio_stream_set_volume(int handle, int percent)
-{
-    if (!g_audio.available)
-        return;
-
-    audio_mixer_set_stream_asset_volume(&g_audio.mixer, handle, percent);
-}
-
-void audio_stream_set_speed(int handle, float speed)
-{
-    if (!g_audio.available)
-        return;
-
-    audio_mixer_set_stream_asset_speed(&g_audio.mixer, handle, speed);
-}
-
-int audio_stream_is_playing(int handle)
-{
-    if (!g_audio.available)
-        return 0;
-
-    return audio_mixer_stream_asset_is_playing(&g_audio.mixer, handle);
-}
-
-int audio_stream_is_paused(int handle)
-{
-    if (!g_audio.available)
-        return 0;
-
-    return audio_mixer_stream_asset_is_paused(&g_audio.mixer, handle);
-}
-
-/* ------------------------------------------------------------------------- */
-/* music facade                                                               */
-/* ------------------------------------------------------------------------- */
-
-int audio_music_open(const char *wav_path, int io_buf_bytes)
-{
-    return audio_stream_open(wav_path, io_buf_bytes);
-}
-
-void audio_music_close(int handle)
-{
-    audio_stream_close(handle);
-}
-
-int audio_music_preload(int handle)
-{
-    return audio_stream_preload(handle);
-}
-
-int audio_music_is_ready(int handle)
-{
-    return audio_stream_is_ready(handle);
-}
-
-int audio_music_play(int handle, int loop)
-{
-    return audio_stream_play(handle, loop);
-}
-
-void audio_music_stop(int handle)
-{
-    audio_stream_stop(handle);
-}
-
-void audio_music_pause(int handle)
-{
-    audio_stream_pause(handle);
-}
-
-void audio_music_resume(int handle)
-{
-    audio_stream_resume(handle);
-}
-
-void audio_music_set_volume(int handle, int percent)
-{
-    audio_stream_set_volume(handle, percent);
-}
-
-void audio_music_set_speed(int handle, float speed)
-{
-    audio_stream_set_speed(handle, speed);
-}
-
-int audio_music_is_playing(int handle)
-{
-    return audio_stream_is_playing(handle);
-}
-
-int audio_music_is_paused(int handle)
-{
-    return audio_stream_is_paused(handle);
-}
-
-/* ------------------------------------------------------------------------- */
-/* sfx asset API                                                              */
-/* ------------------------------------------------------------------------- */
-
-int audio_sfx_load(const char *wav_path)
+int audio_asset_load_sfx(const char *wav_path)
 {
     if (!g_audio.available)
         return -1;
@@ -245,41 +89,53 @@ int audio_sfx_load(const char *wav_path)
     return audio_mixer_add_sfx_asset(&g_audio.mixer, wav_path);
 }
 
-void audio_sfx_unload(int handle)
+void audio_asset_unload(int asset_handle)
 {
     if (!g_audio.available)
         return;
 
-    audio_mixer_remove_sfx_asset(&g_audio.mixer, handle);
+    audio_mixer_remove_asset(&g_audio.mixer, asset_handle);
 }
 
-int audio_sfx_is_ready(int handle)
+int audio_asset_preload(int asset_handle)
+{
+    if (!g_audio.available)
+        return -1;
+
+    return audio_mixer_preload_asset(&g_audio.mixer, asset_handle);
+}
+
+int audio_asset_is_ready(int asset_handle)
 {
     if (!g_audio.available)
         return 0;
 
-    return audio_mixer_sfx_asset_is_ready(&g_audio.mixer, handle);
+    return audio_mixer_asset_is_ready(&g_audio.mixer, asset_handle);
 }
 
-int audio_sfx_play(int handle)
+audio_asset_kind_t audio_asset_get_kind(int asset_handle)
+{
+    if (!g_audio.available)
+        return AUDIO_ASSET_KIND_STREAM;
+
+    return audio_mixer_asset_get_kind(&g_audio.mixer, asset_handle);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Playback / voice API                                                       */
+/* ------------------------------------------------------------------------- */
+
+int audio_play(int asset_handle, int volume_percent, float speed, int loop)
 {
     if (!g_audio.available)
         return -1;
 
-    return audio_mixer_play_sfx(&g_audio.mixer, handle, 100, 1.0f, 0);
+    return audio_mixer_play_asset(&g_audio.mixer,
+                                  asset_handle,
+                                  volume_percent,
+                                  speed,
+                                  loop);
 }
-
-int audio_sfx_play_ex(int handle, int volume_percent, float speed, int loop)
-{
-    if (!g_audio.available)
-        return -1;
-
-    return audio_mixer_play_sfx(&g_audio.mixer, handle, volume_percent, speed, loop);
-}
-
-/* ------------------------------------------------------------------------- */
-/* voice API                                                                  */
-/* ------------------------------------------------------------------------- */
 
 void audio_voice_stop(int voice_handle)
 {
@@ -311,6 +167,25 @@ void audio_voice_set_volume(int voice_handle, int percent)
         return;
 
     audio_mixer_set_voice_volume(&g_audio.mixer, voice_handle, percent);
+}
+
+void audio_voice_set_channel_volume(int voice_handle, int left_percent, int right_percent)
+{
+    if (!g_audio.available)
+        return;
+
+    audio_mixer_set_voice_channel_volume(&g_audio.mixer,
+                                         voice_handle,
+                                         left_percent,
+                                         right_percent);
+}
+
+void audio_voice_set_pan(int voice_handle, float pan)
+{
+    if (!g_audio.available)
+        return;
+
+    audio_mixer_set_voice_pan(&g_audio.mixer, voice_handle, pan);
 }
 
 void audio_voice_set_speed(int voice_handle, float speed)

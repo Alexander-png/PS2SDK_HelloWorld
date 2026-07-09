@@ -13,7 +13,7 @@
 #endif
 
 #ifndef TEST_SPRITE_PATH1
-#define TEST_SPRITE_PATH1 "scaryguy1.png"
+#define TEST_SPRITE_PATH1 "scaryguy.png"
 #endif
 
 #ifndef TEST_SPRITE_PATH2
