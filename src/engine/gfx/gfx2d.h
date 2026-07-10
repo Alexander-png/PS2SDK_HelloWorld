@@ -96,6 +96,16 @@ int  gfx2d_touch_texture(int tex_id);
 void gfx2d_free_texture(int tex_id);
 
 int  gfx2d_add_sprite(int tex_id, const gfx2d_draw_params_t *params, int *out_sprite_id);
+
+int  gfx2d_draw_texture_region(int tex_id,
+                               const gfx2d_draw_params_t *params,
+                               float src_x,
+                               float src_y,
+                               float src_w,
+                               float src_h);
+
+int  gfx2d_texture_size(int tex_id, int *out_w, int *out_h);
+
 int  gfx2d_update_sprite(int sprite_id, const gfx2d_draw_params_t *params);
 int  gfx2d_set_sprite_texture(int sprite_id, int tex_id);
 /* Sprite removal only affects sprite instances.

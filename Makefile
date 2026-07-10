@@ -53,6 +53,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/streaming/texture_assets.c \
                  $(SRC_DIR)/engine/resources/resources.c \
                  $(SRC_DIR)/engine/gfx/gfx2d_ps2.c \
+                 $(SRC_DIR)/engine/text/text.c \
                  $(SRC_DIR)/engine/debug/screen_console_ps2.c \
                  $(SRC_DIR)/game/states/test/debug_menu_state.c \
                  $(SRC_DIR)/game/states/test/audio_test_state.c \
@@ -60,7 +61,8 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/game/states/test/sprite_test_state.c \
                  $(SRC_DIR)/game/states/test/memory_test_state.c \
                  $(SRC_DIR)/game/states/test/memory_arena_test_state.c \
-                 $(SRC_DIR)/game/states/test/audio_mix_test_state.c
+                 $(SRC_DIR)/game/states/test/audio_mix_test_state.c \
+                 $(SRC_DIR)/game/states/test/text_test_state.c
                  
 
 
@@ -85,6 +87,7 @@ EE_INCS   += -I$(SRC_DIR) \
              -I$(SRC_DIR)/engine/streaming \
              -I$(SRC_DIR)/engine/resources \
              -I$(SRC_DIR)/engine/gfx \
+             -I$(SRC_DIR)/engine/text \
              -I$(SRC_DIR)/game/states/test \
              -I$(GSKIT)/include \
              -I$(PS2SDK)/ports/include \

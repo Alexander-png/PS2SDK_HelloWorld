@@ -229,11 +229,15 @@ static void gfx2d_draw_vertices(int tex_id,
     );
 }
 
-static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *params)
+static void gfx2d_draw_textured_quad_internal(int tex_id,
+                                              const gfx2d_draw_params_t *params,
+                                              float u_left,
+                                              float v_top,
+                                              float u_right,
+                                              float v_bottom)
 {
     GSTEXTURE *tex;
     gfx2d_corner_t top_left, top_right, bottom_left, bottom_right;
-    float u_left, u_right, v_top, v_bottom;
     float anchor_x, anchor_y;
     float pivot_x, pivot_y;
     float skew_pivot_x, skew_pivot_y;
@@ -249,6 +253,8 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
         return;
 
     tex = &g_textures[tex_id].tex;
+    if (!tex->Mem)
+        return;
 
     anchor_x = gfx2d_resolve_halign(params->anchor_h, params->w);
     anchor_y = gfx2d_resolve_valign(params->anchor_v, params->h);
@@ -273,11 +279,6 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
     gfx2d_transform_corner(params, pivot_x, pivot_y, skew_pivot_x, skew_pivot_y,
                            local_right, local_bottom, &bottom_right);
 
-    u_left   = params->flip_x ? (float)tex->Width  : 0.0f;
-    u_right  = params->flip_x ? 0.0f               : (float)tex->Width;
-    v_top    = params->flip_y ? (float)tex->Height : 0.0f;
-    v_bottom = params->flip_y ? 0.0f               : (float)tex->Height;
-
     top_left.u = u_left;
     top_left.v = v_top;
 
@@ -290,12 +291,35 @@ static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *pa
     bottom_right.u = u_right;
     bottom_right.v = v_bottom;
 
+    gsKit_TexManager_bind(g_gs, tex);
+
     gfx2d_draw_vertices(tex_id,
                         &top_left,
                         &top_right,
                         &bottom_left,
                         &bottom_right,
                         gfx2d_make_rgbaq(params->color));
+}
+
+static void gfx2d_draw_sprite_internal(int tex_id, const gfx2d_draw_params_t *params)
+{
+    GSTEXTURE *tex;
+    float u_left, u_right, v_top, v_bottom;
+
+    if (!g_gs || !params)
+        return;
+
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+        return;
+
+    tex = &g_textures[tex_id].tex;
+
+    u_left   = params->flip_x ? (float)tex->Width  : 0.0f;
+    u_right  = params->flip_x ? 0.0f               : (float)tex->Width;
+    v_top    = params->flip_y ? (float)tex->Height : 0.0f;
+    v_bottom = params->flip_y ? 0.0f               : (float)tex->Height;
+
+    gfx2d_draw_textured_quad_internal(tex_id, params, u_left, v_top, u_right, v_bottom);
 }
 
 static void gfx2d_draw_slot(const gfx2d_sprite_slot_t *slot)
@@ -666,6 +690,61 @@ int gfx2d_add_sprite(int tex_id, const gfx2d_draw_params_t *params, int *out_spr
     }
 
     return -1;
+}
+
+int gfx2d_draw_texture_region(int tex_id,
+                              const gfx2d_draw_params_t *params,
+                              float src_x,
+                              float src_y,
+                              float src_w,
+                              float src_h)
+{
+    GSTEXTURE *tex;
+    float u_left, u_right, v_top, v_bottom;
+
+    if (!g_gs || !params)
+        return -1;
+
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+        return -1;
+
+    tex = &g_textures[tex_id].tex;
+    if (!tex->Mem)
+        return -1;
+
+    if (src_w <= 0.0f || src_h <= 0.0f)
+        return -1;
+
+    u_left   = params->flip_x ? (src_x + src_w) : src_x;
+    u_right  = params->flip_x ? src_x           : (src_x + src_w);
+    v_top    = params->flip_y ? (src_y + src_h) : src_y;
+    v_bottom = params->flip_y ? src_y           : (src_y + src_h);
+
+    gfx2d_draw_textured_quad_internal(tex_id, params, u_left, v_top, u_right, v_bottom);
+    return 0;
+}
+
+int gfx2d_texture_size(int tex_id, int *out_w, int *out_h)
+{
+    GSTEXTURE *tex;
+
+    if (!out_w || !out_h)
+        return -1;
+
+    *out_w = 0;
+    *out_h = 0;
+
+    if (!g_gs)
+        return -1;
+
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+        return -1;
+
+    tex = &g_textures[tex_id].tex;
+
+    *out_w = tex->Width;
+    *out_h = tex->Height;
+    return 0;
 }
 
 int gfx2d_update_sprite(int sprite_id, const gfx2d_draw_params_t *params)

@@ -9,6 +9,7 @@
 #include "game/states/test/memory_test_state.h"
 #include "game/states/test/memory_arena_test_state.h"
 #include "game/states/test/audio_mix_test_state.h"
+#include "game/states/test/text_test_state.h"
 
 #include <debug.h>
 
@@ -29,6 +30,7 @@ static const debug_menu_entry_t g_menu[] = {
     { "Memory Test",        memory_test_state_desc },
     { "Memory Arena Test",  memory_arena_test_state_desc },
     { "Audio Mix Test",     audio_mix_test_state_desc },
+    { "Text test state",    text_test_state_desc },
 };
 
 #define DEBUG_MENU_COUNT ((int)(sizeof(g_menu) / sizeof(g_menu[0])))
