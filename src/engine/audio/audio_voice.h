@@ -27,7 +27,7 @@ typedef enum audio_voice_kind {
 } audio_voice_kind_t;
 
 typedef struct audio_stream_voice_state {
-    int asset_handle;
+    int asset_index;
 
     u32 decode_frame;
     int eof_reached;
@@ -49,7 +49,7 @@ typedef struct audio_stream_voice_state {
 } audio_stream_voice_state_t;
 
 typedef struct audio_sfx_voice_state {
-    int asset_handle;
+    int asset_index;
     int priority;
 } audio_sfx_voice_state_t;
 

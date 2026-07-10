@@ -36,7 +36,7 @@ void audio_voice_clear(audio_voice_t *v)
     v->pan = 0.0f;
     v->speed = 1.0f;
 
-    v->u.stream.asset_handle = -1;
+    v->u.stream.asset_index = -1;
 }
 
 void audio_voice_stream_reset_runtime(audio_voice_t *v)

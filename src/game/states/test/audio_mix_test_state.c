@@ -90,11 +90,13 @@ static void audio_mix_test_on_voice_started(audio_mixer_t *m,
 
     if (voice_handle == s->music_voice) {
         LOGLN("[state:audio_mix_test] callback started music voice=%d",
-            voice_handle);
-    } else{
+              voice_handle);
+    } else {
         LOGLN("[state:audio_mix_test] callback started sfx voice=%d",
-            voice_handle);
+              voice_handle);
     }
+
+    s->screen_dirty = 1;
 }
 
 static void audio_mix_test_on_voice_stopped(audio_mixer_t *m,
@@ -111,11 +113,18 @@ static void audio_mix_test_on_voice_stopped(audio_mixer_t *m,
 
     if (voice_handle == s->music_voice) {
         LOGLN("[state:audio_mix_test] callback stopped music voice=%d",
-            voice_handle);
+              voice_handle);
+        s->music_voice = -1;
+        s->music_paused = 0;
     } else {
         LOGLN("[state:audio_mix_test] callback stopped sfx voice=%d",
-            voice_handle);
+              voice_handle);
+
+        if (voice_handle == s->last_sfx_voice)
+            s->last_sfx_voice = -1;
     }
+
+    s->screen_dirty = 1;
 }
 
 // static void audio_mix_test_bind_voice_callbacks(audio_mix_test_state_t *s, int voice_handle)
@@ -184,16 +193,35 @@ static void audio_mix_test_push_recent_voice(int voice)
 
 static int audio_mix_test_count_recent_playing(void)
 {
-    int i;
-    int count = 0;
+    int i, j;
+    int unique[AUDIO_MIX_TEST_RECENT_VOICES];
+    int unique_count = 0;
+
+    for (i = 0; i < AUDIO_MIX_TEST_RECENT_VOICES; i++)
+        unique[i] = -1;
 
     for (i = 0; i < AUDIO_MIX_TEST_RECENT_VOICES; i++) {
         int voice = s_audio_mix_test.recent_voices[i];
-        if (voice >= 0 && audio_voice_is_playing(voice))
-            count++;
+        int already_seen = 0;
+
+        if (voice < 0)
+            continue;
+
+        for (j = 0; j < unique_count; j++) {
+            if (unique[j] == voice) {
+                already_seen = 1;
+                break;
+            }
+        }
+
+        if (already_seen)
+            continue;
+
+        if (audio_voice_is_playing(voice))
+            unique[unique_count++] = voice;
     }
 
-    return count;
+    return unique_count;
 }
 
 static int audio_mix_test_start_music_voice(void)
