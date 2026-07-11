@@ -1,5 +1,6 @@
 #include "engine/text/text.h"
 #include "engine/gfx/gfx2d.h"
+#include "engine/logging/log.h"
 
 #include <string.h>
 
@@ -70,7 +71,6 @@ static int text_utf8_decode(const char **p, text_codepoint_t *out_codepoint)
     return 1;
 }
 
-
 void text_font_init(text_font_t *font)
 {
     if (!font)
@@ -81,12 +81,10 @@ void text_font_init(text_font_t *font)
     font->fallback_codepoint = '?';
 }
 
-
 void text_font_shutdown(text_font_t *font)
 {
     (void)font;
 }
-
 
 const text_glyph_t *text_font_find_glyph(const text_font_t *font, text_codepoint_t codepoint)
 {
@@ -114,7 +112,6 @@ const text_glyph_t *text_font_find_glyph(const text_font_t *font, text_codepoint
     return fallback;
 }
 
-
 short text_font_get_kerning(const text_font_t *font,
                             text_codepoint_t first,
                             text_codepoint_t second)
@@ -134,7 +131,6 @@ short text_font_get_kerning(const text_font_t *font,
     return 0;
 }
 
-
 text_color_t text_color_rgba(unsigned char r,
                              unsigned char g,
                              unsigned char b,
@@ -150,18 +146,15 @@ text_color_t text_color_rgba(unsigned char r,
     return color;
 }
 
-
 text_color_t text_color_white(void)
 {
     return text_color_rgba(0x80, 0x80, 0x80, 0x80);
 }
 
-
 text_color_t text_color_yellow(void)
 {
     return text_color_rgba(0x80, 0x80, 0x00, 0x80);
 }
-
 
 void text_style_init(text_style_t *style)
 {
@@ -172,7 +165,6 @@ void text_style_init(text_style_t *style)
     style->tracking = 0;
     style->layer = 100;
 }
-
 
 void text_layout_init(text_layout_t *layout,
                       text_layout_glyph_t *glyph_buffer,
@@ -190,7 +182,6 @@ void text_layout_init(text_layout_t *layout,
     layout->line_capacity = line_capacity;
 }
 
-
 void text_layout_reset(text_layout_t *layout)
 {
     if (!layout)
@@ -201,7 +192,6 @@ void text_layout_reset(text_layout_t *layout)
     layout->width = 0;
     layout->height = 0;
 }
-
 
 int text_layout_build_plain(text_layout_t *layout,
                             const text_font_t *font,
@@ -215,14 +205,22 @@ int text_layout_build_plain(text_layout_t *layout,
     short line_width;
     text_codepoint_t prev_codepoint;
 
-    if (!layout || !font || !utf8_text || !params)
-        return 0;
+    if (!layout || !font || !utf8_text || !params) {
+        LOGLN("[text] build_plain: invalid args layout=%p font=%p text=%p params=%p",
+              layout, font, utf8_text, params);
+        return -1;
+    }
 
-    if (!layout->glyphs || !layout->lines)
-        return 0;
+    if (!layout->glyphs || !layout->lines) {
+        LOGLN("[text] build_plain: missing buffers glyphs=%p lines=%p",
+              layout->glyphs, layout->lines);
+        return -1;
+    }
 
-    if (layout->line_capacity == 0)
-        return 0;
+    if (layout->line_capacity == 0) {
+        LOGLN("[text] build_plain: line_capacity=0");
+        return -1;
+    }
 
     text_layout_reset(layout);
 
@@ -243,8 +241,12 @@ int text_layout_build_plain(text_layout_t *layout,
         const text_glyph_t *glyph;
         text_layout_glyph_t *out_glyph;
 
-        if (!text_utf8_decode(&p, &cp))
+        if (!text_utf8_decode(&p, &cp)) {
+            LOGLN("[text] build_plain: utf8 decode failed");
             break;
+        }
+
+        LOGLN("[text] build_plain: cp=U+%04X", (unsigned int)cp);
 
         if (cp == '\r')
             continue;
@@ -255,8 +257,12 @@ int text_layout_build_plain(text_layout_t *layout,
 
             layout->lines[layout->line_count - 1].width = line_width;
 
-            if (layout->line_count >= layout->line_capacity)
-                return 0;
+            if (layout->line_count >= layout->line_capacity) {
+                LOGLN("[text] build_plain: line capacity exceeded count=%u capacity=%u",
+                      (unsigned int)layout->line_count,
+                      (unsigned int)layout->line_capacity);
+                return -1;
+            }
 
             pen_x = line_origin_x;
             pen_y += font->line_height;
@@ -271,11 +277,17 @@ int text_layout_build_plain(text_layout_t *layout,
         }
 
         glyph = text_font_find_glyph(font, cp);
-        if (!glyph)
+        if (!glyph) {
+            LOGLN("[text] build_plain: glyph not found cp=U+%04X", (unsigned int)cp);
             continue;
+        }
 
-        if (layout->glyph_count >= layout->glyph_capacity)
-            return 0;
+        if (layout->glyph_count >= layout->glyph_capacity) {
+            LOGLN("[text] build_plain: glyph capacity exceeded count=%u capacity=%u",
+                  (unsigned int)layout->glyph_count,
+                  (unsigned int)layout->glyph_capacity);
+            return -1;
+        }
 
         pen_x += text_font_get_kerning(font, prev_codepoint, cp);
 
@@ -303,9 +315,14 @@ int text_layout_build_plain(text_layout_t *layout,
 
     layout->height = (short)(layout->line_count * font->line_height);
 
-    return 1;
-}
+    LOGLN("[text] build_plain: ok glyphs=%u lines=%u width=%d height=%d",
+          (unsigned int)layout->glyph_count,
+          (unsigned int)layout->line_count,
+          (int)layout->width,
+          (int)layout->height);
 
+    return 0;
+}
 
 void text_reveal_state_init(text_reveal_state_t *state, float seconds_per_glyph)
 {
@@ -317,7 +334,6 @@ void text_reveal_state_init(text_reveal_state_t *state, float seconds_per_glyph)
     state->seconds_per_glyph = seconds_per_glyph;
 }
 
-
 void text_reveal_state_reset(text_reveal_state_t *state)
 {
     if (!state)
@@ -327,7 +343,6 @@ void text_reveal_state_reset(text_reveal_state_t *state)
     state->visible_glyphs = 0;
 }
 
-
 void text_reveal_state_finish(text_reveal_state_t *state, unsigned short total_glyphs)
 {
     if (!state)
@@ -336,7 +351,6 @@ void text_reveal_state_finish(text_reveal_state_t *state, unsigned short total_g
     state->reveal_timer = 0.0f;
     state->visible_glyphs = total_glyphs;
 }
-
 
 void text_reveal_state_update(text_reveal_state_t *state,
                               unsigned short total_glyphs,
@@ -358,7 +372,6 @@ void text_reveal_state_update(text_reveal_state_t *state,
         state->visible_glyphs++;
     }
 }
-
 
 void text_draw_layout(const text_font_t *font,
                       const text_layout_t *layout,
