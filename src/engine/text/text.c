@@ -1233,7 +1233,7 @@ void text_reveal_state_init(text_reveal_state_t *state, float seconds_per_glyph)
         return;
 
     state->reveal_timer = 0.0f;
-    state->visible_glyphs = 0;
+    state->visible_units = 0;
     state->seconds_per_glyph = seconds_per_glyph;
 }
 
@@ -1243,7 +1243,7 @@ void text_reveal_state_reset(text_reveal_state_t *state)
         return;
 
     state->reveal_timer = 0.0f;
-    state->visible_glyphs = 0;
+    state->visible_units = 0;
 }
 
 void text_reveal_state_finish(text_reveal_state_t *state, unsigned short total_glyphs)
@@ -1252,7 +1252,7 @@ void text_reveal_state_finish(text_reveal_state_t *state, unsigned short total_g
         return;
 
     state->reveal_timer = 0.0f;
-    state->visible_glyphs = total_glyphs;
+    state->visible_units = total_glyphs;
 }
 
 void text_reveal_state_update(text_reveal_state_t *state,
@@ -1263,16 +1263,16 @@ void text_reveal_state_update(text_reveal_state_t *state,
         return;
 
     if (state->seconds_per_glyph <= 0.0f) {
-        state->visible_glyphs = total_glyphs;
+        state->visible_units = total_glyphs;
         return;
     }
 
     state->reveal_timer += dt;
 
-    while (state->visible_glyphs < total_glyphs &&
+    while (state->visible_units < total_glyphs &&
            state->reveal_timer >= state->seconds_per_glyph) {
         state->reveal_timer -= state->seconds_per_glyph;
-        state->visible_glyphs++;
+        state->visible_units++;
     }
 }
 
@@ -1281,7 +1281,7 @@ void text_draw_layout(const text_font_t *font,
                       const text_reveal_state_t *reveal)
 {
     unsigned short i;
-    unsigned short visible_glyphs;
+    unsigned short visible_units;
 
     if (!font || !layout)
         return;
@@ -1289,12 +1289,12 @@ void text_draw_layout(const text_font_t *font,
     if (font->tex_id < 0)
         return;
 
-    visible_glyphs = layout->glyph_count;
+    visible_units = layout->glyph_count;
 
-    if (reveal && reveal->visible_glyphs < visible_glyphs)
-        visible_glyphs = reveal->visible_glyphs;
+    if (reveal && reveal->visible_units < visible_units)
+        visible_units = reveal->visible_units;
 
-    for (i = 0; i < visible_glyphs; ++i) {
+    for (i = 0; i < visible_units; ++i) {
         const text_layout_glyph_t *g = &layout->glyphs[i];
         const text_glyph_t *glyph = g->glyph;
         gfx2d_draw_params_t params;

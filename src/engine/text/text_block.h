@@ -2,6 +2,8 @@
 #define TEXT_BLOCK_H
 
 #include "engine/text/text.h"
+#include "engine/text/text_rich.h"
+#include "engine/text/text_rich_layout.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,28 +37,39 @@ typedef struct text_block_box {
 
 typedef struct text_block {
     const text_font_t *font;
-    const char *text_utf8;
 
+    const char *text_utf8;
+    const char *rich_text_utf8;
+    int use_rich_text;
+    
     text_layout_t layout;
+    text_rich_layout_t rich_layout;
     text_layout_params_t params;
     text_reveal_state_t reveal;
+    text_reveal_mode_t reveal_mode;
 
     text_block_box_t box;
     text_align_h_t align_h;
     text_align_v_t align_v;
 
     unsigned int dirty_flags;
+
+    float effect_time_seconds;
 } text_block_t;
 
 void text_block_init(text_block_t *tb,
                      text_layout_glyph_t *glyph_buffer,
                      unsigned short glyph_capacity,
+                     text_layout_item_t *rich_item_buffer,
+                     unsigned short rich_item_capacity,
                      text_layout_line_t *line_buffer,
                      unsigned short line_capacity,
                      float seconds_per_glyph);
 
 void text_block_set_font(text_block_t *tb, const text_font_t *font);
 void text_block_set_text(text_block_t *tb, const char *utf8_text);
+void text_block_set_rich_text(text_block_t *tb, const char *markup_utf8);
+void text_block_set_reveal_mode(text_block_t *tb, text_reveal_mode_t mode);
 
 void text_block_set_origin(text_block_t *tb, short x, short y);
 void text_block_set_box(text_block_t *tb, short x, short y, short w, short h);

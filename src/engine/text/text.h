@@ -94,7 +94,7 @@ typedef struct text_layout {
 
 typedef struct text_reveal_state {
     float reveal_timer;
-    unsigned short visible_glyphs;
+    unsigned short visible_units;
     float seconds_per_glyph;
 } text_reveal_state_t;
 

@@ -50,6 +50,7 @@ typedef struct text_test_state_data {
     text_block_t block;
 
     text_layout_glyph_t *glyphs;
+    text_layout_item_t *rich_items;
     text_layout_line_t *lines;
 
     int use_yellow;
@@ -57,9 +58,16 @@ typedef struct text_test_state_data {
     int test_case_index;
 } text_test_state_data_t;
 
+typedef enum text_test_case_kind {
+    TEXT_TEST_CASE_PLAIN = 0,
+    TEXT_TEST_CASE_RICH  = 1
+} text_test_case_kind_t;
+
 typedef struct text_test_case {
     const char *name;
+    text_test_case_kind_t kind;
     text_wrap_mode_t wrap_mode;
+    text_reveal_mode_t reveal_mode;
     const char *text_utf8;
 } text_test_case_t;
 
@@ -87,17 +95,68 @@ static const char s_char_cyrillic_long[] =
 static const char s_word_cyrillic_mixed[] =
     "Привет мир оченьдлинноесловобезпробелов";
 
+static const char s_rich_color_rgb[] =
+    "Hello [color=#FFFF00]yellow[/color] world";
+
+static const char s_rich_color_rgba[] =
+    "Hello [color=#FFFF0080]yellow[/color] world";
+
+static const char s_rich_shake_basic[] =
+    "Normal [shake]danger[/shake] zone";
+
+static const char s_rich_color_and_shake[] =
+    "[color=#00FF00]Green[/color] words and [shake]shaky[/shake] words";
+
+static const char s_rich_nested_shake_in_color[] =
+    "[color=#00FF00]Green [shake]shaky[/shake] text[/color] end";
+
+static const char s_rich_adjacent_tags[] =
+    "[color=#FF0000]Red[/color][color=#00FF00]Green[/color][color=#0000FF]Blue[/color]";
+
+static const char s_rich_unclosed_color[] =
+    "Hello [color=#FFFF00]yellow world";
+
+static const char s_rich_reveal_words_basic[] =
+    "[color=#FFFF00]One[/color] two [shake]three[/shake] four";
+
 static const text_test_case_t s_text_test_cases[] = {
-    { "demo_word",           TEXT_WRAP_WORD, s_demo_word },
-    { "long_mixed_char",     TEXT_WRAP_CHAR, s_long_mixed_char },
-    { "word_simple",         TEXT_WRAP_WORD, s_word_simple },
-    { "char_cyrillic_long",  TEXT_WRAP_CHAR, s_char_cyrillic_long },
-    { "word_cyrillic_mixed", TEXT_WRAP_WORD, s_word_cyrillic_mixed },
+    { "demo_word",            TEXT_TEST_CASE_PLAIN, TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_demo_word },
+    { "long_mixed_char",      TEXT_TEST_CASE_PLAIN, TEXT_WRAP_CHAR, TEXT_REVEAL_GLYPH, s_long_mixed_char },
+    { "word_simple",          TEXT_TEST_CASE_PLAIN, TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_word_simple },
+    { "char_cyrillic_long",   TEXT_TEST_CASE_PLAIN, TEXT_WRAP_CHAR, TEXT_REVEAL_GLYPH, s_char_cyrillic_long },
+    { "word_cyrillic_mixed",  TEXT_TEST_CASE_PLAIN, TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_word_cyrillic_mixed },
+
+    { "rich_color_rgb",        TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgb },
+    { "rich_color_rgba",       TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgba },
+    { "rich_shake_basic",      TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_shake_basic },
+    { "rich_color_shake",      TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH,  s_rich_color_and_shake },
+    { "rich_shake_in_color",   TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_nested_shake_in_color },
+    { "rich_adjacent_tags",    TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH,  s_rich_adjacent_tags },
+    { "rich_unclosed_tag",     TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_unclosed_color },
+    { "rich_reveal_words",     TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_reveal_words_basic },
 };
 
 static int text_test_case_count(void)
 {
     return (int)(sizeof(s_text_test_cases) / sizeof(s_text_test_cases[0]));
+}
+
+static const char *text_test_case_kind_name(text_test_case_kind_t kind)
+{
+    switch (kind) {
+        case TEXT_TEST_CASE_PLAIN: return "plain";
+        case TEXT_TEST_CASE_RICH:  return "rich";
+        default:                   return "unknown";
+    }
+}
+
+static const char *text_test_reveal_mode_name(text_reveal_mode_t mode)
+{
+    switch (mode) {
+        case TEXT_REVEAL_GLYPH: return "glyph";
+        case TEXT_REVEAL_WORD:  return "word";
+        default:                return "unknown";
+    }
 }
 
 static const char *text_test_align_h_name(text_align_h_t align_h)
@@ -163,7 +222,12 @@ static void text_test_apply_case(text_test_state_data_t *data)
         return;
 
     text_block_set_wrap_mode(&data->block, tc->wrap_mode);
-    text_block_set_text(&data->block, tc->text_utf8);
+    text_block_set_reveal_mode(&data->block, tc->reveal_mode);
+
+    if (tc->kind == TEXT_TEST_CASE_RICH)
+        text_block_set_rich_text(&data->block, tc->text_utf8);
+    else
+        text_block_set_text(&data->block, tc->text_utf8);
 }
 
 static int text_test_refresh_block(text_test_state_data_t *data)
@@ -187,19 +251,21 @@ static int text_test_refresh_block(text_test_state_data_t *data)
     text_test_apply_style(data);
 
     if (text_block_refresh(&data->block) != 0) {
-        LOGLN("[state:text_test] text_block_refresh failed case=%s",
-              tc->name);
+        LOGLN("[state:text_test] text_block_refresh failed case=%s kind=%s",
+              tc->name,
+              text_test_case_kind_name(tc->kind));
         return -1;
     }
 
-    LOGLN("[state:text_test] block refreshed case=%d/%d name=%s wrap=%d lines=%u w=%d h=%d align_h=%s align_v=%s",
+    LOGLN("[state:text_test] block refreshed case=%d/%d name=%s kind=%s wrap=%d reveal=%s w=%d h=%d align_h=%s align_v=%s",
           (int)(data->test_case_index + 1),
           (int)text_test_case_count(),
           tc->name,
+          text_test_case_kind_name(tc->kind),
           (int)tc->wrap_mode,
-          (unsigned int)data->block.layout.line_count,
-          (int)data->block.layout.width,
-          (int)data->block.layout.height,
+          text_test_reveal_mode_name(tc->reveal_mode),
+          (int)text_block_width(&data->block),
+          (int)text_block_height(&data->block),
           text_test_align_h_name(data->block.align_h),
           text_test_align_v_name(data->block.align_v));
 
@@ -260,6 +326,17 @@ static int text_test_enter(game_app_t *app, void *userdata)
         return -1;
     }
 
+    data->rich_items = (text_layout_item_t *)mem_arena_calloc(
+        game_app_state_arena(app),
+        TEXT_TEST_GLYPH_CAPACITY,
+        sizeof(text_layout_item_t),
+        16
+    );
+    if (!data->rich_items) {
+        LOGLN("[state:text_test] failed to allocate rich layout item buffer");
+        return -1;
+    }
+
     data->lines = (text_layout_line_t *)mem_arena_calloc(
         game_app_state_arena(app),
         TEXT_TEST_LINE_CAPACITY,
@@ -272,25 +349,28 @@ static int text_test_enter(game_app_t *app, void *userdata)
     }
 
     text_block_init(&data->block,
-                    data->glyphs,
-                    TEXT_TEST_GLYPH_CAPACITY,
-                    data->lines,
-                    TEXT_TEST_LINE_CAPACITY,
-                    TEXT_TEST_REVEAL_SECONDS_PER_GLYPH);
-
-    text_block_set_box(&data->block,
-                       TEXT_TEST_BOX_X,
-                       TEXT_TEST_BOX_Y,
-                       TEXT_TEST_BOX_W,
-                       TEXT_TEST_BOX_H);
-
-    text_block_set_align_h(&data->block, TEXT_ALIGN_LEFT);
-    text_block_set_align_v(&data->block, TEXT_ALIGN_TOP);
-    text_test_apply_case(data);
+        data->glyphs,
+        TEXT_TEST_GLYPH_CAPACITY,
+        data->rich_items,
+        TEXT_TEST_GLYPH_CAPACITY,
+        data->lines,
+        TEXT_TEST_LINE_CAPACITY,
+        TEXT_TEST_REVEAL_SECONDS_PER_GLYPH);
 
     data->use_yellow = 0;
     data->font_bound_logged = 0;
     data->test_case_index = 0;
+
+    text_block_set_box(&data->block,
+        TEXT_TEST_BOX_X,
+        TEXT_TEST_BOX_Y,
+        TEXT_TEST_BOX_W,
+        TEXT_TEST_BOX_H);
+
+    text_block_set_align_h(&data->block, TEXT_ALIGN_LEFT);
+    text_block_set_align_v(&data->block, TEXT_ALIGN_TOP);
+
+    text_test_apply_case(data);
     text_test_apply_style(data);
 
     font_desc.fnt_path = TEST_FONT_DESC_PATH;
@@ -309,7 +389,7 @@ static int text_test_enter(game_app_t *app, void *userdata)
           (int)TEXT_TEST_BOX_W,
           (int)TEXT_TEST_BOX_H);
 
-    LOGLN("[state:text_test] controls: CROSS=color CIRCLE=reveal_reset TRIANGLE=reveal_finish SQUARE=align_h L1=align_v R1/R2=case");   
+    LOGLN("[state:text_test] controls: CROSS=color CIRCLE=reveal_reset TRIANGLE=reveal_finish SQUARE=align_h L1=align_v R1/R2=case");
     return 0;
 }
 
@@ -362,14 +442,13 @@ static void text_test_update(game_app_t *app, float dt)
         }
 
         if (!data->font_bound_logged) {
-            LOGLN("[state:text_test] font bound glyphs=%u kernings=%u lines=%u w=%d h=%d align_h=%s align_v=%s",
-                  (unsigned int)font->glyph_count,
-                  (unsigned int)font->kerning_count,
-                  (unsigned int)data->block.layout.line_count,
-                  (int)data->block.layout.width,
-                  (int)data->block.layout.height,
-                  text_test_align_h_name(data->block.align_h),
-                  text_test_align_v_name(data->block.align_v));
+            LOGLN("[state:text_test] font bound glyphs=%u kernings=%u w=%d h=%d align_h=%s align_v=%s",
+                (unsigned int)font->glyph_count,
+                (unsigned int)font->kerning_count,
+                (int)text_block_width(&data->block),
+                (int)text_block_height(&data->block),
+                text_test_align_h_name(data->block.align_h),
+                text_test_align_v_name(data->block.align_v));
             data->font_bound_logged = 1;
         }
     }
