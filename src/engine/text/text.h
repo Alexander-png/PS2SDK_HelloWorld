@@ -98,10 +98,17 @@ typedef struct text_reveal_state {
     float seconds_per_glyph;
 } text_reveal_state_t;
 
+typedef enum text_wrap_mode {
+    TEXT_WRAP_NONE = 0,
+    TEXT_WRAP_WORD = 1,
+    TEXT_WRAP_CHAR = 2
+} text_wrap_mode_t;
+
 typedef struct text_layout_params {
     short origin_x;
     short origin_y;
-    short max_width; /* reserved for future word wrap */
+    short max_width;
+    text_wrap_mode_t wrap_mode;
     text_style_t style;
 } text_layout_params_t;
 
@@ -132,6 +139,11 @@ void text_layout_init(text_layout_t *layout,
 void text_layout_reset(text_layout_t *layout);
 
 int  text_layout_build_plain(text_layout_t *layout,
+                             const text_font_t *font,
+                             const char *utf8_text,
+                             const text_layout_params_t *params);
+
+int  text_layout_build_boxed(text_layout_t *layout,
                              const text_font_t *font,
                              const char *utf8_text,
                              const text_layout_params_t *params);
