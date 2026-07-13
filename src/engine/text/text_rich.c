@@ -16,6 +16,11 @@ typedef struct text_rich_tag {
     text_color_t color;
 } text_rich_tag_t;
 
+typedef struct text_rich_style_frame {
+    text_rich_tag_kind_t kind;
+    text_rich_style_t style;
+} text_rich_style_frame_t;
+
 static int text_rich_hex_nibble(char c, unsigned char *out)
 {
     if (!out)
@@ -190,7 +195,7 @@ int text_rich_parse(const char *markup_utf8,
                     unsigned short run_capacity,
                     unsigned short *out_run_count)
 {
-    text_rich_style_t style_stack[TEXT_RICH_STYLE_STACK_CAPACITY];
+    text_rich_style_frame_t style_stack[TEXT_RICH_STYLE_STACK_CAPACITY];
     unsigned short stack_size;
     unsigned short run_count;
     const char *p;
@@ -202,7 +207,8 @@ int text_rich_parse(const char *markup_utf8,
     *out_run_count = 0;
 
     stack_size = 1;
-    style_stack[0] = *base_style;
+    style_stack[0].kind = TEXT_RICH_TAG_NONE;
+    style_stack[0].style = *base_style;
 
     run_count = 0;
     p = markup_utf8;
@@ -228,13 +234,31 @@ int text_rich_parse(const char *markup_utf8,
             continue;
         }
 
+        /* Only consume a closing tag if it matches the current top-of-stack tag.
+           Otherwise treat it as literal text by advancing one byte and retrying. */
+        if (tag.kind == TEXT_RICH_TAG_CLOSE_COLOR) {
+            if (!(stack_size > 1 &&
+                style_stack[stack_size - 1].kind == TEXT_RICH_TAG_OPEN_COLOR)) {
+                ++p;
+                continue;
+            }
+        }
+
+        if (tag.kind == TEXT_RICH_TAG_CLOSE_SHAKE) {
+            if (!(stack_size > 1 &&
+                style_stack[stack_size - 1].kind == TEXT_RICH_TAG_OPEN_SHAKE)) {
+                ++p;
+                continue;
+            }
+        }
+
         if (text_rich_emit_run(runs,
-                               run_capacity,
-                               &run_count,
-                               segment_start,
-                               p,
-                               &style_stack[stack_size - 1]) != 0) {
-            return -1;
+            run_capacity,
+            &run_count,
+            segment_start,
+            p,
+            &style_stack[stack_size - 1].style) != 0) {
+                return -1;
         }
 
         switch (tag.kind) {
@@ -242,26 +266,32 @@ int text_rich_parse(const char *markup_utf8,
                 if (stack_size >= TEXT_RICH_STYLE_STACK_CAPACITY)
                     return -1;
                 style_stack[stack_size] = style_stack[stack_size - 1];
-                style_stack[stack_size].color = tag.color;
+                style_stack[stack_size].kind = TEXT_RICH_TAG_OPEN_COLOR;
+                style_stack[stack_size].style.color = tag.color;
                 stack_size++;
                 break;
 
             case TEXT_RICH_TAG_CLOSE_COLOR:
-                if (stack_size > 1)
+                if (stack_size > 1 &&
+                    style_stack[stack_size - 1].kind == TEXT_RICH_TAG_OPEN_COLOR) {
                     stack_size--;
-                break;
+                }
+            break;
 
             case TEXT_RICH_TAG_OPEN_SHAKE:
                 if (stack_size >= TEXT_RICH_STYLE_STACK_CAPACITY)
                     return -1;
                 style_stack[stack_size] = style_stack[stack_size - 1];
-                style_stack[stack_size].fx_flags |= TEXT_FX_SHAKE;
+                style_stack[stack_size].kind = TEXT_RICH_TAG_OPEN_SHAKE;
+                style_stack[stack_size].style.fx_flags |= TEXT_FX_SHAKE;
                 stack_size++;
                 break;
 
             case TEXT_RICH_TAG_CLOSE_SHAKE:
-                if (stack_size > 1)
+                if (stack_size > 1 &&
+                    style_stack[stack_size - 1].kind == TEXT_RICH_TAG_OPEN_SHAKE) {
                     stack_size--;
+                }
                 break;
 
             default:
@@ -277,7 +307,7 @@ int text_rich_parse(const char *markup_utf8,
                            &run_count,
                            segment_start,
                            p,
-                           &style_stack[stack_size - 1]) != 0) {
+                           &style_stack[stack_size - 1].style) != 0) {
         return -1;
     }
 

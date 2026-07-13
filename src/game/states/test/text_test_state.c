@@ -29,6 +29,42 @@
 #define TEXT_TEST_REVEAL_SECONDS_PER_GLYPH 0.03f
 #endif
 
+#ifndef TEXT_TEST_SHAKE_AMP_STEP
+#define TEXT_TEST_SHAKE_AMP_STEP   0.25f
+#endif
+
+#ifndef TEXT_TEST_SHAKE_AMP_MIN 
+#define TEXT_TEST_SHAKE_AMP_MIN    0.0f
+#endif
+
+#ifndef TEXT_TEST_SHAKE_AMP_MAX  
+#define TEXT_TEST_SHAKE_AMP_MAX    4.0f
+#endif
+
+#ifndef TEXT_TEST_SHAKE_SPEED_STEP 
+#define TEXT_TEST_SHAKE_SPEED_STEP 0.25f
+#endif
+
+#ifndef TEXT_TEST_SHAKE_SPEED_MIN 
+#define TEXT_TEST_SHAKE_SPEED_MIN  0.25f
+#endif
+
+#ifndef TEXT_TEST_SHAKE_SPEED_MAX 
+#define TEXT_TEST_SHAKE_SPEED_MAX  4.0f
+#endif
+
+#ifndef TEXT_TEST_REVEAL_SPEED_MIN 
+#define TEXT_TEST_REVEAL_SPEED_MIN  0.25f
+#endif
+
+#ifndef TEXT_TEST_REVEAL_SPEED_MAX
+#define TEXT_TEST_REVEAL_SPEED_MAX 4.0f
+#endif
+
+#ifndef TEXT_TEST_REVEAL_SPEED_STEP
+#define TEXT_TEST_REVEAL_SPEED_STEP   0.25f
+#endif
+
 #ifndef TEXT_TEST_BOX_X
 #define TEXT_TEST_BOX_X 32
 #endif
@@ -52,10 +88,15 @@ typedef struct text_test_state_data {
     text_layout_glyph_t *glyphs;
     text_layout_item_t *rich_items;
     text_layout_line_t *lines;
+    text_rich_draw_params_t rich_draw_params;
 
     int use_yellow;
     int font_bound_logged;
     int test_case_index;
+
+    float shake_amp_scale;
+    float shake_speed_scale;
+    float reveal_speed_scale;
 } text_test_state_data_t;
 
 typedef enum text_test_case_kind {
@@ -119,6 +160,23 @@ static const char s_rich_unclosed_color[] =
 static const char s_rich_reveal_words_basic[] =
     "[color=#FFFF00]One[/color] two [shake]three[/shake] four";
 
+static const char s_rich_color_yellow_ok[] =
+    "[color=#FFFF00]ok[/color]";
+
+static const char s_rich_shake_ok[] =
+    "[shake]ok[/shake]";
+
+static const char s_rich_yello_shake_nested[] =
+    "[color=#FFFF00][shake]nested[/shake][/color]";
+
+static const char s_rich_mismatch[] =
+    "[color=#FFFF00][shake]mismatch[/color][/shake]";
+
+static const char s_rich_leading_close[] =
+    "[/color] leading close";
+
+    //Потом надо будет добавить возможность изменения интенсивности shake без перестройки текста.
+
 static const text_test_case_t s_text_test_cases[] = {
     { "demo_word",            TEXT_TEST_CASE_PLAIN, TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_demo_word },
     { "long_mixed_char",      TEXT_TEST_CASE_PLAIN, TEXT_WRAP_CHAR, TEXT_REVEAL_GLYPH, s_long_mixed_char },
@@ -126,14 +184,20 @@ static const text_test_case_t s_text_test_cases[] = {
     { "char_cyrillic_long",   TEXT_TEST_CASE_PLAIN, TEXT_WRAP_CHAR, TEXT_REVEAL_GLYPH, s_char_cyrillic_long },
     { "word_cyrillic_mixed",  TEXT_TEST_CASE_PLAIN, TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_word_cyrillic_mixed },
 
-    { "rich_color_rgb",        TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgb },
-    { "rich_color_rgba",       TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgba },
-    { "rich_shake_basic",      TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_shake_basic },
-    { "rich_color_shake",      TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH,  s_rich_color_and_shake },
-    { "rich_shake_in_color",   TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_nested_shake_in_color },
-    { "rich_adjacent_tags",    TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH,  s_rich_adjacent_tags },
-    { "rich_unclosed_tag",     TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_unclosed_color },
-    { "rich_reveal_words",     TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_reveal_words_basic },
+    { "rich_color_rgb",       TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgb },
+    { "rich_color_rgba",      TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgba },
+    { "rich_shake_basic",     TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_shake_basic },
+    { "rich_color_shake",     TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_and_shake },
+    { "rich_shake_in_color",  TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_nested_shake_in_color },
+    { "rich_adjacent_tags",   TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_adjacent_tags },
+    { "rich_unclosed_tag",    TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_unclosed_color },
+    { "rich_reveal_words",    TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_reveal_words_basic },
+    { "rich_yellow_ok",       TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_yellow_ok },
+    { "rich_shake_ok",        TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_shake_ok },
+    { "rich_shake_nested",    TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_yello_shake_nested },
+    { "rich_mismatch",        TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_mismatch },
+    { "rich_leading_close",   TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_leading_close },
+
 };
 
 static int text_test_case_count(void)
@@ -313,6 +377,8 @@ static int text_test_enter(game_app_t *app, void *userdata)
         return -1;
     }
 
+    text_rich_draw_params_init(&data->rich_draw_params);
+    
     game_app_set_state_userdata(app, data);
 
     data->glyphs = (text_layout_glyph_t *)mem_arena_calloc(
@@ -360,6 +426,12 @@ static int text_test_enter(game_app_t *app, void *userdata)
     data->use_yellow = 0;
     data->font_bound_logged = 0;
     data->test_case_index = 0;
+    data->shake_amp_scale = 1.0f;
+    data->shake_speed_scale = 1.0f;
+    data->reveal_speed_scale = 1.0f;
+
+    text_block_set_shake_scale(&data->block, data->shake_amp_scale);
+    text_block_set_shake_speed_scale(&data->block, data->shake_speed_scale);
 
     text_block_set_box(&data->block,
         TEXT_TEST_BOX_X,
@@ -443,12 +515,12 @@ static void text_test_update(game_app_t *app, float dt)
 
         if (!data->font_bound_logged) {
             LOGLN("[state:text_test] font bound glyphs=%u kernings=%u w=%d h=%d align_h=%s align_v=%s",
-                (unsigned int)font->glyph_count,
-                (unsigned int)font->kerning_count,
-                (int)text_block_width(&data->block),
-                (int)text_block_height(&data->block),
-                text_test_align_h_name(data->block.align_h),
-                text_test_align_v_name(data->block.align_v));
+                  (unsigned int)font->glyph_count,
+                  (unsigned int)font->kerning_count,
+                  (int)text_block_width(&data->block),
+                  (int)text_block_height(&data->block),
+                  text_test_align_h_name(data->block.align_h),
+                  text_test_align_v_name(data->block.align_v));
             data->font_bound_logged = 1;
         }
     }
@@ -518,13 +590,77 @@ static void text_test_update(game_app_t *app, float dt)
             input_consume();
         }
 
-        if (input_button_pressed(INPUT_BUTTON_R2)) {
-            if (text_test_cycle_case(data, -1) != 0)
-                LOGLN("[state:text_test] refresh failed after R2");
-            else {
-                const text_test_case_t *tc = text_test_current_case(data);
-                LOGLN("[state:text_test] case -> %s", tc ? tc->name : "unknown");
+        if (input_button_pressed(INPUT_BUTTON_L2)) {
+            if (input_button_down(INPUT_BUTTON_TRIANGLE)) {
+                data->shake_speed_scale -= TEXT_TEST_SHAKE_SPEED_STEP;
+                if (data->shake_speed_scale < TEXT_TEST_SHAKE_SPEED_MIN)
+                    data->shake_speed_scale = TEXT_TEST_SHAKE_SPEED_MIN;
+
+                text_block_set_shake_speed_scale(&data->block, data->shake_speed_scale);
+
+                LOGLN("[state:text_test] shake speed scale -> %.2f",
+                      data->shake_speed_scale);
+            } else {
+                data->shake_amp_scale -= TEXT_TEST_SHAKE_AMP_STEP;
+                if (data->shake_amp_scale < TEXT_TEST_SHAKE_AMP_MIN)
+                    data->shake_amp_scale = TEXT_TEST_SHAKE_AMP_MIN;
+
+                text_block_set_shake_scale(&data->block, data->shake_amp_scale);
+
+                LOGLN("[state:text_test] shake amp scale -> %.2f",
+                      data->shake_amp_scale);
             }
+
+            input_consume();
+        }
+
+        if (input_button_pressed(INPUT_BUTTON_R2)) {
+            if (input_button_down(INPUT_BUTTON_TRIANGLE)) {
+                data->shake_speed_scale += TEXT_TEST_SHAKE_SPEED_STEP;
+                if (data->shake_speed_scale > TEXT_TEST_SHAKE_SPEED_MAX)
+                    data->shake_speed_scale = TEXT_TEST_SHAKE_SPEED_MAX;
+
+                text_block_set_shake_speed_scale(&data->block, data->shake_speed_scale);
+
+                LOGLN("[state:text_test] shake speed scale -> %.2f",
+                      data->shake_speed_scale);
+            } else {
+                data->shake_amp_scale += TEXT_TEST_SHAKE_AMP_STEP;
+                if (data->shake_amp_scale > TEXT_TEST_SHAKE_AMP_MAX)
+                    data->shake_amp_scale = TEXT_TEST_SHAKE_AMP_MAX;
+
+                text_block_set_shake_scale(&data->block, data->shake_amp_scale);
+
+                LOGLN("[state:text_test] shake amp scale -> %.2f",
+                      data->shake_amp_scale);
+            }
+
+            input_consume();
+        }
+
+        if (input_button_pressed(INPUT_BUTTON_RIGHT)) {
+            
+            data->reveal_speed_scale += TEXT_TEST_REVEAL_SPEED_STEP;
+            if (data->reveal_speed_scale > TEXT_TEST_REVEAL_SPEED_MAX)
+                data->reveal_speed_scale = TEXT_TEST_REVEAL_SPEED_MAX;
+
+            text_block_set_reveal_speed_scale(&data->block, data->reveal_speed_scale);
+
+            LOGLN("[state:text_test] reveal speed scale -> %.2f",
+                data->reveal_speed_scale);
+
+            input_consume();
+        }
+
+        if (input_button_pressed(INPUT_BUTTON_LEFT)) {
+            data->reveal_speed_scale -= TEXT_TEST_REVEAL_SPEED_STEP;
+            if (data->reveal_speed_scale < TEXT_TEST_REVEAL_SPEED_MIN)
+                data->reveal_speed_scale = TEXT_TEST_REVEAL_SPEED_MIN;
+
+            text_block_set_reveal_speed_scale(&data->block, data->reveal_speed_scale);
+
+            LOGLN("[state:text_test] reveal speed scale -> %.2f",
+                data->reveal_speed_scale);
 
             input_consume();
         }

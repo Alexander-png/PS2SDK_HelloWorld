@@ -147,6 +147,7 @@ void text_block_init(text_block_t *tb,
 
     text_reveal_state_init(&tb->reveal, seconds_per_glyph);
     tb->reveal_mode = TEXT_REVEAL_GLYPH;
+    text_rich_draw_params_init(&tb->rich_draw_params);
 
     tb->font = NULL;
     tb->text_utf8 = NULL;
@@ -270,6 +271,62 @@ void text_block_set_wrap_mode(text_block_t *tb, text_wrap_mode_t wrap_mode)
 
     tb->params.wrap_mode = wrap_mode;
     text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
+}
+
+void text_block_set_shake_scale(text_block_t *tb, float amp_scale)
+{
+    if (!tb)
+        return;
+
+    if (amp_scale < 0.0f)
+        amp_scale = 0.0f;
+
+    tb->rich_draw_params.shake_amp_scale_x = amp_scale;
+    tb->rich_draw_params.shake_amp_scale_y = amp_scale;
+}
+
+void text_block_set_shake_scale_xy(text_block_t *tb, float amp_scale_x, float amp_scale_y)
+{
+    if (!tb)
+        return;
+
+    if (amp_scale_x < 0.0f)
+        amp_scale_x = 0.0f;
+    if (amp_scale_y < 0.0f)
+        amp_scale_y = 0.0f;
+
+    tb->rich_draw_params.shake_amp_scale_x = amp_scale_x;
+    tb->rich_draw_params.shake_amp_scale_y = amp_scale_y;
+}
+
+void text_block_set_shake_speed_scale(text_block_t *tb, float speed_scale)
+{
+    if (!tb)
+        return;
+
+    if (speed_scale <= 0.0f)
+        speed_scale = 1.0f;
+
+    tb->rich_draw_params.shake_speed_scale = speed_scale;
+}
+
+void text_block_reset_rich_draw_params(text_block_t *tb)
+{
+    if (!tb)
+        return;
+
+    text_rich_draw_params_init(&tb->rich_draw_params);
+}
+
+void text_block_set_reveal_speed_scale(text_block_t *tb, float speed_scale)
+{
+    if (!tb)
+        return;
+
+    if (speed_scale <= 0.0f)
+        speed_scale = 1.0f;
+
+    tb->reveal.speed_scale = speed_scale;
 }
 
 void text_block_set_style(text_block_t *tb, const text_style_t *style)
@@ -466,9 +523,10 @@ void text_block_draw(const text_block_t *tb)
     if (!tb->use_rich_text) {
         text_draw_layout(tb->font, &tb->layout, &tb->reveal);
     } else {
-        text_rich_draw_layout(tb->font,
-                      &tb->rich_layout,
-                      &tb->reveal,
-                      tb->effect_time_seconds);
+        text_rich_draw_layout_ex(tb->font,
+                         &tb->rich_layout,
+                         &tb->reveal,
+                         tb->effect_time_seconds,
+                         &tb->rich_draw_params);
     }
 }

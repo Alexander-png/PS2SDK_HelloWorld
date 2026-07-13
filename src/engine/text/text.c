@@ -1227,14 +1227,15 @@ int text_layout_build_boxed(text_layout_t *layout,
     return 0;
 }
 
-void text_reveal_state_init(text_reveal_state_t *state, float seconds_per_glyph)
+void text_reveal_state_init(text_reveal_state_t *state, float seconds_per_unit)
 {
     if (!state)
         return;
 
     state->reveal_timer = 0.0f;
     state->visible_units = 0;
-    state->seconds_per_glyph = seconds_per_glyph;
+    state->seconds_per_unit = seconds_per_unit;
+    state->speed_scale = 1.0f;
 }
 
 void text_reveal_state_reset(text_reveal_state_t *state)
@@ -1246,32 +1247,49 @@ void text_reveal_state_reset(text_reveal_state_t *state)
     state->visible_units = 0;
 }
 
-void text_reveal_state_finish(text_reveal_state_t *state, unsigned short total_glyphs)
+void text_reveal_state_finish(text_reveal_state_t *state, unsigned short total_units)
 {
     if (!state)
         return;
 
     state->reveal_timer = 0.0f;
-    state->visible_units = total_glyphs;
+    state->visible_units = total_units;
 }
 
-void text_reveal_state_update(text_reveal_state_t *state,
-                              unsigned short total_glyphs,
-                              float dt)
+void text_reveal_state_set_speed_scale(text_reveal_state_t *state, float scale)
 {
     if (!state)
         return;
 
-    if (state->seconds_per_glyph <= 0.0f) {
-        state->visible_units = total_glyphs;
+    if (scale <= 0.0f)
+        scale = 1.0f;
+
+    state->speed_scale = scale;
+}
+
+void text_reveal_state_update(text_reveal_state_t *state,
+                              unsigned short total_units,
+                              float dt)
+{
+    float step;
+
+    if (!state)
+        return;
+
+    step = state->seconds_per_unit;
+    if (step <= 0.0f) {
+        state->visible_units = total_units;
         return;
     }
 
+    if (state->speed_scale > 0.0f)
+        step /= state->speed_scale;
+
     state->reveal_timer += dt;
 
-    while (state->visible_units < total_glyphs &&
-           state->reveal_timer >= state->seconds_per_glyph) {
-        state->reveal_timer -= state->seconds_per_glyph;
+    while (state->visible_units < total_units &&
+           state->reveal_timer >= step) {
+        state->reveal_timer -= step;
         state->visible_units++;
     }
 }

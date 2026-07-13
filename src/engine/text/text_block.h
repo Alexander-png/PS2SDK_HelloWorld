@@ -47,6 +47,7 @@ typedef struct text_block {
     text_layout_params_t params;
     text_reveal_state_t reveal;
     text_reveal_mode_t reveal_mode;
+    text_rich_draw_params_t rich_draw_params;
 
     text_block_box_t box;
     text_align_h_t align_h;
@@ -76,6 +77,12 @@ void text_block_set_box(text_block_t *tb, short x, short y, short w, short h);
 void text_block_set_align_h(text_block_t *tb, text_align_h_t align_h);
 void text_block_set_align_v(text_block_t *tb, text_align_v_t align_v);
 void text_block_set_wrap_mode(text_block_t *tb, text_wrap_mode_t wrap_mode);
+void text_block_set_shake_scale(text_block_t *tb, float amp_scale);
+void text_block_set_shake_scale_xy(text_block_t *tb, float amp_scale_x, float amp_scale_y);
+void text_block_set_shake_speed_scale(text_block_t *tb, float speed_scale);
+void text_block_reset_rich_draw_params(text_block_t *tb);
+
+void text_block_set_reveal_speed_scale(text_block_t *tb, float speed_scale);
 
 void text_block_set_style(text_block_t *tb, const text_style_t *style);
 

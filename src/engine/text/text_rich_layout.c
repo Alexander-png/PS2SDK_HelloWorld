@@ -154,6 +154,16 @@ void text_rich_layout_init(text_rich_layout_t *layout,
     layout->line_capacity = line_capacity;
 }
 
+void text_rich_draw_params_init(text_rich_draw_params_t *params)
+{
+    if (!params)
+        return;
+
+    params->shake_amp_scale_x = 1.0f;
+    params->shake_amp_scale_y = 1.0f;
+    params->shake_speed_scale = 1.0f;
+}
+
 void text_rich_layout_reset(text_rich_layout_t *layout)
 {
     if (!layout)
@@ -299,6 +309,16 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
             item->shake_amp_x = run->style.shake_amp_x;
             item->shake_amp_y = run->style.shake_amp_y;
             item->shake_speed = run->style.shake_speed;
+            item->kind = TEXT_LAYOUT_ITEM_GLYPH;
+
+            item->sprite_tex_id = -1;
+            item->sprite_u = 0;
+            item->sprite_v = 0;
+            item->sprite_w = 0;
+            item->sprite_h = 0;
+            item->sprite_xoffset = 0;
+            item->sprite_yoffset = 0;
+            item->sprite_xadvance = 0;
 
             pen_x += glyph->xadvance + params->style.tracking;
             line_width = (short)(pen_x - line_origin_x);
@@ -332,8 +352,20 @@ void text_rich_draw_layout(const text_font_t *font,
                            const text_reveal_state_t *reveal,
                            float time_seconds)
 {
+    text_rich_draw_layout_ex(font, layout, reveal, time_seconds, NULL);
+}
+
+void text_rich_draw_layout_ex(const text_font_t *font,
+                              const text_rich_layout_t *layout,
+                              const text_reveal_state_t *reveal,
+                              float time_seconds,
+                              const text_rich_draw_params_t *draw_params)
+{
     unsigned short i;
     unsigned short visible_groups;
+    float shake_amp_scale_x = 1.0f;
+    float shake_amp_scale_y = 1.0f;
+    float shake_speed_scale = 1.0f;
 
     if (!font || !layout)
         return;
@@ -350,6 +382,15 @@ void text_rich_draw_layout(const text_font_t *font,
     if (!layout->lines && layout->line_count > 0)
         return;
 
+    if (draw_params) {
+        shake_amp_scale_x = draw_params->shake_amp_scale_x;
+        shake_amp_scale_y = draw_params->shake_amp_scale_y;
+        shake_speed_scale = draw_params->shake_speed_scale;
+
+        if (shake_speed_scale <= 0.0f)
+            shake_speed_scale = 1.0f;
+    }
+
     visible_groups = layout->reveal_group_count;
 
     if (reveal && reveal->visible_units < visible_groups)
@@ -357,12 +398,11 @@ void text_rich_draw_layout(const text_font_t *font,
 
     for (i = 0; i < layout->item_count; ++i) {
         const text_layout_item_t *item = &layout->items[i];
-        const text_glyph_t *glyph = item->glyph;
         gfx2d_draw_params_t params;
         float draw_x;
         float draw_y;
 
-        if (!glyph || !item->visible)
+        if (!item->visible)
             continue;
 
         if (layout->reveal_group_count > 0 && item->reveal_group >= visible_groups)
@@ -372,36 +412,72 @@ void text_rich_draw_layout(const text_font_t *font,
         draw_y = (float)item->y;
 
         if (item->fx_flags & TEXT_FX_SHAKE) {
-            float nx = text_rich_noise_01((int)i * 2 + 0, time_seconds * item->shake_speed) * 2.0f - 1.0f;
-            float ny = text_rich_noise_01((int)i * 2 + 1, time_seconds * item->shake_speed) * 2.0f - 1.0f;
-            draw_x += nx * item->shake_amp_x;
-            draw_y += ny * item->shake_amp_y;
+            float nx = text_rich_noise_01((int)i * 2 + 0,
+                                          time_seconds * item->shake_speed * shake_speed_scale) * 2.0f - 1.0f;
+            float ny = text_rich_noise_01((int)i * 2 + 1,
+                                          time_seconds * item->shake_speed * shake_speed_scale) * 2.0f - 1.0f;
+            draw_x += nx * item->shake_amp_x * shake_amp_scale_x;
+            draw_y += ny * item->shake_amp_y * shake_amp_scale_y;
         }
 
-        params = gfx2d_sprite_params(draw_x,
-                                     draw_y,
-                                     (float)glyph->atlas_w,
-                                     (float)glyph->atlas_h);
+        if (item->kind == TEXT_LAYOUT_ITEM_GLYPH) {
+            const text_glyph_t *glyph = item->glyph;
 
-        params.layer = item->layer;
+            if (!glyph)
+                continue;
 
-        params.anchor_h = GFX2D_HALIGN_LEFT;
-        params.anchor_v = GFX2D_VALIGN_TOP;
-        params.origin_h = GFX2D_HALIGN_LEFT;
-        params.origin_v = GFX2D_VALIGN_TOP;
-        params.skew_origin_h = GFX2D_HALIGN_LEFT;
-        params.skew_origin_v = GFX2D_VALIGN_TOP;
+            params = gfx2d_sprite_params(draw_x,
+                                         draw_y,
+                                         (float)glyph->atlas_w,
+                                         (float)glyph->atlas_h);
 
-        params.color.r = item->color.r;
-        params.color.g = item->color.g;
-        params.color.b = item->color.b;
-        params.color.a = item->color.a;
+            params.layer = item->layer;
+            params.anchor_h = GFX2D_HALIGN_LEFT;
+            params.anchor_v = GFX2D_VALIGN_TOP;
+            params.origin_h = GFX2D_HALIGN_LEFT;
+            params.origin_v = GFX2D_VALIGN_TOP;
+            params.skew_origin_h = GFX2D_HALIGN_LEFT;
+            params.skew_origin_v = GFX2D_VALIGN_TOP;
 
-        gfx2d_draw_texture_region(font->tex_id,
-                                  &params,
-                                  (float)glyph->atlas_x,
-                                  (float)glyph->atlas_y,
-                                  (float)glyph->atlas_w,
-                                  (float)glyph->atlas_h);
+            params.color.r = item->color.r;
+            params.color.g = item->color.g;
+            params.color.b = item->color.b;
+            params.color.a = item->color.a;
+
+            gfx2d_draw_texture_region(font->tex_id,
+                                      &params,
+                                      (float)glyph->atlas_x,
+                                      (float)glyph->atlas_y,
+                                      (float)glyph->atlas_w,
+                                      (float)glyph->atlas_h);
+        } else if (item->kind == TEXT_LAYOUT_ITEM_SPRITE) {
+            if (item->sprite_tex_id < 0)
+                continue;
+
+            params = gfx2d_sprite_params(draw_x,
+                                         draw_y,
+                                         (float)item->sprite_w,
+                                         (float)item->sprite_h);
+
+            params.layer = item->layer;
+            params.anchor_h = GFX2D_HALIGN_LEFT;
+            params.anchor_v = GFX2D_VALIGN_TOP;
+            params.origin_h = GFX2D_HALIGN_LEFT;
+            params.origin_v = GFX2D_VALIGN_TOP;
+            params.skew_origin_h = GFX2D_HALIGN_LEFT;
+            params.skew_origin_v = GFX2D_VALIGN_TOP;
+
+            params.color.r = item->color.r;
+            params.color.g = item->color.g;
+            params.color.b = item->color.b;
+            params.color.a = item->color.a;
+
+            gfx2d_draw_texture_region(item->sprite_tex_id,
+                                      &params,
+                                      (float)item->sprite_u,
+                                      (float)item->sprite_v,
+                                      (float)item->sprite_w,
+                                      (float)item->sprite_h);
+        }
     }
 }

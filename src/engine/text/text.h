@@ -95,7 +95,8 @@ typedef struct text_layout {
 typedef struct text_reveal_state {
     float reveal_timer;
     unsigned short visible_units;
-    float seconds_per_glyph;
+    float seconds_per_unit;
+    float speed_scale;
 } text_reveal_state_t;
 
 typedef enum text_wrap_mode {
@@ -150,9 +151,10 @@ int  text_layout_build_boxed(text_layout_t *layout,
 
 void text_reveal_state_init(text_reveal_state_t *state, float seconds_per_glyph);
 void text_reveal_state_reset(text_reveal_state_t *state);
-void text_reveal_state_finish(text_reveal_state_t *state, unsigned short total_glyphs);
+void text_reveal_state_finish(text_reveal_state_t *state, unsigned short total_units);
+void text_reveal_state_set_speed_scale(text_reveal_state_t *state, float scale);
 void text_reveal_state_update(text_reveal_state_t *state,
-                              unsigned short total_glyphs,
+                              unsigned short total_units,
                               float dt);
 
 void text_draw_layout(const text_font_t *font,
