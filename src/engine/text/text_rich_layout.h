@@ -36,11 +36,10 @@ typedef struct text_layout_item {
     unsigned char visible;
 
     unsigned short reveal_group;
+    unsigned int glyph_index;
 
-    unsigned short fx_flags;
-    float shake_amp_x;
-    float shake_amp_y;
-    float shake_speed;
+    text_rich_effect_params_t effects;
+    unsigned int effect_seed;
 } text_layout_item_t;
 
 typedef struct text_rich_layout {
@@ -62,6 +61,10 @@ typedef struct text_rich_draw_params {
     float shake_amp_scale_x;
     float shake_amp_scale_y;
     float shake_speed_scale;
+
+    float wave_amp_scale_x;
+    float wave_amp_scale_y;
+    float wave_speed_scale;
 } text_rich_draw_params_t;
 
 void text_rich_layout_init(text_rich_layout_t *layout,

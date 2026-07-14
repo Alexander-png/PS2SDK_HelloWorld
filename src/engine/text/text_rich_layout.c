@@ -6,6 +6,12 @@
 #include <string.h>
 #include <stddef.h>
 
+typedef struct text_rich_resolved_draw_state {
+    float x;
+    float y;
+    text_color_t color;
+} text_rich_resolved_draw_state_t;
+
 static int text_rich_utf8_decode_bounded(const char **p,
                                          const char *end,
                                          text_codepoint_t *out_codepoint)
@@ -138,6 +144,85 @@ static float text_rich_noise_01(int seed, float t)
     return v - floorf(v);
 }
 
+static void text_rich_resolve_draw_state(
+    const text_layout_item_t *item,
+    float time_seconds,
+    const text_rich_draw_params_t *draw_params,
+    text_rich_resolved_draw_state_t *out_state)
+{
+    float x;
+    float y;
+    text_color_t color;
+
+    float shake_amp_scale_x = 1.0f;
+    float shake_amp_scale_y = 1.0f;
+    float shake_speed_scale = 1.0f;
+    float wave_amp_scale_x = 1.0f;
+    float wave_amp_scale_y = 1.0f;
+    float wave_speed_scale = 1.0f;
+
+    if (!item || !out_state)
+        return;
+
+    if (draw_params) {
+        shake_amp_scale_x = draw_params->shake_amp_scale_x;
+        shake_amp_scale_y = draw_params->shake_amp_scale_y;
+        shake_speed_scale = draw_params->shake_speed_scale;
+        wave_amp_scale_x = draw_params->wave_amp_scale_x;
+        wave_amp_scale_y = draw_params->wave_amp_scale_y;
+        wave_speed_scale = draw_params->wave_speed_scale;
+
+        if (shake_speed_scale <= 0.0f)
+            shake_speed_scale = 1.0f;
+        if (wave_speed_scale <= 0.0f)
+            wave_speed_scale = 1.0f;
+    }
+
+    x = (float)item->x;
+    y = (float)item->y;
+    color = item->color;
+
+    if (item->effects.flags & TEXT_RICH_EFFECT_SHAKE) {
+        float nx = text_rich_noise_01((int)item->effect_seed * 2 + 0,
+                                      time_seconds * item->effects.speed * shake_speed_scale) * 2.0f - 1.0f;
+        float ny = text_rich_noise_01((int)item->effect_seed * 2 + 1,
+                                      time_seconds * item->effects.speed * shake_speed_scale) * 2.0f - 1.0f;
+
+        x += nx * item->effects.amp_x * shake_amp_scale_x;
+        y += ny * item->effects.amp_y * shake_amp_scale_y;
+    }
+
+    if (item->effects.flags & TEXT_RICH_EFFECT_WAVE) {
+        float phase = item->effects.phase + (float)item->glyph_index * 0.35f;
+
+        x += sinf(time_seconds * item->effects.speed * wave_speed_scale + phase) *
+             item->effects.amp_x * wave_amp_scale_x;
+
+        y += sinf(time_seconds * item->effects.speed * wave_speed_scale + phase) *
+             item->effects.amp_y * wave_amp_scale_y;
+    }
+
+    out_state->x = x;
+    out_state->y = y;
+    out_state->color = color;
+}
+
+static int text_rich_item_is_revealed(const text_rich_layout_t *layout,
+                                      const text_layout_item_t *item,
+                                      unsigned short visible_groups)
+{
+    if (!layout || !item)
+        return 0;
+
+    if (!item->visible)
+        return 0;
+
+    if (layout->reveal_group_count > 0 && item->reveal_group >= visible_groups)
+        return 0;
+
+    return 1;
+}
+
 void text_rich_layout_init(text_rich_layout_t *layout,
                            text_layout_item_t *item_buffer,
                            unsigned short item_capacity,
@@ -162,6 +247,10 @@ void text_rich_draw_params_init(text_rich_draw_params_t *params)
     params->shake_amp_scale_x = 1.0f;
     params->shake_amp_scale_y = 1.0f;
     params->shake_speed_scale = 1.0f;
+
+    params->wave_amp_scale_x = 1.0f;
+    params->wave_amp_scale_y = 1.0f;
+    params->wave_speed_scale = 1.0f;
 }
 
 void text_rich_layout_reset(text_rich_layout_t *layout)
@@ -296,6 +385,7 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
                 }
             }
 
+            unsigned int item_index = layout->item_count;
             item = &layout->items[layout->item_count++];
             item->glyph = glyph;
             item->codepoint = cp;
@@ -305,10 +395,10 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
             item->layer = params->style.layer;
             item->visible = 1;
             item->reveal_group = current_group;
-            item->fx_flags = run->style.fx_flags;
-            item->shake_amp_x = run->style.shake_amp_x;
-            item->shake_amp_y = run->style.shake_amp_y;
-            item->shake_speed = run->style.shake_speed;
+            item->effects = run->style.effects;
+            text_rich_effect_params_apply_defaults(&item->effects);
+            item->effect_seed = item_index + 1;
+            item->glyph_index = item_index;
             item->kind = TEXT_LAYOUT_ITEM_GLYPH;
 
             item->sprite_tex_id = -1;
@@ -363,9 +453,6 @@ void text_rich_draw_layout_ex(const text_font_t *font,
 {
     unsigned short i;
     unsigned short visible_groups;
-    float shake_amp_scale_x = 1.0f;
-    float shake_amp_scale_y = 1.0f;
-    float shake_speed_scale = 1.0f;
 
     if (!font || !layout)
         return;
@@ -382,15 +469,6 @@ void text_rich_draw_layout_ex(const text_font_t *font,
     if (!layout->lines && layout->line_count > 0)
         return;
 
-    if (draw_params) {
-        shake_amp_scale_x = draw_params->shake_amp_scale_x;
-        shake_amp_scale_y = draw_params->shake_amp_scale_y;
-        shake_speed_scale = draw_params->shake_speed_scale;
-
-        if (shake_speed_scale <= 0.0f)
-            shake_speed_scale = 1.0f;
-    }
-
     visible_groups = layout->reveal_group_count;
 
     if (reveal && reveal->visible_units < visible_groups)
@@ -399,27 +477,17 @@ void text_rich_draw_layout_ex(const text_font_t *font,
     for (i = 0; i < layout->item_count; ++i) {
         const text_layout_item_t *item = &layout->items[i];
         gfx2d_draw_params_t params;
+        text_rich_resolved_draw_state_t ds;
         float draw_x;
         float draw_y;
 
-        if (!item->visible)
+        if (!text_rich_item_is_revealed(layout, item, visible_groups))
             continue;
 
-        if (layout->reveal_group_count > 0 && item->reveal_group >= visible_groups)
-            continue;
-
-        draw_x = (float)item->x;
-        draw_y = (float)item->y;
-
-        if (item->fx_flags & TEXT_FX_SHAKE) {
-            float nx = text_rich_noise_01((int)i * 2 + 0,
-                                          time_seconds * item->shake_speed * shake_speed_scale) * 2.0f - 1.0f;
-            float ny = text_rich_noise_01((int)i * 2 + 1,
-                                          time_seconds * item->shake_speed * shake_speed_scale) * 2.0f - 1.0f;
-            draw_x += nx * item->shake_amp_x * shake_amp_scale_x;
-            draw_y += ny * item->shake_amp_y * shake_amp_scale_y;
-        }
-
+        text_rich_resolve_draw_state(item, time_seconds, draw_params, &ds);
+        draw_x = ds.x;
+        draw_y = ds.y;
+        
         if (item->kind == TEXT_LAYOUT_ITEM_GLYPH) {
             const text_glyph_t *glyph = item->glyph;
 
@@ -439,10 +507,10 @@ void text_rich_draw_layout_ex(const text_font_t *font,
             params.skew_origin_h = GFX2D_HALIGN_LEFT;
             params.skew_origin_v = GFX2D_VALIGN_TOP;
 
-            params.color.r = item->color.r;
-            params.color.g = item->color.g;
-            params.color.b = item->color.b;
-            params.color.a = item->color.a;
+            params.color.r = ds.color.r;
+            params.color.g = ds.color.g;
+            params.color.b = ds.color.b;
+            params.color.a = ds.color.a;
 
             gfx2d_draw_texture_region(font->tex_id,
                                       &params,
@@ -467,10 +535,10 @@ void text_rich_draw_layout_ex(const text_font_t *font,
             params.skew_origin_h = GFX2D_HALIGN_LEFT;
             params.skew_origin_v = GFX2D_VALIGN_TOP;
 
-            params.color.r = item->color.r;
-            params.color.g = item->color.g;
-            params.color.b = item->color.b;
-            params.color.a = item->color.a;
+            params.color.r = ds.color.r;
+            params.color.g = ds.color.g;
+            params.color.b = ds.color.b;
+            params.color.a = ds.color.a;
 
             gfx2d_draw_texture_region(item->sprite_tex_id,
                                       &params,

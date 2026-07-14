@@ -65,6 +65,18 @@
 #define TEXT_TEST_REVEAL_SPEED_STEP   0.25f
 #endif
 
+#ifndef TEXT_TEST_WAVE_SCALE_MIN 
+#define TEXT_TEST_WAVE_SCALE_MIN  0.25f
+#endif
+
+#ifndef TEXT_TEST_WAVE_SCALE_MAX
+#define TEXT_TEST_WAVE_SCALE_MAX 4.0f
+#endif
+
+#ifndef TEXT_TEST_WAVE_SCALE_STEP
+#define TEXT_TEST_WAVE_SCALE_STEP   0.25f
+#endif
+
 #ifndef TEXT_TEST_BOX_X
 #define TEXT_TEST_BOX_X 32
 #endif
@@ -97,6 +109,7 @@ typedef struct text_test_state_data {
     float shake_amp_scale;
     float shake_speed_scale;
     float reveal_speed_scale;
+    float wave_scale;
 } text_test_state_data_t;
 
 typedef enum text_test_case_kind {
@@ -175,7 +188,17 @@ static const char s_rich_mismatch[] =
 static const char s_rich_leading_close[] =
     "[/color] leading close";
 
-    //Потом надо будет добавить возможность изменения интенсивности shake без перестройки текста.
+static const char s_rich_plain[] =
+    "[color=#ffd000]Plain [/color]";
+
+static const char s_rich_shake[] =
+    "[shake]Shake [/shake]";
+
+static const char s_rich_wave[] =
+    "[wave]Wave, волна, волнуется [/wave]";
+
+static const char s_rich_wave_shake[] =
+    "[shake][wave]Both[/wave][/shake]";
 
 static const text_test_case_t s_text_test_cases[] = {
     { "demo_word",            TEXT_TEST_CASE_PLAIN, TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_demo_word },
@@ -197,6 +220,11 @@ static const text_test_case_t s_text_test_cases[] = {
     { "rich_shake_nested",    TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_yello_shake_nested },
     { "rich_mismatch",        TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_mismatch },
     { "rich_leading_close",   TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_leading_close },
+
+    { "rich_plain",           TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_plain },
+    { "rich_shake",           TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_shake },
+    { "rich_wave",            TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_wave },
+    { "rich_wave_shake",      TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_wave_shake },
 
 };
 
@@ -313,6 +341,7 @@ static int text_test_refresh_block(text_test_state_data_t *data)
 
     text_test_apply_case(data);
     text_test_apply_style(data);
+    text_block_reveal_reset(&data->block);
 
     if (text_block_refresh(&data->block) != 0) {
         LOGLN("[state:text_test] text_block_refresh failed case=%s kind=%s",
@@ -429,6 +458,7 @@ static int text_test_enter(game_app_t *app, void *userdata)
     data->shake_amp_scale = 1.0f;
     data->shake_speed_scale = 1.0f;
     data->reveal_speed_scale = 1.0f;
+    data->wave_scale = 1.0f;
 
     text_block_set_shake_scale(&data->block, data->shake_amp_scale);
     text_block_set_shake_speed_scale(&data->block, data->shake_speed_scale);
@@ -661,6 +691,32 @@ static void text_test_update(game_app_t *app, float dt)
 
             LOGLN("[state:text_test] reveal speed scale -> %.2f",
                 data->reveal_speed_scale);
+
+            input_consume();
+        }
+
+        if (input_button_pressed(INPUT_BUTTON_UP)) {
+            data->wave_scale += TEXT_TEST_WAVE_SCALE_STEP;
+            if (data->wave_scale > TEXT_TEST_WAVE_SCALE_MAX)
+                data->wave_scale = TEXT_TEST_WAVE_SCALE_MAX;
+
+            text_block_set_wave_scale(&data->block, data->wave_scale);
+
+            LOGLN("[state:text_test] wave scale -> %.2f",
+                data->wave_scale);
+
+            input_consume();
+        }
+
+        if (input_button_pressed(INPUT_BUTTON_DOWN)) {
+            data->wave_scale -= TEXT_TEST_WAVE_SCALE_STEP;
+            if (data->wave_scale < TEXT_TEST_WAVE_SCALE_MIN)
+                data->wave_scale = TEXT_TEST_WAVE_SCALE_MIN;
+
+            text_block_set_wave_scale(&data->block, data->wave_scale);
+
+            LOGLN("[state:text_test] wave scale -> %.2f",
+                data->wave_scale);
 
             input_consume();
         }

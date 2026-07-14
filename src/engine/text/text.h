@@ -74,7 +74,7 @@ typedef struct text_layout_glyph {
 } text_layout_glyph_t;
 
 typedef struct text_layout_line {
-    unsigned short first_glyph;
+    unsigned short first_glyph; // rename glyph to item
     unsigned short glyph_count;
     short width;
 } text_layout_line_t;

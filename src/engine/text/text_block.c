@@ -182,6 +182,7 @@ void text_block_set_text(text_block_t *tb, const char *utf8_text)
 
     tb->text_utf8 = utf8_text;
     tb->use_rich_text = 0;
+    text_reveal_state_reset(&tb->reveal);
     text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
 }
 
@@ -192,6 +193,7 @@ void text_block_set_rich_text(text_block_t *tb, const char *markup_utf8)
 
     tb->rich_text_utf8 = markup_utf8;
     tb->use_rich_text = 1;
+    text_reveal_state_reset(&tb->reveal);
     text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
 }
 
@@ -204,6 +206,7 @@ void text_block_set_reveal_mode(text_block_t *tb, text_reveal_mode_t mode)
         return;
 
     tb->reveal_mode = mode;
+    text_reveal_state_reset(&tb->reveal);
     text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT);
 }
 
@@ -323,10 +326,48 @@ void text_block_set_reveal_speed_scale(text_block_t *tb, float speed_scale)
     if (!tb)
         return;
 
-    if (speed_scale <= 0.0f)
-        speed_scale = 1.0f;
+    if (speed_scale < 0.0f)
+        speed_scale = 0.0f;
 
     tb->reveal.speed_scale = speed_scale;
+}
+
+void text_block_set_wave_scale(text_block_t *tb, float amp_scale)
+{
+    if (!tb)
+        return;
+
+    if (amp_scale < 0.0f)
+        amp_scale = 0.0f;
+    
+    tb->rich_draw_params.wave_amp_scale_x = amp_scale;
+    tb->rich_draw_params.wave_amp_scale_y = amp_scale;
+}
+
+void text_block_set_wave_scale_xy(text_block_t *tb, float amp_scale_x, float amp_scale_y)
+{
+    if (!tb)
+        return;
+
+    if (amp_scale_x < 0.0f)
+        amp_scale_x = 0.0f;
+
+    if (amp_scale_y < 0.0f)
+        amp_scale_y = 0.0f;
+
+    tb->rich_draw_params.wave_amp_scale_x = amp_scale_x;
+    tb->rich_draw_params.wave_amp_scale_y = amp_scale_y;
+}
+
+void text_block_set_wave_speed_scale(text_block_t *tb, float speed_scale)
+{
+    if (!tb)
+        return;
+
+    if (speed_scale < 0.0f)
+        speed_scale = 0.0f;
+    
+    tb->rich_draw_params.wave_speed_scale = speed_scale;
 }
 
 void text_block_set_style(text_block_t *tb, const text_style_t *style)

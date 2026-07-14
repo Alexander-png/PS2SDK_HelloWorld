@@ -8,7 +8,9 @@ typedef enum text_rich_tag_kind {
     TEXT_RICH_TAG_OPEN_COLOR,
     TEXT_RICH_TAG_CLOSE_COLOR,
     TEXT_RICH_TAG_OPEN_SHAKE,
-    TEXT_RICH_TAG_CLOSE_SHAKE
+    TEXT_RICH_TAG_CLOSE_SHAKE,
+    TEXT_RICH_TAG_OPEN_WAVE,
+    TEXT_RICH_TAG_CLOSE_WAVE
 } text_rich_tag_kind_t;
 
 typedef struct text_rich_tag {
@@ -134,6 +136,30 @@ static int text_rich_parse_shake_tag(const char *tag_start,
     return -1;
 }
 
+static int text_rich_parse_wave_tag(const char *tag_start,
+                                    const char *tag_end,
+                                    text_rich_tag_t *out_tag)
+{
+    if (!tag_start || !tag_end || !out_tag)
+        return -1;
+
+    if ((tag_end - tag_start) == 5 &&
+        strncmp(tag_start, "wave]", 5) == 0) {
+        out_tag->kind = TEXT_RICH_TAG_OPEN_WAVE;
+        out_tag->color = text_color_white();
+        return 0;
+    }
+
+    if ((tag_end - tag_start) == 6 &&
+        strncmp(tag_start, "/wave]", 6) == 0) {
+        out_tag->kind = TEXT_RICH_TAG_CLOSE_WAVE;
+        out_tag->color = text_color_white();
+        return 0;
+    }
+
+    return -1;
+}
+
 static int text_rich_parse_tag(const char *tag_start,
                                const char *tag_end,
                                text_rich_tag_t *out_tag)
@@ -145,6 +171,9 @@ static int text_rich_parse_tag(const char *tag_start,
         return 0;
 
     if (text_rich_parse_shake_tag(tag_start, tag_end, out_tag) == 0)
+        return 0;
+
+    if (text_rich_parse_wave_tag(tag_start, tag_end, out_tag) == 0)
         return 0;
 
     return -1;
@@ -183,10 +212,62 @@ void text_rich_style_init(text_rich_style_t *style)
         return;
 
     style->color = text_color_white();
-    style->fx_flags = TEXT_FX_NONE;
-    style->shake_amp_x = 1.0f;
-    style->shake_amp_y = 1.0f;
-    style->shake_speed = 18.0f;
+    text_rich_effect_params_init(&style->effects);
+}
+
+void text_rich_effect_params_init(text_rich_effect_params_t *params)
+{
+    if (!params)
+        return;
+
+    params->flags = TEXT_RICH_EFFECT_NONE;
+    params->amp_x = 0.0f;
+    params->amp_y = 0.0f;
+    params->speed = 0.0f;
+    params->phase = 0.0f;
+}
+
+void text_rich_effect_params_apply_defaults(text_rich_effect_params_t *params)
+{
+    if (!params)
+        return;
+
+    if (params->flags & TEXT_RICH_EFFECT_SHAKE) {
+        if (params->amp_x <= 0.0f)
+            params->amp_x = 1.0f;
+        if (params->amp_y <= 0.0f)
+            params->amp_y = 1.0f;
+        if (params->speed <= 0.0f)
+            params->speed = 18.0f;
+    }
+
+    if (params->flags & TEXT_RICH_EFFECT_WAVE) {
+        if (params->amp_x <= 0.0f)
+            params->amp_x = 0.0f;
+        if (params->amp_y <= 0.0f)
+            params->amp_y = 3.0f;
+        if (params->speed <= 0.0f)
+            params->speed = 6.0f;
+    }
+}
+
+// Not used for now
+void text_rich_effect_params_merge(text_rich_effect_params_t *dst, 
+                                   const text_rich_effect_params_t *src)
+{
+    if (!dst || !src)
+        return;
+
+    dst->flags |= src->flags;
+
+    if (src->amp_x > 0.0f)
+        dst->amp_x = src->amp_x;
+    if (src->amp_y > 0.0f)
+        dst->amp_y = src->amp_y;
+    if (src->speed > 0.0f)
+        dst->speed = src->speed;
+
+    dst->phase = src->phase;
 }
 
 int text_rich_parse(const char *markup_utf8,
@@ -252,6 +333,14 @@ int text_rich_parse(const char *markup_utf8,
             }
         }
 
+        if (tag.kind == TEXT_RICH_TAG_CLOSE_WAVE) {
+            if (!(stack_size > 1 &&
+                style_stack[stack_size - 1].kind == TEXT_RICH_TAG_OPEN_WAVE)) {
+                ++p;
+                continue;
+            }
+        }
+
         if (text_rich_emit_run(runs,
             run_capacity,
             &run_count,
@@ -283,13 +372,31 @@ int text_rich_parse(const char *markup_utf8,
                     return -1;
                 style_stack[stack_size] = style_stack[stack_size - 1];
                 style_stack[stack_size].kind = TEXT_RICH_TAG_OPEN_SHAKE;
-                style_stack[stack_size].style.fx_flags |= TEXT_FX_SHAKE;
+                style_stack[stack_size].style.effects.flags |= TEXT_RICH_EFFECT_SHAKE;
+                text_rich_effect_params_apply_defaults(&style_stack[stack_size].style.effects);
                 stack_size++;
                 break;
 
             case TEXT_RICH_TAG_CLOSE_SHAKE:
                 if (stack_size > 1 &&
                     style_stack[stack_size - 1].kind == TEXT_RICH_TAG_OPEN_SHAKE) {
+                    stack_size--;
+                }
+                break;
+
+            case TEXT_RICH_TAG_OPEN_WAVE:
+                if (stack_size >= TEXT_RICH_STYLE_STACK_CAPACITY)
+                    return -1;
+                style_stack[stack_size] = style_stack[stack_size - 1];
+                style_stack[stack_size].kind = TEXT_RICH_TAG_OPEN_WAVE;
+                style_stack[stack_size].style.effects.flags |= TEXT_RICH_EFFECT_WAVE;
+                text_rich_effect_params_apply_defaults(&style_stack[stack_size].style.effects);
+                stack_size++;
+                break;
+
+            case TEXT_RICH_TAG_CLOSE_WAVE:
+                if (stack_size > 1 &&
+                    style_stack[stack_size - 1].kind == TEXT_RICH_TAG_OPEN_WAVE) {
                     stack_size--;
                 }
                 break;
