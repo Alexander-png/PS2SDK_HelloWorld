@@ -25,6 +25,10 @@
 #define TEXT_TEST_LINE_CAPACITY 32
 #endif
 
+#ifndef TEXT_TEST_RICH_RUN_CAPACITY
+#define TEXT_TEST_RICH_RUN_CAPACITY 128
+#endif
+
 #ifndef TEXT_TEST_REVEAL_SECONDS_PER_GLYPH
 #define TEXT_TEST_REVEAL_SECONDS_PER_GLYPH 0.03f
 #endif
@@ -101,6 +105,7 @@ typedef struct text_test_state_data {
     text_layout_item_t *rich_items;
     text_layout_line_t *lines;
     text_rich_draw_params_t rich_draw_params;
+    text_rich_run_t rich_runs[TEXT_TEST_RICH_RUN_CAPACITY];
 
     int use_yellow;
     int font_bound_logged;
@@ -446,6 +451,8 @@ static int text_test_enter(game_app_t *app, void *userdata)
     text_block_init(&data->block,
         data->glyphs,
         TEXT_TEST_GLYPH_CAPACITY,
+        data->rich_runs,
+        TEXT_TEST_RICH_RUN_CAPACITY,
         data->rich_items,
         TEXT_TEST_GLYPH_CAPACITY,
         data->lines,

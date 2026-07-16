@@ -116,6 +116,8 @@ static void text_block_apply_vertical_alignment(text_block_t *tb)
 void text_block_init(text_block_t *tb,
                      text_layout_glyph_t *glyph_buffer,
                      unsigned short glyph_capacity,
+                     text_rich_run_t *rich_run_buffer,
+                     unsigned short rich_run_capacity,
                      text_layout_item_t *rich_item_buffer,
                      unsigned short rich_item_capacity,
                      text_layout_line_t *line_buffer,
@@ -153,6 +155,10 @@ void text_block_init(text_block_t *tb,
     tb->text_utf8 = NULL;
     tb->rich_text_utf8 = NULL;
     tb->use_rich_text = 0;
+
+    tb->rich_runs = rich_run_buffer;
+    tb->rich_run_capacity = rich_run_capacity;
+    tb->rich_run_count = 0;
 
     tb->box.x = 0;
     tb->box.y = 0;
@@ -460,10 +466,13 @@ int text_block_refresh(text_block_t *tb)
             }
         } else {
             text_rich_style_t base_style;
-            text_rich_run_t runs_local[64];
-            unsigned short run_count = 0;
+
+            tb->rich_run_count = 0;
 
             if (!tb->rich_text_utf8)
+                return -1;
+
+            if (!tb->rich_runs || tb->rich_run_capacity == 0)
                 return -1;
 
             text_rich_layout_reset(&tb->rich_layout);
@@ -473,19 +482,24 @@ int text_block_refresh(text_block_t *tb)
 
             if (text_rich_parse(tb->rich_text_utf8,
                                 &base_style,
-                                runs_local,
-                                64,
-                                &run_count) != 0) {
-                LOGLN("[text_block] text_rich_parse failed");
+                                tb->rich_runs,
+                                tb->rich_run_capacity,
+                                &tb->rich_run_count) != 0) {
+                LOGLN("[text_block] text_rich_parse failed capacity=%u",
+                    (unsigned int)tb->rich_run_capacity);
                 return -1;
             }
 
+            LOGLN("[text_block] rich parse ok runs=%u/%u",
+                (unsigned int)tb->rich_run_count,
+                (unsigned int)tb->rich_run_capacity);
+
             if (text_rich_layout_build_plain(&tb->rich_layout,
                                              tb->font,
-                                             runs_local,
-                                             run_count,
+                                             tb->rich_runs,
+                                             tb->rich_run_count,
                                              &tb->params,
-                                             tb->reveal_mode) != 0) {
+                                            tb->reveal_mode) != 0) {
                 LOGLN("[text_block] text_rich_layout_build_plain failed");
                 return -1;
             }

@@ -41,6 +41,10 @@ typedef struct text_block {
     const char *text_utf8;
     const char *rich_text_utf8;
     int use_rich_text;
+
+    text_rich_run_t *rich_runs;
+    unsigned short rich_run_capacity;
+    unsigned short rich_run_count;
     
     text_layout_t layout;
     text_rich_layout_t rich_layout;
@@ -61,6 +65,8 @@ typedef struct text_block {
 void text_block_init(text_block_t *tb,
                      text_layout_glyph_t *glyph_buffer,
                      unsigned short glyph_capacity,
+                     text_rich_run_t *rich_run_buffer,
+                     unsigned short rich_run_capacity,
                      text_layout_item_t *rich_item_buffer,
                      unsigned short rich_item_capacity,
                      text_layout_line_t *line_buffer,
