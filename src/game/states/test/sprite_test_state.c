@@ -5,6 +5,7 @@
 #include "engine/streaming/texture_assets.h"
 #include "engine/input/input.h"
 #include "engine/memory/memory_arena.h"
+#include "engine/debug/debug_overlay.h"
 
 #include <math.h>
 
@@ -39,6 +40,7 @@ typedef struct sprite_test_state_data {
     sprite_test_data_t sprite1;
     sprite_test_data_t sprite2;
     float t;
+    debug_overlay_t overlay;
 } sprite_test_state_data_t;
 
 static texture_handle_t sprite_test_invalid_texture(void)
@@ -47,6 +49,54 @@ static texture_handle_t sprite_test_invalid_texture(void)
     h.index = 0xffffu;
     h.generation = 0;
     return h;
+}
+
+static const char *sprite_test_texture_status_name(texture_status_t st)
+{
+    switch (st) {
+        case TEXTURE_STATUS_UNUSED: return "UNUSED";
+        case TEXTURE_STATUS_LOADING: return "LOADING";
+        case TEXTURE_STATUS_READY:   return "READY";
+        case TEXTURE_STATUS_FAILED:  return "FAILED";
+        default:                     return "?";
+    }
+}
+
+static void sprite_test_rebuild_overlay(sprite_test_state_data_t *data)
+{
+    texture_status_t st0 = TEXTURE_STATUS_FAILED;
+    texture_status_t st1 = TEXTURE_STATUS_FAILED;
+    texture_status_t st2 = TEXTURE_STATUS_FAILED;
+
+    if (!data)
+        return;
+
+    if (texture_is_valid(data->sprite.texture))
+        st0 = texture_status(data->sprite.texture);
+    if (texture_is_valid(data->sprite1.texture))
+        st1 = texture_status(data->sprite1.texture);
+    if (texture_is_valid(data->sprite2.texture))
+        st2 = texture_status(data->sprite2.texture);
+
+    debug_overlay_printf(
+        &data->overlay,
+        "Sprite Test\n"
+        "START: return to menu\n"
+        "D-PAD: move yellow sprite\n"
+        "\n"
+        "yellow   tex=%s sprite=%d pos=(%.1f, %.1f)\n"
+        "scaryguy tex=%s sprite=%d\n"
+        "crying   tex=%s sprite=%d t=%.2f",
+        sprite_test_texture_status_name(st0),
+        data->sprite.sprite_created,
+        data->sprite.draw_params.x,
+        data->sprite.draw_params.y,
+        sprite_test_texture_status_name(st1),
+        data->sprite1.sprite_created,
+        sprite_test_texture_status_name(st2),
+        data->sprite2.sprite_created,
+        data->t
+    );
 }
 
 static sprite_test_state_data_t *sprite_test_data(game_app_t *app)
@@ -167,6 +217,20 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
         return -1;
     }
 
+    debug_overlay_desc_t overlay_desc;
+    debug_overlay_desc_init(&overlay_desc);
+    overlay_desc.x = 16;
+    overlay_desc.y = 16;
+    overlay_desc.w = 620;
+    overlay_desc.h = 140;
+
+    if (debug_overlay_init(app, &data->overlay, &overlay_desc) != 0) {
+        LOGLN("[state:sprite_test] overlay init failed");
+        return -1;
+    }
+
+    sprite_test_rebuild_overlay(data);
+
     LOGLN("[state:sprite_test] enter requested textures");
     return 0;
 }
@@ -191,6 +255,8 @@ static void sprite_test_exit(game_app_t *app)
     sprite_test_reset_sprite(&data->sprite1);
     sprite_test_reset_sprite(&data->sprite2);
     data->t = 0.0f;
+
+    debug_overlay_shutdown(app, &data->overlay);
 
     game_app_set_state_userdata(app, NULL);
 
@@ -217,6 +283,8 @@ static void sprite_test_update(game_app_t *app, float dt)
 
     if (!data)
         return;
+
+    debug_overlay_update(app, &data->overlay, dt);
 
     sprite_test_try_create(&data->sprite, TEST_SPRITE_PATH);
     sprite_test_try_create(&data->sprite1, TEST_SPRITE_PATH1);
@@ -245,14 +313,20 @@ static void sprite_test_update(game_app_t *app, float dt)
         data->sprite.draw_params.y += move;
 
     gfx2d_update_sprite(data->sprite.sprite_id, &data->sprite.draw_params);
+    sprite_test_rebuild_overlay(data);
 }
 
 static void sprite_test_draw(game_app_t *app, float alpha)
 {
+    sprite_test_state_data_t *data = sprite_test_data(app);
+
     (void)app;
     (void)alpha;
 
     gfx2d_draw();
+
+    if (data)
+        debug_overlay_draw(&data->overlay);
 }
 
 static const game_state_desc_t s_sprite_test_state = {

@@ -2,9 +2,11 @@
 
 #include "audio_test_state.h"
 #include "engine/audio/audio.h"
-#include "engine/debug/screen_console.h"
+#include "engine/debug/debug_overlay.h"
+#include "engine/gfx/gfx2d.h"
 #include "engine/input/input.h"
 #include "engine/logging/log.h"
+#include "engine/memory/memory_arena.h"
 
 #ifndef AUDIO_TEST_WAV_PATH
 #define AUDIO_TEST_WAV_PATH "test.wav"
@@ -18,7 +20,7 @@
 #define AUDIO_TEST_LOG_INTERVAL_SEC 1.0f
 #endif
 
-typedef struct audio_test_state {
+typedef struct audio_test_state_data {
     int asset;
     int asset_ok;
 
@@ -29,157 +31,220 @@ typedef struct audio_test_state {
     float speed;
     float log_timer;
     float uptime_sec;
-    int screen_dirty;
-} audio_test_state_t;
+    int overlay_dirty;
 
-static audio_test_state_t s_audio_test;
+    debug_overlay_t overlay;
+} audio_test_state_data_t;
 
-static void audio_test_redraw_screen(void)
+static audio_test_state_data_t *audio_test_data(game_app_t *app)
 {
-    int audio_available = audio_is_available();
-    int playing = 0;
-    int paused = 0;
-
-    if (s_audio_test.voice >= 0) {
-        playing = audio_voice_is_playing(s_audio_test.voice);
-        paused = audio_voice_is_paused(s_audio_test.voice);
-    }
-
-    screen_console_begin(
-        "audio_test",
-        "CROSS=pause/resume  TRIANGLE=stop/play\n"
-        "UP/DOWN=volume      LEFT/RIGHT=speed\n"
-        "START=quit"
-    );
-
-    screen_console_printf("wav: %s\n\n", AUDIO_TEST_WAV_PATH);
-    screen_console_printf("audio_available: %d\n", audio_available);
-    screen_console_printf("asset_handle:    %d\n", s_audio_test.asset);
-    screen_console_printf("asset_ok:        %d\n", s_audio_test.asset_ok);
-    screen_console_printf("voice_handle:    %d\n", s_audio_test.voice);
-    screen_console_printf("playing:         %d\n", playing);
-    screen_console_printf("paused:          %d\n", paused);
-    screen_console_printf("volume:          %d\n", s_audio_test.volume);
-    screen_console_printf("speed:           %d/100\n", (int)(s_audio_test.speed * 100.0f));
-    screen_console_printf("uptime_ms:       %d\n", (int)(s_audio_test.uptime_sec * 1000.0f));
+    return GAME_APP_STATE_DATA_AS(app, audio_test_state_data_t);
 }
 
-static int audio_test_start_voice(void)
+static void audio_test_reset(audio_test_state_data_t *data)
+{
+    if (!data)
+        return;
+
+    data->asset = -1;
+    data->asset_ok = 0;
+    data->voice = -1;
+    data->paused = 0;
+    data->volume = 100;
+    data->speed = 0.85f;
+    data->log_timer = 0.0f;
+    data->uptime_sec = 0.0f;
+    data->overlay_dirty = 1;
+}
+
+static int audio_test_is_playing(const audio_test_state_data_t *data)
+{
+    if (!data || data->voice < 0)
+        return 0;
+
+    return audio_voice_is_playing(data->voice);
+}
+
+static int audio_test_is_paused(const audio_test_state_data_t *data)
+{
+    if (!data || data->voice < 0)
+        return 0;
+
+    return audio_voice_is_paused(data->voice);
+}
+
+static void audio_test_rebuild_overlay(audio_test_state_data_t *data)
+{
+    int audio_available;
+    int playing;
+    int paused;
+
+    if (!data)
+        return;
+
+    audio_available = audio_is_available();
+    playing = audio_test_is_playing(data);
+    paused = audio_test_is_paused(data);
+
+    debug_overlay_printf(
+        &data->overlay,
+        "Audio Test\n"
+        "CROSS=pause/resume  TRIANGLE=stop/play\n"
+        "UP/DOWN=volume      LEFT/RIGHT=speed\n"
+        "START=return to menu\n"
+        "\n"
+        "wav:             %s\n"
+        "audio_available: %d\n"
+        "asset_handle:    %d\n"
+        "asset_ok:        %d\n"
+        "voice_handle:    %d\n"
+        "playing:         %d\n"
+        "paused:          %d\n"
+        "volume:          %d\n"
+        "speed:           %d/100\n"
+        "uptime_ms:       %d\n",
+        AUDIO_TEST_WAV_PATH,
+        audio_available,
+        data->asset,
+        data->asset_ok,
+        data->voice,
+        playing,
+        paused,
+        data->volume,
+        (int)(data->speed * 100.0f),
+        (int)(data->uptime_sec * 1000.0f)
+    );
+}
+
+static int audio_test_start_voice(audio_test_state_data_t *data)
 {
     int voice;
 
-    if (!s_audio_test.asset_ok || s_audio_test.asset < 0)
+    if (!data || !data->asset_ok || data->asset < 0)
         return -1;
 
-    voice = audio_play(s_audio_test.asset,
-                       s_audio_test.volume,
-                       s_audio_test.speed,
+    voice = audio_play(data->asset,
+                       data->volume,
+                       data->speed,
                        1);
     if (voice < 0) {
         LOGLN("[state:audio_test] audio_play failed rc=%d", voice);
         return -1;
     }
 
-    s_audio_test.voice = voice;
-    s_audio_test.paused = 0;
+    data->voice = voice;
+    data->paused = 0;
 
     LOGLN("[state:audio_test] playing asset=%d voice=%d loop=1",
-          s_audio_test.asset,
-          s_audio_test.voice);
+          data->asset,
+          data->voice);
     return 0;
 }
 
 static int audio_test_enter(game_app_t *app, void *userdata)
 {
-    (void)app;
+    audio_test_state_data_t *data;
+    debug_overlay_desc_t overlay_desc;
+
     (void)userdata;
 
-    s_audio_test.asset = -1;
-    s_audio_test.asset_ok = 0;
-    s_audio_test.voice = -1;
-    s_audio_test.paused = 0;
-    s_audio_test.volume = 100;
-    s_audio_test.speed = 0.85f;
-    s_audio_test.log_timer = 0.0f;
-    s_audio_test.uptime_sec = 0.0f;
-    s_audio_test.screen_dirty = 1;
+    data = (audio_test_state_data_t *)mem_arena_calloc(
+        game_app_state_arena(app),
+        1,
+        sizeof(*data),
+        16
+    );
+    if (!data) {
+        LOGLN("[state:audio_test] enter failed: no state arena memory");
+        return -1;
+    }
 
-    screen_console_enter();
+    game_app_set_state_userdata(app, data);
+    audio_test_reset(data);
+
+    debug_overlay_desc_init(&overlay_desc);
+    overlay_desc.x = 16;
+    overlay_desc.y = 16;
+    overlay_desc.w = 620;
+    overlay_desc.h = 220;
+
+    if (debug_overlay_init(app, &data->overlay, &overlay_desc) != 0) {
+        LOGLN("[state:audio_test] overlay init failed");
+        return -1;
+    }
 
     LOGLN("[state:audio_test] enter");
     LOGLN("[state:audio_test] wav path: %s", AUDIO_TEST_WAV_PATH);
 
     if (!audio_is_available()) {
         LOGLN("[state:audio_test] audio unavailable");
-        audio_test_redraw_screen();
-        s_audio_test.screen_dirty = 0;
+        audio_test_rebuild_overlay(data);
+        data->overlay_dirty = 0;
         return 0;
     }
 
-    s_audio_test.asset = audio_asset_load_stream(
+    data->asset = audio_asset_load_stream(
         AUDIO_TEST_WAV_PATH,
         AUDIO_TEST_IO_BUFFER_BYTES
     );
 
-    if (s_audio_test.asset < 0) {
+    if (data->asset < 0) {
         LOGLN("[state:audio_test] audio_asset_load_stream failed: %d",
-              s_audio_test.asset);
-        audio_test_redraw_screen();
-        s_audio_test.screen_dirty = 0;
+              data->asset);
+        audio_test_rebuild_overlay(data);
+        data->overlay_dirty = 0;
         return 0;
     }
 
-    s_audio_test.asset_ok = 1;
+    data->asset_ok = 1;
 
     LOGLN("[state:audio_test] calling audio_asset_preload...");
-    if (audio_asset_preload(s_audio_test.asset) < 0) {
+    if (audio_asset_preload(data->asset) < 0) {
         LOGLN("[state:audio_test] audio_asset_preload failed: %d",
-              s_audio_test.asset);
-        audio_asset_unload(s_audio_test.asset);
-        s_audio_test.asset = -1;
-        s_audio_test.asset_ok = 0;
-        audio_test_redraw_screen();
-        s_audio_test.screen_dirty = 0;
+              data->asset);
+        audio_asset_unload(data->asset);
+        data->asset = -1;
+        data->asset_ok = 0;
+        audio_test_rebuild_overlay(data);
+        data->overlay_dirty = 0;
         return 0;
     }
 
-    if (audio_test_start_voice() < 0) {
-        audio_asset_unload(s_audio_test.asset);
-        s_audio_test.asset = -1;
-        s_audio_test.asset_ok = 0;
-        audio_test_redraw_screen();
-        s_audio_test.screen_dirty = 0;
+    if (audio_test_start_voice(data) < 0) {
+        audio_asset_unload(data->asset);
+        data->asset = -1;
+        data->asset_ok = 0;
+        audio_test_rebuild_overlay(data);
+        data->overlay_dirty = 0;
         return 0;
     }
 
-    audio_test_redraw_screen();
-    s_audio_test.screen_dirty = 0;
+    audio_test_rebuild_overlay(data);
+    data->overlay_dirty = 0;
     return 0;
 }
 
 static void audio_test_exit(game_app_t *app)
 {
-    (void)app;
+    audio_test_state_data_t *data = audio_test_data(app);
 
     LOGLN("[state:audio_test] exit");
 
-    if (s_audio_test.voice >= 0){
-        audio_voice_stop(s_audio_test.voice);
-        s_audio_test.voice = -1;
+    if (!data)
+        return;
+
+    if (data->voice >= 0) {
+        audio_voice_stop(data->voice);
+        data->voice = -1;
     }
 
-    if (s_audio_test.asset_ok && s_audio_test.asset >= 0)
-        audio_asset_unload(s_audio_test.asset);
+    if (data->asset_ok && data->asset >= 0)
+        audio_asset_unload(data->asset);
 
-    s_audio_test.asset = -1;
-    s_audio_test.asset_ok = 0;
-    s_audio_test.voice = -1;
-    s_audio_test.paused = 0;
-    s_audio_test.log_timer = 0.0f;
-    s_audio_test.uptime_sec = 0.0f;
-    s_audio_test.screen_dirty = 0;
+    debug_overlay_shutdown(app, &data->overlay);
 
-    screen_console_exit();
+    audio_test_reset(data);
+    game_app_set_state_userdata(app, NULL);
 }
 
 static void audio_test_fixed_update(game_app_t *app, float dt)
@@ -190,11 +255,15 @@ static void audio_test_fixed_update(game_app_t *app, float dt)
 
 static void audio_test_update(game_app_t *app, float dt)
 {
+    audio_test_state_data_t *data = audio_test_data(app);
     int do_periodic_log = 0;
 
-    (void)app;
+    if (!data)
+        return;
 
-    s_audio_test.uptime_sec += dt;
+    debug_overlay_update(app, &data->overlay, dt);
+
+    data->uptime_sec += dt;
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
         LOGLN("[state:audio_test] START pressed, return to menu");
@@ -203,101 +272,108 @@ static void audio_test_update(game_app_t *app, float dt)
         return;
     }
 
-    if (s_audio_test.voice >= 0) {
+    if (data->voice >= 0) {
         if (input_button_pressed(INPUT_BUTTON_CROSS)) {
-            if (s_audio_test.paused) {
-                audio_voice_resume(s_audio_test.voice);
-                s_audio_test.paused = 0;
+            if (data->paused) {
+                audio_voice_resume(data->voice);
+                data->paused = 0;
                 LOGLN("[state:audio_test] resume");
             } else {
-                audio_voice_pause(s_audio_test.voice);
-                s_audio_test.paused = 1;
+                audio_voice_pause(data->voice);
+                data->paused = 1;
                 LOGLN("[state:audio_test] pause");
             }
-            s_audio_test.screen_dirty = 1;
+            data->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_TRIANGLE)) {
-            if (audio_voice_is_playing(s_audio_test.voice)) {
-                audio_voice_stop(s_audio_test.voice);
-                s_audio_test.paused = 0;
+            if (audio_voice_is_playing(data->voice)) {
+                audio_voice_stop(data->voice);
+                data->paused = 0;
                 LOGLN("[state:audio_test] stop");
             } else {
-                if (audio_test_start_voice() == 0)
+                if (audio_test_start_voice(data) == 0)
                     LOGLN("[state:audio_test] play");
             }
-            s_audio_test.screen_dirty = 1;
+            data->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_UP)) {
-            s_audio_test.volume += 10;
-            if (s_audio_test.volume > 100)
-                s_audio_test.volume = 100;
-            audio_voice_set_volume(s_audio_test.voice, s_audio_test.volume);
-            LOGLN("[state:audio_test] volume=%d", s_audio_test.volume);
-            s_audio_test.screen_dirty = 1;
+            data->volume += 10;
+            if (data->volume > 100)
+                data->volume = 100;
+            audio_voice_set_volume(data->voice, data->volume);
+            LOGLN("[state:audio_test] volume=%d", data->volume);
+            data->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_DOWN)) {
-            s_audio_test.volume -= 10;
-            if (s_audio_test.volume < 0)
-                s_audio_test.volume = 0;
-            audio_voice_set_volume(s_audio_test.voice, s_audio_test.volume);
-            LOGLN("[state:audio_test] volume=%d", s_audio_test.volume);
-            s_audio_test.screen_dirty = 1;
+            data->volume -= 10;
+            if (data->volume < 0)
+                data->volume = 0;
+            audio_voice_set_volume(data->voice, data->volume);
+            LOGLN("[state:audio_test] volume=%d", data->volume);
+            data->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_RIGHT)) {
-            s_audio_test.speed += 0.25f;
-            if (s_audio_test.speed > 3.0f)
-                s_audio_test.speed = 3.0f;
-            audio_voice_set_speed(s_audio_test.voice, s_audio_test.speed);
-            LOGLN("[state:audio_test] speed=%d/100", (int)(s_audio_test.speed * 100.0f));
-            s_audio_test.screen_dirty = 1;
+            data->speed += 0.25f;
+            if (data->speed > 3.0f)
+                data->speed = 3.0f;
+            audio_voice_set_speed(data->voice, data->speed);
+            LOGLN("[state:audio_test] speed=%d/100", (int)(data->speed * 100.0f));
+            data->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_LEFT)) {
-            s_audio_test.speed -= 0.25f;
-            if (s_audio_test.speed < (1.0f / 3.0f))
-                s_audio_test.speed = (1.0f / 3.0f);
-            audio_voice_set_speed(s_audio_test.voice, s_audio_test.speed);
-            LOGLN("[state:audio_test] speed=%d/100", (int)(s_audio_test.speed * 100.0f));
-            s_audio_test.screen_dirty = 1;
+            data->speed -= 0.25f;
+            if (data->speed < (1.0f / 3.0f))
+                data->speed = (1.0f / 3.0f);
+            audio_voice_set_speed(data->voice, data->speed);
+            LOGLN("[state:audio_test] speed=%d/100", (int)(data->speed * 100.0f));
+            data->overlay_dirty = 1;
         }
     }
 
-    s_audio_test.log_timer += dt;
-    if (s_audio_test.log_timer >= AUDIO_TEST_LOG_INTERVAL_SEC) {
-        while (s_audio_test.log_timer >= AUDIO_TEST_LOG_INTERVAL_SEC)
-            s_audio_test.log_timer -= AUDIO_TEST_LOG_INTERVAL_SEC;
+    data->log_timer += dt;
+    if (data->log_timer >= AUDIO_TEST_LOG_INTERVAL_SEC) {
+        while (data->log_timer >= AUDIO_TEST_LOG_INTERVAL_SEC)
+            data->log_timer -= AUDIO_TEST_LOG_INTERVAL_SEC;
         do_periodic_log = 1;
-        s_audio_test.screen_dirty = 1;
+        data->overlay_dirty = 1;
     }
 
     if (do_periodic_log) {
         if (!audio_is_available()) {
             LOGLN("[state:audio_test] audio unavailable");
-        } else if (!s_audio_test.asset_ok || s_audio_test.asset < 0) {
+        } else if (!data->asset_ok || data->asset < 0) {
             LOGLN("[state:audio_test] no asset");
         } else {
             LOGLN("[state:audio_test] playing=%d paused=%d volume=%d speed=%d/100",
-                  (s_audio_test.voice >= 0) ? audio_voice_is_playing(s_audio_test.voice) : 0,
-                  (s_audio_test.voice >= 0) ? audio_voice_is_paused(s_audio_test.voice) : 0,
-                  s_audio_test.volume,
-                  (int)(s_audio_test.speed * 100.0f));
+                  (data->voice >= 0) ? audio_voice_is_playing(data->voice) : 0,
+                  (data->voice >= 0) ? audio_voice_is_paused(data->voice) : 0,
+                  data->volume,
+                  (int)(data->speed * 100.0f));
         }
     }
 
-    if (s_audio_test.screen_dirty) {
-        audio_test_redraw_screen();
-        s_audio_test.screen_dirty = 0;
+    if (data->overlay_dirty) {
+        audio_test_rebuild_overlay(data);
+        data->overlay_dirty = 0;
     }
 }
 
 static void audio_test_draw(game_app_t *app, float alpha)
 {
+    audio_test_state_data_t *data = audio_test_data(app);
+
     (void)app;
     (void)alpha;
+
+    gfx2d_draw();
+
+    if (data)
+        debug_overlay_draw(&data->overlay);
 }
 
 static const game_state_desc_t g_audio_test_state = {

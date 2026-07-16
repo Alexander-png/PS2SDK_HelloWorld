@@ -1,12 +1,23 @@
 #include "game/states/test/debug_menu_state.h"
 
-#include "engine/debug/screen_console.h"
+#include "engine/debug/debug_overlay.h"
+#include "engine/gfx/gfx2d.h"
 #include "engine/input/input.h"
 #include "engine/logging/log.h"
 #include "engine/memory/memory_arena.h"
 
+#include <stdarg.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
+
+#ifndef MEMORY_ARENA_TEST_EVENT_LINES
+#define MEMORY_ARENA_TEST_EVENT_LINES 10
+#endif
+
+#ifndef MEMORY_ARENA_TEST_EVENT_LINE_LEN
+#define MEMORY_ARENA_TEST_EVENT_LINE_LEN 96
+#endif
 
 typedef struct arena_test_state_data {
     mem_arena_t arena;
@@ -18,6 +29,13 @@ typedef struct arena_test_state_data {
     unsigned int alignment_runs;
     int summary_printed;
     int exit_armed;
+
+    int overlay_dirty;
+    int shutting_down;
+    int event_write_index;
+    char event_lines[MEMORY_ARENA_TEST_EVENT_LINES][MEMORY_ARENA_TEST_EVENT_LINE_LEN];
+
+    debug_overlay_t overlay;
 } arena_test_state_data_t;
 
 static arena_test_state_data_t *memory_arena_test_data(game_app_t *app)
@@ -25,24 +43,36 @@ static arena_test_state_data_t *memory_arena_test_data(game_app_t *app)
     return GAME_APP_STATE_DATA_AS(app, arena_test_state_data_t);
 }
 
-static void memory_arena_test_print_header(void)
+static void memory_arena_test_push_event(arena_test_state_data_t *data,
+                                         const char *fmt, ...)
 {
-    screen_console_begin(
-        "memory_arena_test",
-        "CROSS=basic alloc   CIRCLE=mark/release\n"
-        "TRIANGLE=reset      SQUARE=oom\n"
-        "L1=alignment        START=summary/quit"
-    );
-    screen_console_printf("\n");
+    va_list ap;
+    char *dst;
+
+    if (!data || data->shutting_down)
+        return;
+
+    dst = data->event_lines[data->event_write_index];
+    dst[0] = '\0';
+
+    va_start(ap, fmt);
+    vsnprintf(dst, MEMORY_ARENA_TEST_EVENT_LINE_LEN, fmt, ap);
+    va_end(ap);
+
+    data->event_write_index++;
+    if (data->event_write_index >= MEMORY_ARENA_TEST_EVENT_LINES)
+        data->event_write_index = 0;
+
+    data->overlay_dirty = 1;
 }
 
-static void log_arena_stats(game_app_t *app, const char *label)
+static void memory_arena_test_log_stats(game_app_t *app, const char *label)
 {
     arena_test_state_data_t *data = memory_arena_test_data(app);
 
     if (!data || !data->initialized) {
         LOGLN("[state:memory_arena_test] %s arena not initialized", label);
-        screen_console_printf("%s arena not initialized\n", label);
+        memory_arena_test_push_event(data, "%s arena not initialized", label);
         return;
     }
 
@@ -53,12 +83,13 @@ static void log_arena_stats(game_app_t *app, const char *label)
           mem_arena_peak(&data->arena),
           mem_arena_capacity(&data->arena));
 
-    screen_console_printf("%s used=%u remaining=%u peak=%u capacity=%u\n",
-                          label,
-                          mem_arena_used(&data->arena),
-                          mem_arena_remaining(&data->arena),
-                          mem_arena_peak(&data->arena),
-                          mem_arena_capacity(&data->arena));
+    memory_arena_test_push_event(data,
+        "%s used=%u rem=%u peak=%u cap=%u",
+        label,
+        mem_arena_used(&data->arena),
+        mem_arena_remaining(&data->arena),
+        mem_arena_peak(&data->arena),
+        mem_arena_capacity(&data->arena));
 }
 
 static void memory_arena_test_print_summary(arena_test_state_data_t *data)
@@ -66,17 +97,110 @@ static void memory_arena_test_print_summary(arena_test_state_data_t *data)
     if (!data || data->summary_printed)
         return;
 
-    screen_console_printf("\nSUMMARY:\n");
-    screen_console_printf("basic_alloc=%u mark_release=%u reset=%u oom=%u alignment=%u\n",
-                          data->basic_alloc_runs,
-                          data->mark_release_runs,
-                          data->reset_runs,
-                          data->oom_runs,
-                          data->alignment_runs);
-    screen_console_printf("PRESS START TO EXIT\n");
+    memory_arena_test_push_event(data,
+        "SUMMARY basic=%u mark=%u reset=%u oom=%u align=%u",
+        data->basic_alloc_runs,
+        data->mark_release_runs,
+        data->reset_runs,
+        data->oom_runs,
+        data->alignment_runs);
+    memory_arena_test_push_event(data, "PRESS START TO EXIT");
 
     data->summary_printed = 1;
     data->exit_armed = 1;
+    data->overlay_dirty = 1;
+}
+
+static void memory_arena_test_rebuild_overlay(arena_test_state_data_t *data)
+{
+    char buf[DEBUG_OVERLAY_TEXT_CAPACITY];
+    int off = 0;
+    int i;
+    int start;
+
+    if (!data || data->shutting_down)
+        return;
+
+    if (!data->exit_armed) {
+        off += snprintf(buf + off, sizeof(buf) - off,
+            "Memory Arena Test\n"
+            "CROSS: basic alloc\n"
+            "CIRCLE: mark/release\n"
+            "TRIANGLE: reset\n"
+            "SQUARE: oom\n"
+            "L1: alignment\n"
+            "START: show summary\n"
+            "\n"
+            "basic=%u mark=%u reset=%u oom=%u align=%u\n",
+            data->basic_alloc_runs,
+            data->mark_release_runs,
+            data->reset_runs,
+            data->oom_runs,
+            data->alignment_runs);
+
+        if (data->initialized) {
+            off += snprintf(buf + off, sizeof(buf) - off,
+                "used=%u rem=%u peak=%u cap=%u\n",
+                mem_arena_used(&data->arena),
+                mem_arena_remaining(&data->arena),
+                mem_arena_peak(&data->arena),
+                mem_arena_capacity(&data->arena));
+        } else {
+            off += snprintf(buf + off, sizeof(buf) - off,
+                "arena: not initialized\n");
+        }
+
+        off += snprintf(buf + off, sizeof(buf) - off, "\nRecent events:\n");
+
+        start = data->event_write_index;
+        for (i = 0; i < MEMORY_ARENA_TEST_EVENT_LINES; ++i) {
+            int idx = (start + i) % MEMORY_ARENA_TEST_EVENT_LINES;
+            const char *line = data->event_lines[idx];
+
+            if (!line[0])
+                continue;
+
+            if (off >= (int)sizeof(buf))
+                break;
+
+            off += snprintf(buf + off, sizeof(buf) - off, "%s\n", line);
+        }
+    } else {
+        off += snprintf(buf + off, sizeof(buf) - off,
+            "Memory Arena Summary\n"
+            "START: return to menu\n"
+            "\n"
+            "basic_alloc=%u\n"
+            "mark_release=%u\n"
+            "reset=%u\n"
+            "oom=%u\n"
+            "alignment=%u\n",
+            data->basic_alloc_runs,
+            data->mark_release_runs,
+            data->reset_runs,
+            data->oom_runs,
+            data->alignment_runs);
+
+        if (data->initialized) {
+            off += snprintf(buf + off, sizeof(buf) - off,
+                "\n"
+                "final used=%u\n"
+                "final remaining=%u\n"
+                "final peak=%u\n"
+                "capacity=%u\n",
+                mem_arena_used(&data->arena),
+                mem_arena_remaining(&data->arena),
+                mem_arena_peak(&data->arena),
+                mem_arena_capacity(&data->arena));
+        }
+
+        off += snprintf(buf + off, sizeof(buf) - off,
+            "\n"
+            "PRESS START TO EXIT\n");
+    }
+
+    buf[sizeof(buf) - 1] = '\0';
+    debug_overlay_set_text(&data->overlay, buf);
 }
 
 static void run_basic_alloc_test(game_app_t *app)
@@ -92,19 +216,20 @@ static void run_basic_alloc_test(game_app_t *app)
     data->basic_alloc_runs++;
 
     LOGLN("[state:memory_arena_test] basic_alloc begin");
-    screen_console_printf("basic_alloc begin\n");
-    log_arena_stats(app, "before basic_alloc");
+    memory_arena_test_push_event(data, "basic_alloc begin");
+    memory_arena_test_log_stats(app, "before basic_alloc");
 
     p1 = mem_arena_alloc(&data->arena, 32, 8);
     p2 = mem_arena_alloc(&data->arena, 64, 16);
     p3 = mem_arena_alloc(&data->arena, 24, 4);
 
     LOGLN("[state:memory_arena_test] basic_alloc ptrs p1=%p p2=%p p3=%p", p1, p2, p3);
-    screen_console_printf("basic_alloc ptrs p1=%p p2=%p p3=%p\n", p1, p2, p3);
+    memory_arena_test_push_event(data,
+        "basic_alloc ptrs p1=%p p2=%p p3=%p", p1, p2, p3);
 
     if (!p1 || !p2 || !p3) {
         LOGLN("[state:memory_arena_test] basic_alloc FAILED");
-        screen_console_printf("basic_alloc FAILED\n");
+        memory_arena_test_push_event(data, "basic_alloc FAILED");
         return;
     }
 
@@ -113,8 +238,8 @@ static void run_basic_alloc_test(game_app_t *app)
     memset(p3, 0x33, 24);
 
     LOGLN("[state:memory_arena_test] basic_alloc OK");
-    screen_console_printf("basic_alloc OK\n");
-    log_arena_stats(app, "after basic_alloc");
+    memory_arena_test_push_event(data, "basic_alloc OK");
+    memory_arena_test_log_stats(app, "after basic_alloc");
 }
 
 static void run_mark_release_test(game_app_t *app)
@@ -133,8 +258,8 @@ static void run_mark_release_test(game_app_t *app)
     data->mark_release_runs++;
 
     LOGLN("[state:memory_arena_test] mark_release begin");
-    screen_console_printf("mark_release begin\n");
-    log_arena_stats(app, "before mark_release");
+    memory_arena_test_push_event(data, "mark_release begin");
+    memory_arena_test_log_stats(app, "before mark_release");
 
     used_before = mem_arena_used(&data->arena);
     mark = mem_arena_get_mark(&data->arena);
@@ -143,11 +268,13 @@ static void run_mark_release_test(game_app_t *app)
     p2 = mem_arena_alloc(&data->arena, 80, 16);
 
     LOGLN("[state:memory_arena_test] mark_release ptrs p1=%p p2=%p", p1, p2);
-    screen_console_printf("mark_release ptrs p1=%p p2=%p\n", p1, p2);
+    memory_arena_test_push_event(data,
+        "mark_release ptrs p1=%p p2=%p", p1, p2);
 
     if (!p1 || !p2) {
         LOGLN("[state:memory_arena_test] mark_release FAILED during alloc");
-        screen_console_printf("mark_release FAILED during alloc\n");
+        memory_arena_test_push_event(data,
+            "mark_release FAILED during alloc");
         return;
     }
 
@@ -160,18 +287,20 @@ static void run_mark_release_test(game_app_t *app)
 
     LOGLN("[state:memory_arena_test] mark_release used_before=%u used_after_alloc=%u used_after_release=%u",
           used_before, used_after_alloc, used_after_release);
-    screen_console_printf("mark_release used_before=%u used_after_alloc=%u used_after_release=%u\n",
-                          used_before, used_after_alloc, used_after_release);
+    memory_arena_test_push_event(data,
+        "mark_release before=%u alloc=%u release=%u",
+        used_before, used_after_alloc, used_after_release);
 
     if (used_after_release != used_before) {
         LOGLN("[state:memory_arena_test] mark_release FAILED: offset mismatch");
-        screen_console_printf("mark_release FAILED: offset mismatch\n");
+        memory_arena_test_push_event(data,
+            "mark_release FAILED: offset mismatch");
     } else {
         LOGLN("[state:memory_arena_test] mark_release OK");
-        screen_console_printf("mark_release OK\n");
+        memory_arena_test_push_event(data, "mark_release OK");
     }
 
-    log_arena_stats(app, "after mark_release");
+    memory_arena_test_log_stats(app, "after mark_release");
 }
 
 static void run_reset_test(game_app_t *app)
@@ -186,34 +315,37 @@ static void run_reset_test(game_app_t *app)
     data->reset_runs++;
 
     LOGLN("[state:memory_arena_test] reset begin");
-    screen_console_printf("reset begin\n");
-    log_arena_stats(app, "before reset");
+    memory_arena_test_push_event(data, "reset begin");
+    memory_arena_test_log_stats(app, "before reset");
 
     p1 = mem_arena_alloc(&data->arena, 96, 16);
     p2 = mem_arena_alloc(&data->arena, 128, 16);
 
     LOGLN("[state:memory_arena_test] reset ptrs p1=%p p2=%p", p1, p2);
-    screen_console_printf("reset ptrs p1=%p p2=%p\n", p1, p2);
+    memory_arena_test_push_event(data,
+        "reset ptrs p1=%p p2=%p", p1, p2);
 
     if (!p1 || !p2) {
         LOGLN("[state:memory_arena_test] reset FAILED during alloc");
-        screen_console_printf("reset FAILED during alloc\n");
+        memory_arena_test_push_event(data,
+            "reset FAILED during alloc");
         return;
     }
 
     memset(p1, 0x66, 96);
     memset(p2, 0x77, 128);
 
-    log_arena_stats(app, "before reset call");
+    memory_arena_test_log_stats(app, "before reset call");
     mem_arena_reset(&data->arena);
-    log_arena_stats(app, "after reset call");
+    memory_arena_test_log_stats(app, "after reset call");
 
     if (mem_arena_used(&data->arena) != 0) {
         LOGLN("[state:memory_arena_test] reset FAILED: used != 0");
-        screen_console_printf("reset FAILED: used != 0\n");
+        memory_arena_test_push_event(data,
+            "reset FAILED: used != 0");
     } else {
         LOGLN("[state:memory_arena_test] reset OK");
-        screen_console_printf("reset OK\n");
+        memory_arena_test_push_event(data, "reset OK");
     }
 }
 
@@ -229,34 +361,38 @@ static void run_oom_test(game_app_t *app)
     data->oom_runs++;
 
     LOGLN("[state:memory_arena_test] oom begin");
-    screen_console_printf("oom begin\n");
+    memory_arena_test_push_event(data, "oom begin");
     mem_arena_reset(&data->arena);
-    log_arena_stats(app, "after reset for oom");
+    memory_arena_test_log_stats(app, "after reset for oom");
 
     p1 = mem_arena_alloc(&data->arena, 896, 16);
     p2 = mem_arena_alloc(&data->arena, 256, 16);
 
     LOGLN("[state:memory_arena_test] oom ptrs p1=%p p2=%p", p1, p2);
-    screen_console_printf("oom ptrs p1=%p p2=%p\n", p1, p2);
+    memory_arena_test_push_event(data,
+        "oom ptrs p1=%p p2=%p", p1, p2);
 
     if (!p1 && !p2) {
         LOGLN("[state:memory_arena_test] oom unexpected: first alloc failed");
-        screen_console_printf("oom unexpected: first alloc failed\n");
+        memory_arena_test_push_event(data,
+            "oom unexpected: first alloc failed");
         return;
     }
 
     if (p1 && !p2) {
         LOGLN("[state:memory_arena_test] oom OK: second alloc failed as expected");
-        screen_console_printf("oom OK: second alloc failed as expected\n");
+        memory_arena_test_push_event(data,
+            "oom OK: second alloc failed as expected");
     } else if (p1 && p2) {
         LOGLN("[state:memory_arena_test] oom WARNING: arena larger/effective usage smaller than expected");
-        screen_console_printf("oom WARNING: arena larger/effective usage smaller than expected\n");
+        memory_arena_test_push_event(data,
+            "oom WARNING: second alloc succeeded");
     } else {
         LOGLN("[state:memory_arena_test] oom FAILED");
-        screen_console_printf("oom FAILED\n");
+        memory_arena_test_push_event(data, "oom FAILED");
     }
 
-    log_arena_stats(app, "after oom");
+    memory_arena_test_log_stats(app, "after oom");
 }
 
 static void run_alignment_test(game_app_t *app)
@@ -275,7 +411,7 @@ static void run_alignment_test(game_app_t *app)
     data->alignment_runs++;
 
     LOGLN("[state:memory_arena_test] alignment begin");
-    screen_console_printf("alignment begin\n");
+    memory_arena_test_push_event(data, "alignment begin");
     mem_arena_reset(&data->arena);
 
     p1 = mem_arena_alloc(&data->arena, 1, 8);
@@ -287,11 +423,13 @@ static void run_alignment_test(game_app_t *app)
     a3 = (uintptr_t)p3;
 
     LOGLN("[state:memory_arena_test] alignment ptrs p1=%p p2=%p p3=%p", p1, p2, p3);
-    screen_console_printf("alignment ptrs p1=%p p2=%p p3=%p\n", p1, p2, p3);
+    memory_arena_test_push_event(data,
+        "alignment ptrs p1=%p p2=%p p3=%p", p1, p2, p3);
 
     if (!p1 || !p2 || !p3) {
         LOGLN("[state:memory_arena_test] alignment FAILED during alloc");
-        screen_console_printf("alignment FAILED during alloc\n");
+        memory_arena_test_push_event(data,
+            "alignment FAILED during alloc");
         return;
     }
 
@@ -299,25 +437,27 @@ static void run_alignment_test(game_app_t *app)
           (u32)(a1 & 7u),
           (u32)(a2 & 15u),
           (u32)(a3 & 31u));
-    screen_console_printf("alignment mods m8=%u m16=%u m32=%u\n",
-                          (u32)(a1 & 7u),
-                          (u32)(a2 & 15u),
-                          (u32)(a3 & 31u));
+    memory_arena_test_push_event(data,
+        "alignment mods m8=%u m16=%u m32=%u",
+        (u32)(a1 & 7u),
+        (u32)(a2 & 15u),
+        (u32)(a3 & 31u));
 
     if (((a1 & 7u) == 0u) && ((a2 & 15u) == 0u) && ((a3 & 31u) == 0u)) {
         LOGLN("[state:memory_arena_test] alignment OK");
-        screen_console_printf("alignment OK\n");
+        memory_arena_test_push_event(data, "alignment OK");
     } else {
         LOGLN("[state:memory_arena_test] alignment FAILED");
-        screen_console_printf("alignment FAILED\n");
+        memory_arena_test_push_event(data, "alignment FAILED");
     }
 
-    log_arena_stats(app, "after alignment");
+    memory_arena_test_log_stats(app, "after alignment");
 }
 
 static int memory_arena_test_enter(game_app_t *app, void *userdata)
 {
     arena_test_state_data_t *data;
+    debug_overlay_desc_t overlay_desc;
 
     (void)userdata;
 
@@ -343,16 +483,37 @@ static int memory_arena_test_enter(game_app_t *app, void *userdata)
     data->initialized = 1;
     data->summary_printed = 0;
     data->exit_armed = 0;
+    data->overlay_dirty = 1;
+    data->shutting_down = 0;
+    data->event_write_index = 0;
+    memset(data->event_lines, 0, sizeof(data->event_lines));
 
-    screen_console_enter();
-    memory_arena_test_print_header();
+    debug_overlay_desc_init(&overlay_desc);
+    overlay_desc.x = 16;
+    overlay_desc.y = 16;
+    overlay_desc.w = 620;
+    overlay_desc.h = 260;
+
+    if (debug_overlay_init(app, &data->overlay, &overlay_desc) != 0) {
+        LOGLN("[state:memory_arena_test] overlay init failed");
+        mem_arena_destroy(&data->arena);
+        data->initialized = 0;
+        game_app_set_state_userdata(app, NULL);
+        return -1;
+    }
 
     LOGLN("[state:memory_arena_test] enter");
     LOGLN("[state:memory_arena_test] CROSS=basic alloc, CIRCLE=mark/release, TRIANGLE=reset, SQUARE=oom, L1=alignment, START=quit");
-    log_arena_stats(app, "after init");
 
-    screen_console_printf("enter\n");
-    screen_console_printf("CROSS=basic alloc, CIRCLE=mark/release, TRIANGLE=reset, SQUARE=oom, L1=alignment\n");
+    memory_arena_test_push_event(data, "enter");
+    memory_arena_test_push_event(data,
+        "CROSS=basic alloc CIRCLE=mark/release");
+    memory_arena_test_push_event(data,
+        "TRIANGLE=reset SQUARE=oom L1=alignment");
+    memory_arena_test_log_stats(app, "after init");
+
+    memory_arena_test_rebuild_overlay(data);
+    data->overlay_dirty = 0;
 
     return 0;
 }
@@ -367,8 +528,6 @@ static void memory_arena_test_exit(game_app_t *app)
               mem_arena_remaining(&data->arena),
               mem_arena_peak(&data->arena),
               mem_arena_capacity(&data->arena));
-        mem_arena_destroy(&data->arena);
-        data->initialized = 0;
     }
 
     if (data) {
@@ -380,9 +539,20 @@ static void memory_arena_test_exit(game_app_t *app)
               data->alignment_runs);
     }
 
-    game_app_set_state_userdata(app, NULL);
     LOGLN("[state:memory_arena_test] exit");
-    screen_console_exit();
+
+    if (!data)
+        return;
+
+    data->shutting_down = 1;
+    debug_overlay_shutdown(app, &data->overlay);
+
+    if (data->initialized) {
+        mem_arena_destroy(&data->arena);
+        data->initialized = 0;
+    }
+
+    game_app_set_state_userdata(app, NULL);
 }
 
 static void memory_arena_test_fixed_update(game_app_t *app, float dt)
@@ -400,11 +570,18 @@ static void memory_arena_test_update(game_app_t *app, float dt)
     if (!data || !data->initialized)
         return;
 
+    debug_overlay_update(app, &data->overlay, dt);
+
     if (input_button_pressed(INPUT_BUTTON_START)) {
         if (!data->exit_armed) {
             LOGLN("[state:memory_arena_test] START pressed, show summary");
             memory_arena_test_print_summary(data);
             input_consume();
+
+            if (data->overlay_dirty) {
+                memory_arena_test_rebuild_overlay(data);
+                data->overlay_dirty = 0;
+            }
             return;
         }
 
@@ -414,8 +591,13 @@ static void memory_arena_test_update(game_app_t *app, float dt)
         return;
     }
 
-    if (data->exit_armed)
+    if (data->exit_armed) {
+        if (data->overlay_dirty) {
+            memory_arena_test_rebuild_overlay(data);
+            data->overlay_dirty = 0;
+        }
         return;
+    }
 
     if (input_button_pressed(INPUT_BUTTON_CROSS))
         run_basic_alloc_test(app);
@@ -431,12 +613,24 @@ static void memory_arena_test_update(game_app_t *app, float dt)
 
     if (input_button_pressed(INPUT_BUTTON_L1))
         run_alignment_test(app);
+
+    if (data->overlay_dirty) {
+        memory_arena_test_rebuild_overlay(data);
+        data->overlay_dirty = 0;
+    }
 }
 
 static void memory_arena_test_draw(game_app_t *app, float alpha)
 {
+    arena_test_state_data_t *data = memory_arena_test_data(app);
+
     (void)app;
     (void)alpha;
+
+    gfx2d_draw();
+
+    if (data)
+        debug_overlay_draw(&data->overlay);
 }
 
 static const game_state_desc_t g_memory_arena_test_state = {

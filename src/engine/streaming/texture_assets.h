@@ -27,17 +27,17 @@ typedef enum texture_status {
 
 int  texture_assets_init(void);
 void texture_assets_shutdown(void);
-void texture_assets_update(void); /* опционально, если что‑то нужно подтягивать */
+void texture_assets_update(void); /* optional, if need to load by part */
 
 texture_handle_t texture_load_png(const char *path, stream_priority_t prio);
 void             texture_release(texture_handle_t handle);
 
 int              texture_is_valid(texture_handle_t handle);
 texture_status_t texture_status(texture_handle_t handle);
-int              texture_tex_id(texture_handle_t handle);   /* -1, если нет */
+int              texture_tex_id(texture_handle_t handle);   /* -1, if no */
 const char      *texture_path(texture_handle_t handle);
 
-int              texture_prewarm(texture_handle_t handle);  /* вызывает gfx2d_touch_texture */
+int              texture_prewarm(texture_handle_t handle);  /* calls gfx2d_touch_texture */
 
 #ifdef __cplusplus
 }

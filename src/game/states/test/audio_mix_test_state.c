@@ -2,9 +2,13 @@
 
 #include "audio_mix_test_state.h"
 #include "engine/audio/audio.h"
-#include "engine/debug/screen_console.h"
+#include "engine/debug/debug_overlay.h"
+#include "engine/gfx/gfx2d.h"
 #include "engine/input/input.h"
 #include "engine/logging/log.h"
+#include "engine/memory/memory_arena.h"
+
+#include <stdio.h>
 
 #ifndef AUDIO_MIX_TEST_MUSIC_WAV_PATH
 #define AUDIO_MIX_TEST_MUSIC_WAV_PATH "scary_music.wav"
@@ -42,7 +46,7 @@
 #define AUDIO_MIX_TEST_PAN_STEP 0.2f
 #endif
 
-typedef struct audio_mix_test_state {
+typedef struct audio_mix_test_state_data {
     int music_asset;
     int music_asset_ok;
     int music_voice;
@@ -70,73 +74,33 @@ typedef struct audio_mix_test_state {
 
     float log_timer;
     float uptime_sec;
-    int screen_dirty;
+    int overlay_dirty;
     int page;
-} audio_mix_test_state_t;
 
-static audio_mix_test_state_t s_audio_mix_test;
+    int shutting_down;
 
-static void audio_mix_test_on_voice_started(audio_mixer_t *m,
-                                            int voice_handle,
-                                            audio_voice_t *voice,
-                                            void *userdata)
+    debug_overlay_t overlay;
+} audio_mix_test_state_data_t;
+
+static audio_mix_test_state_data_t *audio_mix_test_data(game_app_t *app)
 {
-    audio_mix_test_state_t *s = (audio_mix_test_state_t *)userdata;
-    (void)m;
-    (void)voice;
-
-    if (!s)
-        return;
-
-    if (voice_handle == s->music_voice) {
-        LOGLN("[state:audio_mix_test] callback started music voice=%d",
-              voice_handle);
-    } else {
-        LOGLN("[state:audio_mix_test] callback started sfx voice=%d",
-              voice_handle);
-    }
-
-    s->screen_dirty = 1;
+    return GAME_APP_STATE_DATA_AS(app, audio_mix_test_state_data_t);
 }
 
-static void audio_mix_test_on_voice_stopped(audio_mixer_t *m,
-                                            int voice_handle,
-                                            audio_voice_t *voice,
-                                            void *userdata)
+static int audio_mix_test_voice_in_recent(const audio_mix_test_state_data_t *s, int voice)
 {
-    audio_mix_test_state_t *s = (audio_mix_test_state_t *)userdata;
-    (void)m;
-    (void)voice;
+    int i;
 
-    if (!s)
-        return;
+    if (!s || voice < 0)
+        return 0;
 
-    if (voice_handle == s->music_voice) {
-        LOGLN("[state:audio_mix_test] callback stopped music voice=%d",
-              voice_handle);
-        s->music_voice = -1;
-        s->music_paused = 0;
-    } else {
-        LOGLN("[state:audio_mix_test] callback stopped sfx voice=%d",
-              voice_handle);
-
-        if (voice_handle == s->last_sfx_voice)
-            s->last_sfx_voice = -1;
+    for (i = 0; i < AUDIO_MIX_TEST_RECENT_VOICES; ++i) {
+        if (s->recent_voices[i] == voice)
+            return 1;
     }
 
-    s->screen_dirty = 1;
+    return 0;
 }
-
-// static void audio_mix_test_bind_voice_callbacks(audio_mix_test_state_t *s, int voice_handle)
-// {
-//     if (!s || voice_handle < 0)
-//         return;
-
-//     audio_voice_set_callbacks(voice_handle,
-//                               audio_mix_test_on_voice_started,
-//                               audio_mix_test_on_voice_stopped,
-//                               s);
-// }
 
 static float audio_mix_test_clamp_pan(float pan)
 {
@@ -147,61 +111,72 @@ static float audio_mix_test_clamp_pan(float pan)
     return pan;
 }
 
-static void audio_mix_test_reset_state(void)
+static void audio_mix_test_reset_state(audio_mix_test_state_data_t *s)
 {
     int i;
 
-    s_audio_mix_test.music_asset = -1;
-    s_audio_mix_test.music_asset_ok = 0;
-    s_audio_mix_test.music_voice = -1;
-    s_audio_mix_test.music_paused = 0;
-    s_audio_mix_test.music_volume = 80;
-    s_audio_mix_test.music_speed = 1.0f;
-    s_audio_mix_test.music_pan = 0.0f;
+    if (!s)
+        return;
 
-    s_audio_mix_test.sfx1 = -1;
-    s_audio_mix_test.sfx2 = -1;
-    s_audio_mix_test.sfx3 = -1;
+    s->music_asset = -1;
+    s->music_asset_ok = 0;
+    s->music_voice = -1;
+    s->music_paused = 0;
+    s->music_volume = 80;
+    s->music_speed = 1.0f;
+    s->music_pan = 0.0f;
 
-    s_audio_mix_test.sfx1_ok = 0;
-    s_audio_mix_test.sfx2_ok = 0;
-    s_audio_mix_test.sfx3_ok = 0;
+    s->sfx1 = -1;
+    s->sfx2 = -1;
+    s->sfx3 = -1;
 
-    s_audio_mix_test.sfx_pan = 0.0f;
+    s->sfx1_ok = 0;
+    s->sfx2_ok = 0;
+    s->sfx3_ok = 0;
 
-    s_audio_mix_test.last_sfx_voice = -1;
-    s_audio_mix_test.last_sfx_voice_playing = 0;
-    s_audio_mix_test.sfx_trigger_count = 0;
+    s->sfx_pan = 0.0f;
+
+    s->last_sfx_voice = -1;
+    s->last_sfx_voice_playing = 0;
+    s->sfx_trigger_count = 0;
 
     for (i = 0; i < AUDIO_MIX_TEST_RECENT_VOICES; i++)
-        s_audio_mix_test.recent_voices[i] = -1;
-    s_audio_mix_test.recent_voice_write_index = 0;
+        s->recent_voices[i] = -1;
+    s->recent_voice_write_index = 0;
 
-    s_audio_mix_test.log_timer = 0.0f;
-    s_audio_mix_test.uptime_sec = 0.0f;
-    s_audio_mix_test.screen_dirty = 1;
-    s_audio_mix_test.page = 0;
+    s->log_timer = 0.0f;
+    s->uptime_sec = 0.0f;
+    s->overlay_dirty = 1;
+    s->page = 0;
+
+    s->shutting_down = 0;
 }
 
-static void audio_mix_test_push_recent_voice(int voice)
+static void audio_mix_test_push_recent_voice(audio_mix_test_state_data_t *s, int voice)
 {
-    s_audio_mix_test.recent_voices[s_audio_mix_test.recent_voice_write_index] = voice;
-    s_audio_mix_test.recent_voice_write_index++;
-    if (s_audio_mix_test.recent_voice_write_index >= AUDIO_MIX_TEST_RECENT_VOICES)
-        s_audio_mix_test.recent_voice_write_index = 0;
+    if (!s)
+        return;
+
+    s->recent_voices[s->recent_voice_write_index] = voice;
+    s->recent_voice_write_index++;
+    if (s->recent_voice_write_index >= AUDIO_MIX_TEST_RECENT_VOICES)
+        s->recent_voice_write_index = 0;
 }
 
-static int audio_mix_test_count_recent_playing(void)
+static int audio_mix_test_count_recent_playing(const audio_mix_test_state_data_t *s)
 {
     int i, j;
     int unique[AUDIO_MIX_TEST_RECENT_VOICES];
     int unique_count = 0;
 
+    if (!s)
+        return 0;
+
     for (i = 0; i < AUDIO_MIX_TEST_RECENT_VOICES; i++)
         unique[i] = -1;
 
     for (i = 0; i < AUDIO_MIX_TEST_RECENT_VOICES; i++) {
-        int voice = s_audio_mix_test.recent_voices[i];
+        int voice = s->recent_voices[i];
         int already_seen = 0;
 
         if (voice < 0)
@@ -224,161 +199,251 @@ static int audio_mix_test_count_recent_playing(void)
     return unique_count;
 }
 
-static int audio_mix_test_start_music_voice(void)
+static void audio_mix_test_on_voice_started(audio_mixer_t *m,
+                                            int voice_handle,
+                                            audio_voice_t *voice,
+                                            void *userdata)
+{
+    audio_mix_test_state_data_t *s = (audio_mix_test_state_data_t *)userdata;
+
+    (void)m;
+    (void)voice;
+
+    if (!s)
+        return;
+
+    if (s->shutting_down)
+        return;
+
+    LOGLN("[state:audio_mix_test] callback started voice=%d", voice_handle);
+    s->overlay_dirty = 1;
+}
+
+static void audio_mix_test_on_voice_stopped(audio_mixer_t *m,
+                                            int voice_handle,
+                                            audio_voice_t *voice,
+                                            void *userdata)
+{
+    audio_mix_test_state_data_t *s = (audio_mix_test_state_data_t *)userdata;
+
+    (void)m;
+    (void)voice;
+
+    if (!s)
+        return;
+
+    if (s->shutting_down)
+        return;
+
+    if (voice_handle == s->music_voice) {
+        LOGLN("[state:audio_mix_test] callback stopped music voice=%d",
+              voice_handle);
+        s->music_voice = -1;
+        s->music_paused = 0;
+    } else if (voice_handle == s->last_sfx_voice ||
+               audio_mix_test_voice_in_recent(s, voice_handle)) {
+        LOGLN("[state:audio_mix_test] callback stopped sfx voice=%d",
+              voice_handle);
+
+        if (voice_handle == s->last_sfx_voice)
+            s->last_sfx_voice = -1;
+    } else {
+        LOGLN("[state:audio_mix_test] callback stopped unknown voice=%d",
+              voice_handle);
+    }
+
+    s->overlay_dirty = 1;
+}
+
+static int audio_mix_test_music_playing(const audio_mix_test_state_data_t *s)
+{
+    if (!s || s->music_voice < 0)
+        return 0;
+
+    return audio_voice_is_playing(s->music_voice);
+}
+
+static int audio_mix_test_music_paused_now(const audio_mix_test_state_data_t *s)
+{
+    if (!s || s->music_voice < 0)
+        return 0;
+
+    return audio_voice_is_paused(s->music_voice);
+}
+
+static void audio_mix_test_refresh_last_sfx_playing(audio_mix_test_state_data_t *s)
+{
+    if (!s)
+        return;
+
+    if (s->last_sfx_voice >= 0)
+        s->last_sfx_voice_playing = audio_voice_is_playing(s->last_sfx_voice);
+    else
+        s->last_sfx_voice_playing = 0;
+}
+
+static void audio_mix_test_rebuild_overlay(audio_mix_test_state_data_t *s)
+{
+    int audio_available;
+    int music_playing;
+    int music_paused;
+
+    if (!s)
+        return;
+
+    if (s->shutting_down)
+    return;
+
+    audio_available = audio_is_available();
+    music_playing = audio_mix_test_music_playing(s);
+    music_paused = audio_mix_test_music_paused_now(s);
+
+    audio_mix_test_refresh_last_sfx_playing(s);
+
+    if (s->page == 0) {
+        debug_overlay_printf(
+            &s->overlay,
+            "Audio Mix Test [1/2]\n"
+            "CROSS pause/resume music  TRIANGLE stop/play music\n"
+            "SQUARE sfx1  CIRCLE sfx2  R1 sfx3  L1 burst x3  L2 page\n"
+            "UP/DOWN music volume      LEFT/RIGHT music speed\n"
+            "START return to menu\n"
+            "\n"
+            "aud=%d uptime=%dms\n"
+            "music asset=%d ok=%d voice=%d play=%d pause=%d\n"
+            "music vol=%d speed=%d/100 pan=%d/100\n"
+            "sfx1=%d(%d) sfx2=%d(%d) sfx3=%d(%d)\n"
+            "sfx pan=%d/100\n"
+            "last_voice=%d last_play=%d\n"
+            "recent_playing=%d sfx_count=%d\n",
+            audio_available,
+            (int)(s->uptime_sec * 1000.0f),
+            s->music_asset,
+            s->music_asset_ok,
+            s->music_voice,
+            music_playing,
+            music_paused,
+            s->music_volume,
+            (int)(s->music_speed * 100.0f),
+            (int)(s->music_pan * 100.0f),
+            s->sfx1, s->sfx1_ok,
+            s->sfx2, s->sfx2_ok,
+            s->sfx3, s->sfx3_ok,
+            (int)(s->sfx_pan * 100.0f),
+            s->last_sfx_voice,
+            s->last_sfx_voice_playing,
+            audio_mix_test_count_recent_playing(s),
+            s->sfx_trigger_count
+        );
+    } else {
+        int i;
+        char buf[DEBUG_OVERLAY_TEXT_CAPACITY];
+        int off = 0;
+
+        off += snprintf(buf + off, sizeof(buf) - off,
+            "Audio Mix Test [2/2]\n"
+            "LEFT/RIGHT music pan  UP/DOWN sfx pan\n"
+            "SQUARE/CIRCLE/R1 play sfx with current sfx pan\n"
+            "TRIANGLE center pans  L1 burst x3  L2 page\n"
+            "START return to menu\n"
+            "\n"
+            "music pan=%d/100\n"
+            "sfx pan=%d/100\n"
+            "last_voice=%d last_play=%d\n"
+            "recent_widx=%d\n"
+            "recent_playing=%d\n"
+            "\n",
+            (int)(s->music_pan * 100.0f),
+            (int)(s->sfx_pan * 100.0f),
+            s->last_sfx_voice,
+            s->last_sfx_voice_playing,
+            s->recent_voice_write_index,
+            audio_mix_test_count_recent_playing(s));
+
+        for (i = 0; i < AUDIO_MIX_TEST_RECENT_VOICES; i++) {
+            int voice = s->recent_voices[i];
+            int playing = 0;
+
+            if (voice >= 0)
+                playing = audio_voice_is_playing(voice);
+
+            if (off >= (int)sizeof(buf))
+                break;
+
+            off += snprintf(buf + off, sizeof(buf) - off,
+                            "[%d] v=%d p=%d\n",
+                            i, voice, playing);
+        }
+
+        buf[sizeof(buf) - 1] = '\0';
+        debug_overlay_set_text(&s->overlay, buf);
+    }
+}
+
+static int audio_mix_test_start_music_voice(audio_mix_test_state_data_t *s)
 {
     int voice;
 
-    if (!s_audio_mix_test.music_asset_ok || s_audio_mix_test.music_asset < 0)
+    if (!s || !s->music_asset_ok || s->music_asset < 0)
         return -1;
 
-    voice = audio_play_ex(s_audio_mix_test.music_asset,
-        s_audio_mix_test.music_volume,
-        s_audio_mix_test.music_speed,
-        1,
-        audio_mix_test_on_voice_started,
-        audio_mix_test_on_voice_stopped,
-        &s_audio_mix_test);
+    voice = audio_play_ex(s->music_asset,
+                          s->music_volume,
+                          s->music_speed,
+                          1,
+                          audio_mix_test_on_voice_started,
+                          audio_mix_test_on_voice_stopped,
+                          s);
 
     if (voice < 0) {
         LOGLN("[state:audio_mix_test] music audio_play failed rc=%d", voice);
         return -1;
     }
 
-    s_audio_mix_test.music_voice = voice;
-    s_audio_mix_test.music_paused = 0;
+    s->music_voice = voice;
+    s->music_paused = 0;
 
-    audio_voice_set_pan(s_audio_mix_test.music_voice,
-                        s_audio_mix_test.music_pan);
+    audio_voice_set_pan(s->music_voice, s->music_pan);
 
     LOGLN("[state:audio_mix_test] music playing asset=%d voice=%d loop=1 pan=%d/100",
-          s_audio_mix_test.music_asset,
-          s_audio_mix_test.music_voice,
-          (int)(s_audio_mix_test.music_pan * 100.0f));
+          s->music_asset,
+          s->music_voice,
+          (int)(s->music_pan * 100.0f));
     return 0;
 }
 
-static void audio_mix_test_redraw_screen(void)
+static int audio_mix_test_open_music(audio_mix_test_state_data_t *s)
 {
-    int audio_available = audio_is_available();
-    int music_playing = 0;
-    int music_paused = 0;
+    if (!s)
+        return -1;
 
-    if (s_audio_mix_test.music_voice >= 0) {
-        music_playing = audio_voice_is_playing(s_audio_mix_test.music_voice);
-        music_paused = audio_voice_is_paused(s_audio_mix_test.music_voice);
-    }
-
-    if (s_audio_mix_test.last_sfx_voice >= 0)
-        s_audio_mix_test.last_sfx_voice_playing =
-            audio_voice_is_playing(s_audio_mix_test.last_sfx_voice);
-    else
-        s_audio_mix_test.last_sfx_voice_playing = 0;
-
-    if (s_audio_mix_test.page == 0) {
-        screen_console_begin(
-            "audio_mix_test [page 1/2]",
-            "CROSS=pause/resume music  TRIANGLE=stop/play music\n"
-            "SQUARE=sfx1  CIRCLE=sfx2  R1=sfx3  L1=burst sfx1 x3 L2=page\n"
-            "UP/DOWN=music volume      LEFT/RIGHT=music speed\n"
-            "START=quit"
-        );
-
-        screen_console_printf("aud=%d  uptime=%dms\n",
-                              audio_available,
-                              (int)(s_audio_mix_test.uptime_sec * 1000.0f));
-
-        screen_console_printf("music asset=%d ok=%d voice=%d play=%d pause=%d\n",
-                              s_audio_mix_test.music_asset,
-                              s_audio_mix_test.music_asset_ok,
-                              s_audio_mix_test.music_voice,
-                              music_playing,
-                              music_paused);
-
-        screen_console_printf("music vol=%d speed=%d/100 pan=%d/100\n",
-                              s_audio_mix_test.music_volume,
-                              (int)(s_audio_mix_test.music_speed * 100.0f),
-                              (int)(s_audio_mix_test.music_pan * 100.0f));
-
-        screen_console_printf("sfx1=%d(%d) sfx2=%d(%d) sfx3=%d(%d)\n",
-                              s_audio_mix_test.sfx1, s_audio_mix_test.sfx1_ok,
-                              s_audio_mix_test.sfx2, s_audio_mix_test.sfx2_ok,
-                              s_audio_mix_test.sfx3, s_audio_mix_test.sfx3_ok);
-
-        screen_console_printf("sfx pan=%d/100\n",
-                              (int)(s_audio_mix_test.sfx_pan * 100.0f));
-
-        screen_console_printf("last_voice=%d last_play=%d\n",
-                              s_audio_mix_test.last_sfx_voice,
-                              s_audio_mix_test.last_sfx_voice_playing);
-
-        screen_console_printf("recent_playing=%d sfx_count=%d\n",
-                              audio_mix_test_count_recent_playing(),
-                              s_audio_mix_test.sfx_trigger_count);
-    } else {
-        int i;
-
-        screen_console_begin(
-            "audio_mix_test [page 2/2]",
-            "LEFT/RIGHT=music pan  UP/DOWN=sfx pan\n"
-            "SQUARE/CIRCLE/R1=play sfx with current sfx pan\n"
-            "TRIANGLE=center pans  L1=burst sfx1 x3  L2=page\n"
-            "START=quit"
-        );
-
-        screen_console_printf("music pan=%d/100\n",
-                              (int)(s_audio_mix_test.music_pan * 100.0f));
-        screen_console_printf("sfx pan=%d/100\n",
-                              (int)(s_audio_mix_test.sfx_pan * 100.0f));
-        screen_console_printf("last_voice=%d last_play=%d\n",
-                              s_audio_mix_test.last_sfx_voice,
-                              s_audio_mix_test.last_sfx_voice_playing);
-        screen_console_printf("recent_voice_widx=%d\n",
-                              s_audio_mix_test.recent_voice_write_index);
-        screen_console_printf("recent_playing=%d\n\n",
-                              audio_mix_test_count_recent_playing());
-
-        for (i = 0; i < AUDIO_MIX_TEST_RECENT_VOICES; i++) {
-            int voice = s_audio_mix_test.recent_voices[i];
-            int playing = 0;
-
-            if (voice >= 0)
-                playing = audio_voice_is_playing(voice);
-
-            screen_console_printf("[%d] voice=%d playing=%d\n",
-                                  i, voice, playing);
-        }
-    }
-}
-
-static int audio_mix_test_open_music(void)
-{
-    s_audio_mix_test.music_asset = audio_asset_load_stream(
+    s->music_asset = audio_asset_load_stream(
         AUDIO_MIX_TEST_MUSIC_WAV_PATH,
         AUDIO_MIX_TEST_MUSIC_IO_BUFFER_BYTES
     );
 
-    if (s_audio_mix_test.music_asset < 0) {
+    if (s->music_asset < 0) {
         LOGLN("[state:audio_mix_test] audio_asset_load_stream failed: %d",
-              s_audio_mix_test.music_asset);
-        s_audio_mix_test.music_asset = -1;
+              s->music_asset);
+        s->music_asset = -1;
         return -1;
     }
 
-    s_audio_mix_test.music_asset_ok = 1;
+    s->music_asset_ok = 1;
 
-    if (audio_asset_preload(s_audio_mix_test.music_asset) < 0) {
+    if (audio_asset_preload(s->music_asset) < 0) {
         LOGLN("[state:audio_mix_test] audio_asset_preload failed: %d",
-              s_audio_mix_test.music_asset);
-        audio_asset_unload(s_audio_mix_test.music_asset);
-        s_audio_mix_test.music_asset = -1;
-        s_audio_mix_test.music_asset_ok = 0;
+              s->music_asset);
+        audio_asset_unload(s->music_asset);
+        s->music_asset = -1;
+        s->music_asset_ok = 0;
         return -1;
     }
 
-    if (audio_mix_test_start_music_voice() < 0) {
-        audio_asset_unload(s_audio_mix_test.music_asset);
-        s_audio_mix_test.music_asset = -1;
-        s_audio_mix_test.music_asset_ok = 0;
+    if (audio_mix_test_start_music_voice(s) < 0) {
+        audio_asset_unload(s->music_asset);
+        s->music_asset = -1;
+        s->music_asset_ok = 0;
         return -1;
     }
 
@@ -403,85 +468,8 @@ static void audio_mix_test_load_sfx_one(const char *tag,
           tag, *out_handle, path);
 }
 
-static int audio_mix_test_enter(game_app_t *app, void *userdata)
-{
-    (void)app;
-    (void)userdata;
-
-    audio_mix_test_reset_state();
-
-    screen_console_enter();
-
-    LOGLN("[state:audio_mix_test] enter");
-
-    if (!audio_is_available()) {
-        LOGLN("[state:audio_mix_test] audio unavailable");
-        audio_mix_test_redraw_screen();
-        s_audio_mix_test.screen_dirty = 0;
-        return 0;
-    }
-
-    if (audio_mix_test_open_music() < 0) {
-        audio_mix_test_redraw_screen();
-        s_audio_mix_test.screen_dirty = 0;
-        return 0;
-    }
-
-    audio_mix_test_load_sfx_one("sfx1",
-                                AUDIO_MIX_TEST_SFX1_WAV_PATH,
-                                &s_audio_mix_test.sfx1,
-                                &s_audio_mix_test.sfx1_ok);
-
-    audio_mix_test_load_sfx_one("sfx2",
-                                AUDIO_MIX_TEST_SFX2_WAV_PATH,
-                                &s_audio_mix_test.sfx2,
-                                &s_audio_mix_test.sfx2_ok);
-
-    audio_mix_test_load_sfx_one("sfx3",
-                                AUDIO_MIX_TEST_SFX3_WAV_PATH,
-                                &s_audio_mix_test.sfx3,
-                                &s_audio_mix_test.sfx3_ok);
-
-    audio_mix_test_redraw_screen();
-    s_audio_mix_test.screen_dirty = 0;
-    return 0;
-}
-
-static void audio_mix_test_exit(game_app_t *app)
-{
-    (void)app;
-
-    LOGLN("[state:audio_mix_test] exit");
-
-    if (s_audio_mix_test.last_sfx_voice >= 0)
-        audio_voice_stop(s_audio_mix_test.last_sfx_voice);
-
-    if (s_audio_mix_test.sfx1_ok && s_audio_mix_test.sfx1 >= 0)
-        audio_asset_unload(s_audio_mix_test.sfx1);
-    if (s_audio_mix_test.sfx2_ok && s_audio_mix_test.sfx2 >= 0)
-        audio_asset_unload(s_audio_mix_test.sfx2);
-    if (s_audio_mix_test.sfx3_ok && s_audio_mix_test.sfx3 >= 0)
-        audio_asset_unload(s_audio_mix_test.sfx3);
-
-    if (s_audio_mix_test.music_voice >= 0)
-        audio_voice_stop(s_audio_mix_test.music_voice);
-
-    if (s_audio_mix_test.music_asset_ok && s_audio_mix_test.music_asset >= 0)
-        audio_asset_unload(s_audio_mix_test.music_asset);
-
-    audio_mix_test_reset_state();
-    s_audio_mix_test.screen_dirty = 0;
-
-    screen_console_exit();
-}
-
-static void audio_mix_test_fixed_update(game_app_t *app, float dt)
-{
-    (void)app;
-    (void)dt;
-}
-
-static void audio_mix_test_trigger_sfx(int sfx_handle,
+static void audio_mix_test_trigger_sfx(audio_mix_test_state_data_t *s,
+                                       int sfx_handle,
                                        int sfx_ok,
                                        const char *tag)
 {
@@ -493,30 +481,31 @@ static void audio_mix_test_trigger_sfx(int sfx_handle,
     }
 
     voice = audio_play_ex(sfx_handle,
-        100,
-        1.0f,
-        0,
-        audio_mix_test_on_voice_started,
-        audio_mix_test_on_voice_stopped,
-        &s_audio_mix_test);
+                          100,
+                          1.0f,
+                          0,
+                          audio_mix_test_on_voice_started,
+                          audio_mix_test_on_voice_stopped,
+                          s);
 
     if (voice < 0) {
         LOGLN("[state:audio_mix_test] %s play failed rc=%d", tag, voice);
         return;
     }
 
-    audio_voice_set_pan(voice, s_audio_mix_test.sfx_pan);
+    audio_voice_set_pan(voice, s->sfx_pan);
 
-    s_audio_mix_test.last_sfx_voice = voice;
-    s_audio_mix_test.sfx_trigger_count++;
-    audio_mix_test_push_recent_voice(voice);
-    s_audio_mix_test.screen_dirty = 1;
+    s->last_sfx_voice = voice;
+    s->sfx_trigger_count++;
+    audio_mix_test_push_recent_voice(s, voice);
+    s->overlay_dirty = 1;
 
     LOGLN("[state:audio_mix_test] %s voice=%d pan=%d/100",
-          tag, voice, (int)(s_audio_mix_test.sfx_pan * 100.0f));
+          tag, voice, (int)(s->sfx_pan * 100.0f));
 }
 
-static void audio_mix_test_trigger_burst(int sfx_handle,
+static void audio_mix_test_trigger_burst(audio_mix_test_state_data_t *s,
+                                         int sfx_handle,
                                          int sfx_ok,
                                          const char *tag,
                                          int count)
@@ -524,19 +513,19 @@ static void audio_mix_test_trigger_burst(int sfx_handle,
     int i;
     int ok_count = 0;
 
-    if (!sfx_ok || sfx_handle < 0) {
+    if (!s || !sfx_ok || sfx_handle < 0) {
         LOGLN("[state:audio_mix_test] %s burst unavailable", tag);
         return;
     }
 
     for (i = 0; i < count; i++) {
         int voice = audio_play_ex(sfx_handle,
-            100,
-            1.0f,
-            0,
-            audio_mix_test_on_voice_started,
-            audio_mix_test_on_voice_stopped,
-            &s_audio_mix_test);
+                                  100,
+                                  1.0f,
+                                  0,
+                                  audio_mix_test_on_voice_started,
+                                  audio_mix_test_on_voice_stopped,
+                                  s);
 
         if (voice < 0) {
             LOGLN("[state:audio_mix_test] %s burst[%d] failed rc=%d",
@@ -544,202 +533,302 @@ static void audio_mix_test_trigger_burst(int sfx_handle,
             continue;
         }
 
-        audio_voice_set_pan(voice, s_audio_mix_test.sfx_pan);
+        audio_voice_set_pan(voice, s->sfx_pan);
 
-        s_audio_mix_test.last_sfx_voice = voice;
-        s_audio_mix_test.sfx_trigger_count++;
-        audio_mix_test_push_recent_voice(voice);
+        s->last_sfx_voice = voice;
+        s->sfx_trigger_count++;
+        audio_mix_test_push_recent_voice(s, voice);
         ok_count++;
     }
 
     LOGLN("[state:audio_mix_test] %s burst count=%d ok=%d pan=%d/100",
-          tag, count, ok_count, (int)(s_audio_mix_test.sfx_pan * 100.0f));
+          tag, count, ok_count, (int)(s->sfx_pan * 100.0f));
 
-    s_audio_mix_test.screen_dirty = 1;
+    s->overlay_dirty = 1;
 }
 
-static void audio_mix_test_update_page0_music_controls(void)
+static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data_t *s)
 {
-    if (s_audio_mix_test.music_asset_ok && s_audio_mix_test.music_asset >= 0) {
+    if (!s)
+        return;
+
+    if (s->music_asset_ok && s->music_asset >= 0) {
         if (input_button_pressed(INPUT_BUTTON_CROSS)) {
-            if (s_audio_mix_test.music_paused) {
-                if (s_audio_mix_test.music_voice >= 0)
-                    audio_voice_resume(s_audio_mix_test.music_voice);
-                s_audio_mix_test.music_paused = 0;
+            if (s->music_paused) {
+                if (s->music_voice >= 0)
+                    audio_voice_resume(s->music_voice);
+                s->music_paused = 0;
                 LOGLN("[state:audio_mix_test] music resume");
             } else {
-                if (s_audio_mix_test.music_voice >= 0)
-                    audio_voice_pause(s_audio_mix_test.music_voice);
-                s_audio_mix_test.music_paused = 1;
+                if (s->music_voice >= 0)
+                    audio_voice_pause(s->music_voice);
+                s->music_paused = 1;
                 LOGLN("[state:audio_mix_test] music pause");
             }
-            s_audio_mix_test.screen_dirty = 1;
+            s->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_TRIANGLE)) {
-            if (s_audio_mix_test.music_voice >= 0 &&
-                audio_voice_is_playing(s_audio_mix_test.music_voice)) {
-                audio_voice_stop(s_audio_mix_test.music_voice);
-                s_audio_mix_test.music_paused = 0;
+            if (s->music_voice >= 0 &&
+                audio_voice_is_playing(s->music_voice)) {
+                audio_voice_stop(s->music_voice);
+                s->music_paused = 0;
                 LOGLN("[state:audio_mix_test] music stop");
             } else {
-                if (audio_mix_test_start_music_voice() == 0)
+                if (audio_mix_test_start_music_voice(s) == 0)
                     LOGLN("[state:audio_mix_test] music play");
             }
-            s_audio_mix_test.screen_dirty = 1;
+            s->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_UP)) {
-            s_audio_mix_test.music_volume += 10;
-            if (s_audio_mix_test.music_volume > 100)
-                s_audio_mix_test.music_volume = 100;
-            if (s_audio_mix_test.music_voice >= 0)
-                audio_voice_set_volume(s_audio_mix_test.music_voice,
-                                       s_audio_mix_test.music_volume);
-            LOGLN("[state:audio_mix_test] music volume=%d",
-                  s_audio_mix_test.music_volume);
-            s_audio_mix_test.screen_dirty = 1;
+            s->music_volume += 10;
+            if (s->music_volume > 100)
+                s->music_volume = 100;
+            if (s->music_voice >= 0)
+                audio_voice_set_volume(s->music_voice, s->music_volume);
+            LOGLN("[state:audio_mix_test] music volume=%d", s->music_volume);
+            s->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_DOWN)) {
-            s_audio_mix_test.music_volume -= 10;
-            if (s_audio_mix_test.music_volume < 0)
-                s_audio_mix_test.music_volume = 0;
-            if (s_audio_mix_test.music_voice >= 0)
-                audio_voice_set_volume(s_audio_mix_test.music_voice,
-                                       s_audio_mix_test.music_volume);
-            LOGLN("[state:audio_mix_test] music volume=%d",
-                  s_audio_mix_test.music_volume);
-            s_audio_mix_test.screen_dirty = 1;
+            s->music_volume -= 10;
+            if (s->music_volume < 0)
+                s->music_volume = 0;
+            if (s->music_voice >= 0)
+                audio_voice_set_volume(s->music_voice, s->music_volume);
+            LOGLN("[state:audio_mix_test] music volume=%d", s->music_volume);
+            s->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_RIGHT)) {
-            s_audio_mix_test.music_speed += 0.25f;
-            if (s_audio_mix_test.music_speed > 3.0f)
-                s_audio_mix_test.music_speed = 3.0f;
-            if (s_audio_mix_test.music_voice >= 0)
-                audio_voice_set_speed(s_audio_mix_test.music_voice,
-                                      s_audio_mix_test.music_speed);
+            s->music_speed += 0.25f;
+            if (s->music_speed > 3.0f)
+                s->music_speed = 3.0f;
+            if (s->music_voice >= 0)
+                audio_voice_set_speed(s->music_voice, s->music_speed);
             LOGLN("[state:audio_mix_test] music speed=%d/100",
-                  (int)(s_audio_mix_test.music_speed * 100.0f));
-            s_audio_mix_test.screen_dirty = 1;
+                  (int)(s->music_speed * 100.0f));
+            s->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_LEFT)) {
-            s_audio_mix_test.music_speed -= 0.25f;
-            if (s_audio_mix_test.music_speed < (1.0f / 3.0f))
-                s_audio_mix_test.music_speed = (1.0f / 3.0f);
-            if (s_audio_mix_test.music_voice >= 0)
-                audio_voice_set_speed(s_audio_mix_test.music_voice,
-                                      s_audio_mix_test.music_speed);
+            s->music_speed -= 0.25f;
+            if (s->music_speed < (1.0f / 3.0f))
+                s->music_speed = (1.0f / 3.0f);
+            if (s->music_voice >= 0)
+                audio_voice_set_speed(s->music_voice, s->music_speed);
             LOGLN("[state:audio_mix_test] music speed=%d/100",
-                  (int)(s_audio_mix_test.music_speed * 100.0f));
-            s_audio_mix_test.screen_dirty = 1;
+                  (int)(s->music_speed * 100.0f));
+            s->overlay_dirty = 1;
         }
     }
 }
 
-static void audio_mix_test_update_page1_pan_controls(void)
+static void audio_mix_test_update_page1_pan_controls(audio_mix_test_state_data_t *s)
 {
-    if (input_button_pressed(INPUT_BUTTON_RIGHT)) {
-        s_audio_mix_test.music_pan =
-            audio_mix_test_clamp_pan(s_audio_mix_test.music_pan + AUDIO_MIX_TEST_PAN_STEP);
+    if (!s)
+        return;
 
-        if (s_audio_mix_test.music_voice >= 0)
-            audio_voice_set_pan(s_audio_mix_test.music_voice,
-                                s_audio_mix_test.music_pan);
+    if (input_button_pressed(INPUT_BUTTON_RIGHT)) {
+        s->music_pan = audio_mix_test_clamp_pan(s->music_pan + AUDIO_MIX_TEST_PAN_STEP);
+
+        if (s->music_voice >= 0)
+            audio_voice_set_pan(s->music_voice, s->music_pan);
 
         LOGLN("[state:audio_mix_test] music pan=%d/100",
-              (int)(s_audio_mix_test.music_pan * 100.0f));
-        s_audio_mix_test.screen_dirty = 1;
+              (int)(s->music_pan * 100.0f));
+        s->overlay_dirty = 1;
     }
 
     if (input_button_pressed(INPUT_BUTTON_LEFT)) {
-        s_audio_mix_test.music_pan =
-            audio_mix_test_clamp_pan(s_audio_mix_test.music_pan - AUDIO_MIX_TEST_PAN_STEP);
+        s->music_pan = audio_mix_test_clamp_pan(s->music_pan - AUDIO_MIX_TEST_PAN_STEP);
 
-        if (s_audio_mix_test.music_voice >= 0)
-            audio_voice_set_pan(s_audio_mix_test.music_voice,
-                                s_audio_mix_test.music_pan);
+        if (s->music_voice >= 0)
+            audio_voice_set_pan(s->music_voice, s->music_pan);
 
         LOGLN("[state:audio_mix_test] music pan=%d/100",
-              (int)(s_audio_mix_test.music_pan * 100.0f));
-        s_audio_mix_test.screen_dirty = 1;
+              (int)(s->music_pan * 100.0f));
+        s->overlay_dirty = 1;
     }
 
     if (input_button_pressed(INPUT_BUTTON_UP)) {
-        s_audio_mix_test.sfx_pan =
-            audio_mix_test_clamp_pan(s_audio_mix_test.sfx_pan + AUDIO_MIX_TEST_PAN_STEP);
-
+        s->sfx_pan = audio_mix_test_clamp_pan(s->sfx_pan + AUDIO_MIX_TEST_PAN_STEP);
         LOGLN("[state:audio_mix_test] sfx pan=%d/100",
-              (int)(s_audio_mix_test.sfx_pan * 100.0f));
-        s_audio_mix_test.screen_dirty = 1;
+              (int)(s->sfx_pan * 100.0f));
+        s->overlay_dirty = 1;
     }
 
     if (input_button_pressed(INPUT_BUTTON_DOWN)) {
-        s_audio_mix_test.sfx_pan =
-            audio_mix_test_clamp_pan(s_audio_mix_test.sfx_pan - AUDIO_MIX_TEST_PAN_STEP);
-
+        s->sfx_pan = audio_mix_test_clamp_pan(s->sfx_pan - AUDIO_MIX_TEST_PAN_STEP);
         LOGLN("[state:audio_mix_test] sfx pan=%d/100",
-              (int)(s_audio_mix_test.sfx_pan * 100.0f));
-        s_audio_mix_test.screen_dirty = 1;
+              (int)(s->sfx_pan * 100.0f));
+        s->overlay_dirty = 1;
     }
 
     if (input_button_pressed(INPUT_BUTTON_TRIANGLE)) {
-        s_audio_mix_test.music_pan = 0.0f;
-        s_audio_mix_test.sfx_pan = 0.0f;
+        s->music_pan = 0.0f;
+        s->sfx_pan = 0.0f;
 
-        if (s_audio_mix_test.music_voice >= 0)
-            audio_voice_set_pan(s_audio_mix_test.music_voice,
-                                s_audio_mix_test.music_pan);
+        if (s->music_voice >= 0)
+            audio_voice_set_pan(s->music_voice, s->music_pan);
 
         LOGLN("[state:audio_mix_test] pans centered");
-        s_audio_mix_test.screen_dirty = 1;
+        s->overlay_dirty = 1;
     }
 }
 
-static void audio_mix_test_update_common_sfx_controls(void)
+static void audio_mix_test_update_common_sfx_controls(audio_mix_test_state_data_t *s)
 {
+    if (!s)
+        return;
+
     if (input_button_pressed(INPUT_BUTTON_SQUARE)) {
-        audio_mix_test_trigger_sfx(s_audio_mix_test.sfx1,
-                                   s_audio_mix_test.sfx1_ok,
-                                   "sfx1");
+        audio_mix_test_trigger_sfx(s, s->sfx1, s->sfx1_ok, "sfx1");
     }
 
     if (input_button_pressed(INPUT_BUTTON_CIRCLE)) {
-        audio_mix_test_trigger_sfx(s_audio_mix_test.sfx2,
-                                   s_audio_mix_test.sfx2_ok,
-                                   "sfx2");
+        audio_mix_test_trigger_sfx(s, s->sfx2, s->sfx2_ok, "sfx2");
     }
 
     if (input_button_pressed(INPUT_BUTTON_R1)) {
-        audio_mix_test_trigger_sfx(s_audio_mix_test.sfx3,
-                                   s_audio_mix_test.sfx3_ok,
-                                   "sfx3");
+        audio_mix_test_trigger_sfx(s, s->sfx3, s->sfx3_ok, "sfx3");
     }
 
     if (input_button_pressed(INPUT_BUTTON_L1)) {
-        audio_mix_test_trigger_burst(s_audio_mix_test.sfx1,
-                                     s_audio_mix_test.sfx1_ok,
+        audio_mix_test_trigger_burst(s,
+                                     s->sfx1,
+                                     s->sfx1_ok,
                                      "sfx1",
                                      AUDIO_MIX_TEST_BURST_COUNT);
     }
 
     if (input_button_pressed(INPUT_BUTTON_L2)) {
-        s_audio_mix_test.page++;
-        if (s_audio_mix_test.page > 1)
-            s_audio_mix_test.page = 0;
-        s_audio_mix_test.screen_dirty = 1;
+        s->page++;
+        if (s->page > 1)
+            s->page = 0;
+        s->overlay_dirty = 1;
     }
+}
+
+static int audio_mix_test_enter(game_app_t *app, void *userdata)
+{
+    audio_mix_test_state_data_t *s;
+    debug_overlay_desc_t overlay_desc;
+
+    (void)userdata;
+
+    s = (audio_mix_test_state_data_t *)mem_arena_calloc(
+        game_app_state_arena(app),
+        1,
+        sizeof(*s),
+        16
+    );
+    if (!s) {
+        LOGLN("[state:audio_mix_test] enter failed: no state arena memory");
+        return -1;
+    }
+
+    game_app_set_state_userdata(app, s);
+    audio_mix_test_reset_state(s);
+
+    debug_overlay_desc_init(&overlay_desc);
+    overlay_desc.x = 16;
+    overlay_desc.y = 16;
+    overlay_desc.w = 620;
+    overlay_desc.h = 320;
+
+    if (debug_overlay_init(app, &s->overlay, &overlay_desc) != 0) {
+        LOGLN("[state:audio_mix_test] overlay init failed");
+        return -1;
+    }
+
+    LOGLN("[state:audio_mix_test] enter");
+
+    if (!audio_is_available()) {
+        LOGLN("[state:audio_mix_test] audio unavailable");
+        audio_mix_test_rebuild_overlay(s);
+        s->overlay_dirty = 0;
+        return 0;
+    }
+
+    if (audio_mix_test_open_music(s) < 0) {
+        audio_mix_test_rebuild_overlay(s);
+        s->overlay_dirty = 0;
+        return 0;
+    }
+
+    audio_mix_test_load_sfx_one("sfx1",
+                                AUDIO_MIX_TEST_SFX1_WAV_PATH,
+                                &s->sfx1,
+                                &s->sfx1_ok);
+
+    audio_mix_test_load_sfx_one("sfx2",
+                                AUDIO_MIX_TEST_SFX2_WAV_PATH,
+                                &s->sfx2,
+                                &s->sfx2_ok);
+
+    audio_mix_test_load_sfx_one("sfx3",
+                                AUDIO_MIX_TEST_SFX3_WAV_PATH,
+                                &s->sfx3,
+                                &s->sfx3_ok);
+
+    audio_mix_test_rebuild_overlay(s);
+    s->overlay_dirty = 0;
+    return 0;
+}
+
+static void audio_mix_test_exit(game_app_t *app)
+{
+    audio_mix_test_state_data_t *s = audio_mix_test_data(app);
+
+    LOGLN("[state:audio_mix_test] exit");
+
+    if (!s)
+        return;
+
+    s->shutting_down = 1;
+
+    if (s->last_sfx_voice >= 0)
+        audio_voice_stop(s->last_sfx_voice);
+
+    if (s->sfx1_ok && s->sfx1 >= 0)
+        audio_asset_unload(s->sfx1);
+    if (s->sfx2_ok && s->sfx2 >= 0)
+        audio_asset_unload(s->sfx2);
+    if (s->sfx3_ok && s->sfx3 >= 0)
+        audio_asset_unload(s->sfx3);
+
+    if (s->music_voice >= 0)
+        audio_voice_stop(s->music_voice);
+
+    if (s->music_asset_ok && s->music_asset >= 0)
+        audio_asset_unload(s->music_asset);
+
+    debug_overlay_shutdown(app, &s->overlay);
+
+    audio_mix_test_reset_state(s);
+    s->overlay_dirty = 0;
+    game_app_set_state_userdata(app, NULL);
+}
+
+static void audio_mix_test_fixed_update(game_app_t *app, float dt)
+{
+    (void)app;
+    (void)dt;
 }
 
 static void audio_mix_test_update(game_app_t *app, float dt)
 {
+    audio_mix_test_state_data_t *s = audio_mix_test_data(app);
     int do_periodic_log = 0;
 
-    (void)app;
+    if (!s)
+        return;
 
-    s_audio_mix_test.uptime_sec += dt;
+    debug_overlay_update(app, &s->overlay, dt);
+
+    s->uptime_sec += dt;
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
         LOGLN("[state:audio_mix_test] START pressed, return to menu");
@@ -748,48 +837,52 @@ static void audio_mix_test_update(game_app_t *app, float dt)
         return;
     }
 
-    if (s_audio_mix_test.page == 0)
-        audio_mix_test_update_page0_music_controls();
+    if (s->page == 0)
+        audio_mix_test_update_page0_music_controls(s);
     else
-        audio_mix_test_update_page1_pan_controls();
+        audio_mix_test_update_page1_pan_controls(s);
 
-    audio_mix_test_update_common_sfx_controls();
+    audio_mix_test_update_common_sfx_controls(s);
 
-    s_audio_mix_test.log_timer += dt;
-    if (s_audio_mix_test.log_timer >= AUDIO_MIX_TEST_LOG_INTERVAL_SEC) {
-        while (s_audio_mix_test.log_timer >= AUDIO_MIX_TEST_LOG_INTERVAL_SEC)
-            s_audio_mix_test.log_timer -= AUDIO_MIX_TEST_LOG_INTERVAL_SEC;
+    s->log_timer += dt;
+    if (s->log_timer >= AUDIO_MIX_TEST_LOG_INTERVAL_SEC) {
+        while (s->log_timer >= AUDIO_MIX_TEST_LOG_INTERVAL_SEC)
+            s->log_timer -= AUDIO_MIX_TEST_LOG_INTERVAL_SEC;
         do_periodic_log = 1;
-        s_audio_mix_test.screen_dirty = 1;
+        s->overlay_dirty = 1;
     }
 
     if (do_periodic_log) {
         LOGLN("[state:audio_mix_test] music playing=%d paused=%d vol=%d speed=%d/100 music_pan=%d/100 sfx_pan=%d/100 last_voice=%d last_voice_playing=%d recent_playing=%d sfx_count=%d",
-              (s_audio_mix_test.music_voice >= 0)
-                  ? audio_voice_is_playing(s_audio_mix_test.music_voice) : 0,
-              (s_audio_mix_test.music_voice >= 0)
-                  ? audio_voice_is_paused(s_audio_mix_test.music_voice) : 0,
-              s_audio_mix_test.music_volume,
-              (int)(s_audio_mix_test.music_speed * 100.0f),
-              (int)(s_audio_mix_test.music_pan * 100.0f),
-              (int)(s_audio_mix_test.sfx_pan * 100.0f),
-              s_audio_mix_test.last_sfx_voice,
-              (s_audio_mix_test.last_sfx_voice >= 0)
-                  ? audio_voice_is_playing(s_audio_mix_test.last_sfx_voice) : 0,
-              audio_mix_test_count_recent_playing(),
-              s_audio_mix_test.sfx_trigger_count);
+              (s->music_voice >= 0) ? audio_voice_is_playing(s->music_voice) : 0,
+              (s->music_voice >= 0) ? audio_voice_is_paused(s->music_voice) : 0,
+              s->music_volume,
+              (int)(s->music_speed * 100.0f),
+              (int)(s->music_pan * 100.0f),
+              (int)(s->sfx_pan * 100.0f),
+              s->last_sfx_voice,
+              (s->last_sfx_voice >= 0) ? audio_voice_is_playing(s->last_sfx_voice) : 0,
+              audio_mix_test_count_recent_playing(s),
+              s->sfx_trigger_count);
     }
 
-    if (s_audio_mix_test.screen_dirty) {
-        audio_mix_test_redraw_screen();
-        s_audio_mix_test.screen_dirty = 0;
+    if (s->overlay_dirty) {
+        audio_mix_test_rebuild_overlay(s);
+        s->overlay_dirty = 0;
     }
 }
 
 static void audio_mix_test_draw(game_app_t *app, float alpha)
 {
+    audio_mix_test_state_data_t *s = audio_mix_test_data(app);
+
     (void)app;
     (void)alpha;
+
+    gfx2d_draw();
+
+    if (s)
+        debug_overlay_draw(&s->overlay);
 }
 
 static const game_state_desc_t g_audio_mix_test_state = {
