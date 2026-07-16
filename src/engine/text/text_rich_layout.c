@@ -374,9 +374,11 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
 
             /* In TEXT_REVEAL_WORD mode, whitespace items are emitted using the current
                group so that spacing appears together with the preceding revealed word. */
-            if (reveal_mode == TEXT_REVEAL_GLYPH) {
+            if (reveal_mode == TEXT_REVEAL_NONE) {
+                current_group = 0;
+            } else if (reveal_mode == TEXT_REVEAL_GLYPH) {
                 current_group = layout->reveal_group_count++;
-            } else {
+            } else { /* TEXT_REVEAL_WORD */
                 if (text_rich_is_space_cp(cp)) {
                     in_word = 0;
                 } else if (!in_word) {

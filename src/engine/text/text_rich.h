@@ -12,8 +12,9 @@ extern "C" {
 #endif
 
 typedef enum text_reveal_mode {
-    TEXT_REVEAL_GLYPH = 0,
-    TEXT_REVEAL_WORD  = 1
+    TEXT_REVEAL_NONE  = 0,
+    TEXT_REVEAL_GLYPH = 1,
+    TEXT_REVEAL_WORD  = 2
 } text_reveal_mode_t;
 
 typedef enum text_rich_effect_flags {

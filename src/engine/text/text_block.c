@@ -148,7 +148,7 @@ void text_block_init(text_block_t *tb,
     tb->params.wrap_mode = TEXT_WRAP_NONE;
 
     text_reveal_state_init(&tb->reveal, seconds_per_glyph);
-    tb->reveal_mode = TEXT_REVEAL_GLYPH;
+    tb->reveal_mode = TEXT_REVEAL_NONE;
     text_rich_draw_params_init(&tb->rich_draw_params);
 
     tb->font = NULL;
@@ -537,6 +537,9 @@ void text_block_reveal_reset(text_block_t *tb)
     if (!tb)
         return;
 
+    if (tb->reveal_mode == TEXT_REVEAL_NONE)
+        return;
+
     text_reveal_state_reset(&tb->reveal);
 }
 
@@ -545,6 +548,9 @@ void text_block_reveal_finish(text_block_t *tb)
     unsigned short total_units;
 
     if (!tb)
+        return;
+
+    if (tb->reveal_mode == TEXT_REVEAL_NONE)
         return;
 
     total_units = tb->use_rich_text
@@ -561,6 +567,9 @@ void text_block_update(text_block_t *tb, float dt)
     if (!tb)
         return;
 
+    if (tb->reveal_mode == TEXT_REVEAL_NONE)
+        return;
+
     total_units = tb->use_rich_text
         ? tb->rich_layout.reveal_group_count
         : tb->layout.glyph_count;
@@ -572,16 +581,20 @@ void text_block_update(text_block_t *tb, float dt)
 
 void text_block_draw(const text_block_t *tb)
 {
+    const text_reveal_state_t *reveal;
+
     if (!tb || !tb->font)
         return;
 
+    reveal = (tb->reveal_mode == TEXT_REVEAL_NONE) ? NULL : &tb->reveal;
+
     if (!tb->use_rich_text) {
-        text_draw_layout(tb->font, &tb->layout, &tb->reveal);
+        text_draw_layout(tb->font, &tb->layout, reveal);
     } else {
         text_rich_draw_layout_ex(tb->font,
-                         &tb->rich_layout,
-                         &tb->reveal,
-                         tb->effect_time_seconds,
-                         &tb->rich_draw_params);
+                                 &tb->rich_layout,
+                                 reveal,
+                                 tb->effect_time_seconds,
+                                 &tb->rich_draw_params);
     }
 }
