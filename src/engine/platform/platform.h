@@ -5,6 +5,13 @@
 extern "C" {
 #endif
 
+typedef struct platform_memory_info {
+    unsigned int total_physical_bytes;
+    unsigned int available_physical_bytes;
+    int has_total_physical;
+    int has_available_physical;
+} platform_memory_info_t;
+
 int  platform_init(void);
 void platform_shutdown(void);
 
@@ -16,6 +23,8 @@ float platform_time_now_seconds(void);
 
 /* Cooperative yield for outer loop when needed. */
 void platform_yield(void);
+
+int platform_get_memory_info(platform_memory_info_t *out);
 
 int platform_load_module(const char *path, int argc, const char *argv);
 int platform_exec_module_buffer(const void *buffer,

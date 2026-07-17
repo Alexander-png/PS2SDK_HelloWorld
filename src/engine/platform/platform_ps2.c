@@ -103,6 +103,22 @@ void platform_yield(void)
     DelayThread(0);
 }
 
+int platform_get_memory_info(platform_memory_info_t *out)
+{
+    if (!out)
+        return -1;
+
+    out->total_physical_bytes = 0;
+    out->available_physical_bytes = 0;
+    out->has_total_physical = 0;
+    out->has_available_physical = 0;
+
+    out->total_physical_bytes = (unsigned int)GetMemorySize();
+    out->has_total_physical = 1;
+
+    return 0;
+}
+
 int platform_load_module(const char *path, int argc, const char *argv)
 {
     if (!s_platform_ready)

@@ -401,6 +401,10 @@ void mem_dump_stats(void)
     int t;
 
     LOGLN("[memory] stats begin");
+    LOGLN("[memory] total current=%u peak=%u",
+          s_stats.total_current,
+          s_stats.total_peak);
+
     for (t = 0; t < MEMTAG_COUNT; ++t) {
         LOGLN("[memory] tag=%s current=%u peak=%u allocs=%u frees=%u",
               mem_tag_name((mem_tag_t)t),
@@ -409,6 +413,7 @@ void mem_dump_stats(void)
               s_stats.total_allocs[t],
               s_stats.total_frees[t]);
     }
+
     LOGLN("[memory] stats end");
 }
 
