@@ -87,6 +87,28 @@ static audio_mix_test_state_data_t *audio_mix_test_data(game_app_t *app)
     return GAME_APP_STATE_DATA_AS(app, audio_mix_test_state_data_t);
 }
 
+static void audio_mix_test_detach_voice_callbacks(audio_mix_test_state_data_t *s)
+{
+    int i;
+
+    if (!s)
+        return;
+
+    if (s->music_voice >= 0) {
+        audio_voice_set_callbacks(s->music_voice, NULL, NULL, NULL);
+    }
+
+    if (s->last_sfx_voice >= 0) {
+        audio_voice_set_callbacks(s->last_sfx_voice, NULL, NULL, NULL);
+    }
+
+    for (i = 0; i < AUDIO_MIX_TEST_RECENT_VOICES; ++i) {
+        int voice = s->recent_voices[i];
+        if (voice >= 0)
+            audio_voice_set_callbacks(voice, NULL, NULL, NULL);
+    }
+}
+
 static int audio_mix_test_voice_in_recent(const audio_mix_test_state_data_t *s, int voice)
 {
     int i;
@@ -788,6 +810,8 @@ static void audio_mix_test_exit(game_app_t *app)
         return;
 
     s->shutting_down = 1;
+
+    audio_mix_test_detach_voice_callbacks(s);
 
     if (s->last_sfx_voice >= 0)
         audio_voice_stop(s->last_sfx_voice);

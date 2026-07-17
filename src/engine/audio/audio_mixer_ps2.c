@@ -1053,6 +1053,9 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         v->on_stopped = on_stopped;
         v->callback_userdata = userdata;
 
+        /* new play: set notify-flags to zero */
+        audio_voice_reset_notify_flags(v);
+
         audio_voice_stream_reset_runtime(v);
 
         rc = audio_stream_source_prewarm(&a->source, 0, 2);
@@ -1110,6 +1113,9 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         v->on_stopped = on_stopped;
         v->callback_userdata = userdata;
 
+        /* new play: set notify-flags to zero */
+        audio_voice_reset_notify_flags(v);
+
         audio_voice_reset_playback(v);
         v->playing = 1;
 
@@ -1146,6 +1152,9 @@ int audio_mixer_alloc_voice(audio_mixer_t *m, audio_voice_kind_t kind)
     v->volume_r = 100;
     v->pan = 0.0f;
     v->speed = 1.0f;
+
+    /* beginning of new lifecycle: reset notify-flags explicity */
+    audio_voice_reset_notify_flags(v);
 
     return i;
 }

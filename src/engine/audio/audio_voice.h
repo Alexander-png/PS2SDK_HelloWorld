@@ -87,6 +87,7 @@ typedef struct audio_voice {
 
 /* common helpers */
 void audio_voice_reset_playback(audio_voice_t *v);
+void audio_voice_reset_notify_flags(audio_voice_t *v);
 void audio_voice_clear(audio_voice_t *v);
 
 /* stream-specific runtime */

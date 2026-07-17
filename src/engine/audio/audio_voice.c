@@ -9,6 +9,13 @@ static void audio_voice_reset_playback_common(audio_voice_t *v)
 
     v->play_cursor_frames = 0;
     v->play_frac = 0.0f;
+}
+
+static void audio_voice_reset_notify_flags_common(audio_voice_t *v)
+{
+    if (!v)
+        return;
+
     v->started_notified = 0;
     v->stopped_notified = 0;
 }
@@ -19,6 +26,14 @@ void audio_voice_reset_playback(audio_voice_t *v)
         return;
 
     audio_voice_reset_playback_common(v);
+}
+
+void audio_voice_reset_notify_flags(audio_voice_t *v)
+{
+    if (!v)
+        return;
+    
+    audio_voice_reset_notify_flags_common(v);
 }
 
 void audio_voice_clear(audio_voice_t *v)
