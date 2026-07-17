@@ -31,7 +31,6 @@
 #define MEMORY_GUARD_SIZE 16u
 #endif
 
-
 typedef struct mem_block_header {
     u32 magic;
     u32 size;
@@ -43,23 +42,19 @@ typedef struct mem_block_header {
     struct mem_block_header *next_live;
 } mem_block_header_t;
 
-
 static mem_stats_t s_stats;
 static mem_block_header_t *s_live_head = NULL;
-
 
 static int mem_tag_valid(mem_tag_t tag)
 {
     return tag >= 0 && tag < MEMTAG_COUNT;
 }
 
-
 static uintptr_t mem_align_up_ptr(uintptr_t value, u32 align)
 {
     uintptr_t mask = (uintptr_t)(align - 1u);
     return (value + mask) & ~mask;
 }
-
 
 static const char *mem_tag_name(mem_tag_t tag)
 {
@@ -80,7 +75,6 @@ static const char *mem_tag_name(mem_tag_t tag)
     return names[tag];
 }
 
-
 static void mem_live_list_add(mem_block_header_t *hdr)
 {
     hdr->prev_live = NULL;
@@ -91,7 +85,6 @@ static void mem_live_list_add(mem_block_header_t *hdr)
 
     s_live_head = hdr;
 }
-
 
 static void mem_live_list_remove(mem_block_header_t *hdr)
 {
@@ -107,18 +100,15 @@ static void mem_live_list_remove(mem_block_header_t *hdr)
     hdr->next_live = NULL;
 }
 
-
 static unsigned char *mem_front_guard_ptr(const mem_block_header_t *hdr)
 {
     return (unsigned char *)hdr->user_ptr - MEMORY_GUARD_SIZE;
 }
 
-
 static unsigned char *mem_back_guard_ptr(const mem_block_header_t *hdr)
 {
     return (unsigned char *)hdr->user_ptr + hdr->size;
 }
-
 
 static int mem_check_guard_region(const unsigned char *p, u32 size)
 {
@@ -129,7 +119,6 @@ static int mem_check_guard_region(const unsigned char *p, u32 size)
     }
     return 1;
 }
-
 
 static int mem_validate_block(const mem_block_header_t *hdr)
 {
@@ -159,7 +148,6 @@ static int mem_validate_block(const mem_block_header_t *hdr)
     return front_ok && back_ok;
 }
 
-
 static void mem_dump_leaks(void)
 {
     mem_block_header_t *hdr;
@@ -186,7 +174,6 @@ static void mem_dump_leaks(void)
         LOGLN("[memory] leaks total=%d bytes=%u", leak_count, leak_bytes);
 }
 
-
 static void mem_stats_on_alloc(mem_tag_t tag, u32 size)
 {
     if (!mem_tag_valid(tag))
@@ -195,9 +182,13 @@ static void mem_stats_on_alloc(mem_tag_t tag, u32 size)
     s_stats.current[tag] += size;
     if (s_stats.current[tag] > s_stats.peak[tag])
         s_stats.peak[tag] = s_stats.current[tag];
+
+    s_stats.total_current += size;
+    if (s_stats.total_current > s_stats.total_peak)
+        s_stats.total_peak = s_stats.total_current;
+
     s_stats.total_allocs[tag]++;
 }
-
 
 static void mem_stats_on_free(mem_tag_t tag, u32 size)
 {
@@ -209,9 +200,13 @@ static void mem_stats_on_free(mem_tag_t tag, u32 size)
     else
         s_stats.current[tag] = 0;
 
+    if (s_stats.total_current >= size)
+        s_stats.total_current -= size;
+    else
+        s_stats.total_current = 0;
+
     s_stats.total_frees[tag]++;
 }
-
 
 int memory_init(void)
 {
@@ -220,7 +215,6 @@ int memory_init(void)
     LOGLN("[memory] init");
     return 0;
 }
-
 
 void memory_shutdown(void)
 {
@@ -231,7 +225,6 @@ void memory_shutdown(void)
     memset(&s_stats, 0, sizeof(s_stats));
     s_live_head = NULL;
 }
-
 
 void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
 {
@@ -310,7 +303,6 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
     return (void *)user_ptr;
 }
 
-
 void mem_free(void *ptr, mem_tag_t tag)
 {
     mem_block_header_t *hdr;
@@ -373,7 +365,6 @@ void mem_free(void *ptr, mem_tag_t tag)
     free(base_ptr);
 }
 
-
 void *mem_calloc(u32 count, u32 size, u32 align, mem_tag_t tag)
 {
     void *ptr;
@@ -397,7 +388,6 @@ void *mem_calloc(u32 count, u32 size, u32 align, mem_tag_t tag)
     return ptr;
 }
 
-
 void mem_get_stats(mem_stats_t *out)
 {
     if (!out)
@@ -405,7 +395,6 @@ void mem_get_stats(mem_stats_t *out)
 
     *out = s_stats;
 }
-
 
 void mem_dump_stats(void)
 {
@@ -421,4 +410,26 @@ void mem_dump_stats(void)
               s_stats.total_frees[t]);
     }
     LOGLN("[memory] stats end");
+}
+
+u32 mem_stats_total_current(void)
+{
+    u32 total = 0;
+    int i;
+
+    for (i = 0; i < MEMTAG_COUNT; ++i)
+        total += s_stats.current[i];
+
+    return total;
+}
+
+u32 mem_stats_total_peak(void)
+{
+    u32 total = 0;
+    int i;
+
+    for (i = 0; i < MEMTAG_COUNT; ++i)
+        total += s_stats.peak[i];
+
+    return total;
 }

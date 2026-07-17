@@ -60,6 +60,10 @@ void audio_voice_set_volume(int voice_handle, int percent);
 void audio_voice_set_channel_volume(int voice_handle, int left_percent, int right_percent);
 void audio_voice_set_pan(int voice_handle, float pan);
 void audio_voice_set_speed(int voice_handle, float speed);
+void audio_voice_set_callbacks(int voice_handle,
+                               audio_voice_callback_t on_started,
+                               audio_voice_callback_t on_stopped,
+                               void *userdata);
 
 int  audio_voice_is_playing(int voice_handle);
 int  audio_voice_is_paused(int voice_handle);
