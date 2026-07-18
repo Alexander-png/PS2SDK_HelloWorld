@@ -152,7 +152,7 @@ static void stream_process_request(int index)
 
     fd = open(local.path, O_RDONLY);
     if (fd < 0) {
-        LOGLN("[streaming] open failed: %s", local.path);
+        LOGLNC(LOGCAT_STREAMING, "[streaming] open failed: %s", local.path);
         stream_lock();
         if (g_streaming.requests[index].used &&
             g_streaming.requests[index].generation == local.generation &&
@@ -166,7 +166,7 @@ static void stream_process_request(int index)
     if (local.offset > 0) {
         if (lseek(fd, (off_t)local.offset, SEEK_SET) < 0) {
             close(fd);
-            LOGLN("[streaming] seek failed: %s offset=%u", local.path, local.offset);
+            LOGLNC(LOGCAT_STREAMING, "[streaming] seek failed: %s offset=%u", local.path, local.offset);
             stream_lock();
             if (g_streaming.requests[index].used &&
                 g_streaming.requests[index].generation == local.generation &&
@@ -240,7 +240,7 @@ static void stream_process_request(int index)
                                      STREAM_STATUS_READY,
                                      local.bytes_read);
     } else {
-        LOGLN("[streaming] short read: %s got=%d wanted=%u",
+        LOGLNC(LOGCAT_STREAMING, "[streaming] short read: %s got=%d wanted=%u",
               local.path, local.bytes_read, local.size);
         stream_queue_callback_unsafe(&g_streaming.requests[index],
                                      STREAM_STATUS_FAILED,
@@ -365,7 +365,7 @@ int streaming_init(void)
     }
 
     g_streaming.initialized = 1;
-    LOGLN("[streaming] init max_requests=%d workers=%d",
+    LOGLNC(LOGCAT_STREAMING, "[streaming] init max_requests=%d workers=%d",
           STREAMING_MAX_REQUESTS, g_streaming.worker_count);
     return 0;
 }
@@ -402,6 +402,9 @@ void streaming_shutdown(void)
             g_streaming.worker_stacks[i] = NULL;
         }
     }
+
+    LOGLNC(LOGCAT_STREAMING, "[streaming] shutdown workers=%d",
+        g_streaming.worker_count);
 
     memset(&g_streaming, 0, sizeof(g_streaming));
     g_streaming.lock_sema = -1;
@@ -441,10 +444,10 @@ stream_handle_t streaming_request_file(const stream_request_desc_t *desc)
     //     if (g_streaming.requests[j].used)
     //         used_count++;
     // }
-    // LOGLN("[streaming] used=%d/%d before request", used_count, STREAMING_MAX_REQUESTS);
+    // LOGLNC(LOGCAT_STREAMING, "[streaming] used=%d/%d before request", used_count, STREAMING_MAX_REQUESTS);
 
     if (i >= STREAMING_MAX_REQUESTS) {
-        //LOGLN("[streaming] NO FREE REQUEST SLOTS");
+        //LOGLNC(LOGCAT_STREAMING, "[streaming] NO FREE REQUEST SLOTS");
         stream_unlock();
         return stream_make_invalid_handle();
     }
@@ -478,7 +481,7 @@ stream_handle_t streaming_request_file(const stream_request_desc_t *desc)
 
     stream_unlock();
 
-    LOGLN("[streaming] request index=%d gen=%u path=%s offset=%u size=%u priority=%d",
+    LOGLNC(LOGCAT_STREAMING, "[streaming] request index=%d gen=%u path=%s offset=%u size=%u priority=%d",
           i, h.generation, desc->path, desc->offset, desc->size, desc->priority);
 
     SignalSema(g_streaming.work_sema);
@@ -500,6 +503,9 @@ void streaming_cancel(stream_handle_t handle)
             r->status != STREAM_STATUS_CANCELLED) {
             stream_queue_callback_unsafe(r, STREAM_STATUS_CANCELLED, -5);
         }
+
+        LOGLNC(LOGCAT_STREAMING, "[streaming] cancel index=%d gen=%u",
+            index, handle.generation);
     }
 
     stream_unlock();
