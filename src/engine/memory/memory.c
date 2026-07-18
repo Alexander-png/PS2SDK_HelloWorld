@@ -132,17 +132,17 @@ static int mem_validate_block(const mem_block_header_t *hdr)
     back_ok  = mem_check_guard_region(mem_back_guard_ptr(hdr), MEMORY_GUARD_SIZE);
 
     if (!front_ok) {
-        LOGLN("[memory] underrun ptr=%p size=%u tag=%s",
-              hdr->user_ptr,
-              hdr->size,
-              mem_tag_name((mem_tag_t)hdr->tag));
+        LOGLNC(LOGCAT_MEMORY, "[memory] underrun ptr=%p size=%u tag=%s",
+            hdr->user_ptr,
+            hdr->size,
+            mem_tag_name((mem_tag_t)hdr->tag));
     }
 
     if (!back_ok) {
-        LOGLN("[memory] overrun ptr=%p size=%u tag=%s",
-              hdr->user_ptr,
-              hdr->size,
-              mem_tag_name((mem_tag_t)hdr->tag));
+        LOGLNC(LOGCAT_MEMORY, "[memory] overrun ptr=%p size=%u tag=%s",
+            hdr->user_ptr,
+            hdr->size,
+            mem_tag_name((mem_tag_t)hdr->tag));
     }
 
     return front_ok && back_ok;
@@ -157,21 +157,21 @@ static void mem_dump_leaks(void)
     for (hdr = s_live_head; hdr; hdr = hdr->next_live) {
         int guards_ok = mem_validate_block(hdr);
 
-        LOGLN("[memory] leak ptr=%p size=%u tag=%s align=%u guards=%s",
-              hdr->user_ptr,
-              hdr->size,
-              mem_tag_name((mem_tag_t)hdr->tag),
-              hdr->alignment,
-              guards_ok ? "ok" : "corrupt");
+        LOGLNC(LOGCAT_MEMORY, "[memory] leak ptr=%p size=%u tag=%s align=%u guards=%s",
+            hdr->user_ptr,
+            hdr->size,
+            mem_tag_name((mem_tag_t)hdr->tag),
+            hdr->alignment,
+            guards_ok ? "ok" : "corrupt");
 
         leak_count++;
         leak_bytes += hdr->size;
     }
 
     if (leak_count == 0)
-        LOGLN("[memory] no leaks");
+        LOGLNC(LOGCAT_MEMORY, "[memory] no leaks");
     else
-        LOGLN("[memory] leaks total=%d bytes=%u", leak_count, leak_bytes);
+        LOGLNC(LOGCAT_MEMORY, "[memory] leaks total=%d bytes=%u", leak_count, leak_bytes);
 }
 
 static void mem_stats_on_alloc(mem_tag_t tag, u32 size)
@@ -212,7 +212,7 @@ int memory_init(void)
 {
     memset(&s_stats, 0, sizeof(s_stats));
     s_live_head = NULL;
-    LOGLN("[memory] init");
+    LOGLNC(LOGCAT_MEMORY, "[memory] init");
     return 0;
 }
 
@@ -220,7 +220,7 @@ void memory_shutdown(void)
 {
     mem_dump_leaks();
     mem_dump_stats();
-    LOGLN("[memory] shutdown");
+    LOGLNC(LOGCAT_MEMORY, "[memory] shutdown");
 
     memset(&s_stats, 0, sizeof(s_stats));
     s_live_head = NULL;
@@ -239,7 +239,7 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
         return NULL;
 
     if (!mem_tag_valid(tag)) {
-        LOGLN("[memory] alloc invalid tag=%d size=%u", (int)tag, size);
+        LOGLNC(LOGCAT_MEMORY, "[memory] alloc invalid tag=%d size=%u", (int)tag, size);
         return NULL;
     }
 
@@ -250,8 +250,8 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
         align = (u32)sizeof(void *);
 
     if ((align & (align - 1u)) != 0) {
-        LOGLN("[memory] alloc invalid alignment=%u size=%u tag=%s",
-              align, size, mem_tag_name(tag));
+        LOGLNC(LOGCAT_MEMORY, "[memory] alloc invalid alignment=%u size=%u tag=%s",
+            align, size, mem_tag_name(tag));
         return NULL;
     }
 
@@ -262,8 +262,8 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
              - MEMORY_GUARD_SIZE
              - MEMORY_GUARD_SIZE
              - effective_align) {
-        LOGLN("[memory] alloc overflow size=%u align=%u tag=%s",
-              size, effective_align, mem_tag_name(tag));
+        LOGLNC(LOGCAT_MEMORY, "[memory] alloc overflow size=%u align=%u tag=%s",
+            size, effective_align, mem_tag_name(tag));
         return NULL;
     }
 
@@ -275,8 +275,8 @@ void *mem_alloc(u32 size, u32 align, mem_tag_t tag)
 
     base = (unsigned char *)malloc(total_size);
     if (!base) {
-        LOGLN("[memory] alloc failed size=%u align=%u tag=%s",
-              size, effective_align, mem_tag_name(tag));
+        LOGLNC(LOGCAT_MEMORY, "[memory] alloc failed size=%u align=%u tag=%s",
+            size, effective_align, mem_tag_name(tag));
         return NULL;
     }
 
@@ -315,31 +315,31 @@ void mem_free(void *ptr, mem_tag_t tag)
     hdr = (mem_block_header_t *)((unsigned char *)ptr - MEMORY_GUARD_SIZE - sizeof(mem_block_header_t));
 
     if (hdr->magic == MEMORY_BLOCK_FREED_MAGIC) {
-        LOGLN("[memory] double free ptr=%p tag=%s",
-              ptr, mem_tag_name(tag));
+        LOGLNC(LOGCAT_MEMORY, "[memory] double free ptr=%p tag=%s",
+            ptr, mem_tag_name(tag));
         return;
     }
 
     if (hdr->magic != MEMORY_BLOCK_MAGIC) {
-        LOGLN("[memory] bad free ptr=%p tag=%s magic=%08x",
-              ptr, mem_tag_name(tag), hdr->magic);
+        LOGLNC(LOGCAT_MEMORY, "[memory] bad free ptr=%p tag=%s magic=%08x",
+            ptr, mem_tag_name(tag), hdr->magic);
         return;
     }
 
     if (!mem_tag_valid((mem_tag_t)hdr->tag)) {
-        LOGLN("[memory] bad header tag ptr=%p free_tag=%s header_tag=%u",
-              ptr, mem_tag_name(tag), hdr->tag);
+        LOGLNC(LOGCAT_MEMORY, "[memory] bad header tag ptr=%p free_tag=%s header_tag=%u",
+            ptr, mem_tag_name(tag), hdr->tag);
         return;
     }
 
     real_tag = (mem_tag_t)hdr->tag;
 
     if (real_tag != tag) {
-        LOGLN("[memory] tag mismatch ptr=%p free_tag=%s header_tag=%s size=%u",
-              ptr,
-              mem_tag_name(tag),
-              mem_tag_name(real_tag),
-              hdr->size);
+        LOGLNC(LOGCAT_MEMORY, "[memory] tag mismatch ptr=%p free_tag=%s header_tag=%s size=%u",
+            ptr,
+            mem_tag_name(tag),
+            mem_tag_name(real_tag),
+            hdr->size);
     }
 
     mem_validate_block(hdr);
@@ -374,8 +374,8 @@ void *mem_calloc(u32 count, u32 size, u32 align, mem_tag_t tag)
         return NULL;
 
     if (count > UINT_MAX / size) {
-        LOGLN("[memory] calloc overflow count=%u size=%u tag=%s",
-              count, size, mem_tag_name(tag));
+        LOGLNC(LOGCAT_MEMORY, "[memory] calloc overflow count=%u size=%u tag=%s",
+            count, size, mem_tag_name(tag));
         return NULL;
     }
 
@@ -400,21 +400,21 @@ void mem_dump_stats(void)
 {
     int t;
 
-    LOGLN("[memory] stats begin");
-    LOGLN("[memory] total current=%u peak=%u",
-          s_stats.total_current,
-          s_stats.total_peak);
+    LOGLNC(LOGCAT_MEMORY, "[memory] stats begin");
+    LOGLNC(LOGCAT_MEMORY, "[memory] total current=%u peak=%u",
+        s_stats.total_current,
+        s_stats.total_peak);
 
     for (t = 0; t < MEMTAG_COUNT; ++t) {
-        LOGLN("[memory] tag=%s current=%u peak=%u allocs=%u frees=%u",
-              mem_tag_name((mem_tag_t)t),
-              s_stats.current[t],
-              s_stats.peak[t],
-              s_stats.total_allocs[t],
-              s_stats.total_frees[t]);
+        LOGLNC(LOGCAT_MEMORY, "[memory] tag=%s current=%u peak=%u allocs=%u frees=%u",
+            mem_tag_name((mem_tag_t)t),
+            s_stats.current[t],
+            s_stats.peak[t],
+            s_stats.total_allocs[t],
+            s_stats.total_frees[t]);
     }
 
-    LOGLN("[memory] stats end");
+    LOGLNC(LOGCAT_MEMORY, "[memory] stats end");
 }
 
 u32 mem_stats_total_current(void)

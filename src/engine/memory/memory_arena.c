@@ -39,18 +39,20 @@ int mem_arena_init(mem_arena_t *arena, u32 capacity, mem_tag_t tag)
     mem_arena_clear(arena);
 
     if (capacity == 0) {
-        LOGLN("[arena] init failed: zero capacity");
+        LOGLNC(LOGCAT_MEMORY, "[arena] init failed: zero capacity");
         return -1;
     }
 
     if (!mem_arena_tag_valid(tag)) {
-        LOGLN("[arena] init failed: invalid tag=%d capacity=%u", (int)tag, capacity);
+        LOGLNC(LOGCAT_MEMORY, "[arena] init failed: invalid tag=%d capacity=%u",
+            (int)tag, capacity);
         return -1;
     }
 
     buffer = mem_alloc(capacity, 16, tag);
     if (!buffer) {
-        LOGLN("[arena] init failed: alloc capacity=%u tag=%d", capacity, (int)tag);
+        LOGLNC(LOGCAT_MEMORY, "[arena] init failed: alloc capacity=%u tag=%d",
+            capacity, (int)tag);
         return -1;
     }
 
@@ -61,7 +63,8 @@ int mem_arena_init(mem_arena_t *arena, u32 capacity, mem_tag_t tag)
     arena->tag = tag;
     arena->owns_memory = 1;
 
-    LOGLN("[arena] init capacity=%u tag=%d", capacity, (int)tag);
+    LOGLNC(LOGCAT_MEMORY, "[arena] init capacity=%u tag=%d",
+        capacity, (int)tag);
     return 0;
 }
 
@@ -73,12 +76,14 @@ int mem_arena_init_from_buffer(mem_arena_t *arena, void *buffer, u32 capacity, m
     mem_arena_clear(arena);
 
     if (!buffer || capacity == 0) {
-        LOGLN("[arena] init_from_buffer failed: buffer=%p capacity=%u", buffer, capacity);
+        LOGLNC(LOGCAT_MEMORY, "[arena] init_from_buffer failed: buffer=%p capacity=%u",
+            buffer, capacity);
         return -1;
     }
 
     if (!mem_arena_tag_valid(tag)) {
-        LOGLN("[arena] init_from_buffer failed: invalid tag=%d capacity=%u", (int)tag, capacity);
+        LOGLNC(LOGCAT_MEMORY, "[arena] init_from_buffer failed: invalid tag=%d capacity=%u",
+            (int)tag, capacity);
         return -1;
     }
 
@@ -89,7 +94,8 @@ int mem_arena_init_from_buffer(mem_arena_t *arena, void *buffer, u32 capacity, m
     arena->tag = tag;
     arena->owns_memory = 0;
 
-    LOGLN("[arena] init_from_buffer capacity=%u tag=%d", capacity, (int)tag);
+    LOGLNC(LOGCAT_MEMORY, "[arena] init_from_buffer capacity=%u tag=%d",
+        capacity, (int)tag);
     return 0;
 }
 
@@ -120,11 +126,11 @@ void mem_arena_destroy(mem_arena_t *arena)
 
     mem_arena_clear(arena);
 
-    LOGLN("[arena] destroy used=%u peak=%u capacity=%u tag=%d",
-          used,
-          peak,
-          capacity,
-          (int)tag);
+    LOGLNC(LOGCAT_MEMORY, "[arena] destroy used=%u peak=%u capacity=%u tag=%d",
+        used,
+        peak,
+        capacity,
+        (int)tag);
 }
 
 void mem_arena_reset(mem_arena_t *arena)
@@ -153,7 +159,7 @@ void *mem_arena_alloc(mem_arena_t *arena, u32 size, u32 align)
         align = (u32)sizeof(void *);
 
     if ((align & (align - 1u)) != 0) {
-        LOGLN("[arena] alloc invalid align=%u", align);
+        LOGLNC(LOGCAT_MEMORY, "[arena] alloc invalid align=%u", align);
         return NULL;
     }
 
@@ -175,8 +181,8 @@ void *mem_arena_alloc(mem_arena_t *arena, u32 size, u32 align)
     end_offset = aligned_offset + size;
 
     if (end_offset > arena->capacity) {
-        LOGLN("[arena] alloc failed size=%u align=%u used=%u capacity=%u tag=%d",
-              size, align, arena->offset, arena->capacity, (int)arena->tag);
+        LOGLNC(LOGCAT_MEMORY, "[arena] alloc failed size=%u align=%u used=%u capacity=%u tag=%d",
+            size, align, arena->offset, arena->capacity, (int)arena->tag);
         return NULL;
     }
 
@@ -226,7 +232,8 @@ void mem_arena_release(mem_arena_t *arena, mem_arena_mark_t mark)
         return;
 
     if (mark.offset > arena->offset) {
-        LOGLN("[arena] release invalid mark=%u current=%u", mark.offset, arena->offset);
+        LOGLNC(LOGCAT_MEMORY, "[arena] release invalid mark=%u current=%u",
+            mark.offset, arena->offset);
         return;
     }
 
