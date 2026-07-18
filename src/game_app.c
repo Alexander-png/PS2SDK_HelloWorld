@@ -74,14 +74,14 @@ static int empty_state_enter(game_app_t *app, void *userdata)
 {
     (void)app;
     (void)userdata;
-    LOGLN("[state:empty] enter");
+    LOGLNC(LOGCAT_APP, "[state:empty] enter");
     return 0;
 }
 
 static void empty_state_exit(game_app_t *app)
 {
     (void)app;
-    LOGLN("[state:empty] exit");
+    LOGLNC(LOGCAT_APP, "[state:empty] exit");
 }
 
 static void empty_state_fixed_update(game_app_t *app, float dt)
@@ -127,7 +127,7 @@ static int game_app_enter_fallback_empty_state(void)
     game_app_clear_state_arena(&g_app.state_arena);
 
     if (mem_arena_init(&g_app.state_arena, GAME_APP_STATE_ARENA_SIZE, MEMTAG_STATE) != 0) {
-        LOGLN("[game_app] failed to init fallback empty state arena");
+        LOGLNC(LOGCAT_APP, "[game_app] failed to init fallback empty state arena");
         return -1;
     }
 
@@ -137,7 +137,7 @@ static int game_app_enter_fallback_empty_state(void)
     if (g_app.state->enter) {
         rc = g_app.state->enter(&g_app, NULL);
         if (rc < 0) {
-            LOGLN("[game_app] fallback empty state enter failed rc=%d", rc);
+            LOGLNC(LOGCAT_APP, "[game_app] fallback empty state enter failed rc=%d", rc);
             return -1;
         }
     }
@@ -163,7 +163,7 @@ static int game_app_apply_pending_state_change(void)
 
     change_rc = game_app_change_state(pending_state, pending_userdata);
     if (change_rc < 0) {
-        LOGLN("[game_app] deferred state change failed rc=%d", change_rc);
+        LOGLNC(LOGCAT_APP, "[game_app] deferred state change failed rc=%d", change_rc);
         return change_rc;
     }
 
@@ -189,10 +189,10 @@ int game_app_init(void)
     g_app.state = &g_empty_state;
     g_app.state_userdata = NULL;
 
-    LOGLN("[game_app] init");
+    LOGLNC(LOGCAT_APP, "[game_app] init");
 
     if (mem_arena_init(&g_app.temp_arena, GAME_APP_TEMP_ARENA_SIZE, MEMTAG_TEMP) != 0) {
-        LOGLN("[game_app] failed to init temp arena");
+        LOGLNC(LOGCAT_APP, "[game_app] failed to init temp arena");
         memset(&g_app, 0, sizeof(g_app));
         return -1;
     }
@@ -203,14 +203,14 @@ int game_app_init(void)
 
     rc = game_app_change_state(debug_menu_state_desc(), NULL);
     if (rc < 0) {
-        LOGLN("[game_app] failed to enter initial state: %d", rc);
+        LOGLNC(LOGCAT_APP, "[game_app] failed to enter initial state: %d", rc);
         mem_arena_destroy(&g_app.state_arena);
         mem_arena_destroy(&g_app.temp_arena);
         memset(&g_app, 0, sizeof(g_app));
         return rc;
     }
 
-    LOGLN("[game_app] ready");
+    LOGLNC(LOGCAT_APP, "[game_app] ready");
     return 0;
 }
 
@@ -219,7 +219,7 @@ void game_app_shutdown(void)
     if (!g_app.initialized)
         return;
 
-    LOGLN("[game_app] shutdown");
+    LOGLNC(LOGCAT_APP, "[game_app] shutdown");
 
     if (g_app.state && g_app.state->exit)
         g_app.state->exit(&g_app);
@@ -277,7 +277,7 @@ void game_app_tick(void)
     }
 
     if (g_app.accumulator >= g_app.fixed_dt) {
-        LOGLN("[game_app] fixed-step overload: dropping lag");
+        LOGLNC(LOGCAT_APP, "[game_app] fixed-step overload: dropping lag");
         g_app.accumulator = 0.0f;
     }
 
@@ -340,7 +340,7 @@ int game_app_change_state(const game_state_desc_t *state, void *userdata)
     if (g_app.state == state && g_app.state_userdata == userdata)
         return 0;
 
-    LOGLN("[game_app] state change: %s -> %s",
+    LOGLNC(LOGCAT_APP, "[game_app] state change: %s -> %s",
           g_app.state && g_app.state->name ? g_app.state->name : "none",
           state->name ? state->name : "unnamed");
 
@@ -351,7 +351,7 @@ int game_app_change_state(const game_state_desc_t *state, void *userdata)
     game_app_clear_state_arena(&g_app.state_arena);
 
     if (mem_arena_init(&g_app.state_arena, GAME_APP_STATE_ARENA_SIZE, MEMTAG_STATE) != 0) {
-        LOGLN("[game_app] failed to init state arena");
+        LOGLNC(LOGCAT_APP, "[game_app] failed to init state arena");
 
         if (game_app_enter_fallback_empty_state() != 0)
             return -1;
@@ -365,7 +365,7 @@ int game_app_change_state(const game_state_desc_t *state, void *userdata)
     if (g_app.state->enter) {
         rc = g_app.state->enter(&g_app, userdata);
         if (rc < 0) {
-            LOGLN("[game_app] state enter failed: %s rc=%d",
+            LOGLNC(LOGCAT_APP, "[game_app] state enter failed: %s rc=%d",
                   g_app.state->name ? g_app.state->name : "unnamed",
                   rc);
 

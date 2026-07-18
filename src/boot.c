@@ -21,7 +21,7 @@ static int boot_init_screen(boot_context_t *boot)
     init_scr();
     log_enable_screen(1);
     boot->screen_available = 1;
-    LOGLN("[boot] screen ready");
+    LOGLNC(LOGCAT_APP, "[boot] screen ready");
 #else
     boot->screen_available = 0;
 #endif
@@ -46,22 +46,22 @@ int boot_init(boot_context_t *boot)
     memset(boot, 0, sizeof(*boot));
 
     log_init();
-    LOGLN("[boot] logger ready");
+    LOGLNC(LOGCAT_APP, "[boot] logger ready");
 
     if (boot_init_screen(boot) < 0) {
-        LOGLN("[boot] screen init failed");
+        LOGLNC(LOGCAT_APP, "[boot] screen init failed");
         return -2;
     }
 
     if (memory_init() < 0) {
-        LOGLN("[boot] memory init failed");
+        LOGLNC(LOGCAT_APP, "[boot] memory init failed");
         return -3;
     }
 
-    LOGLN("[boot] starting");
+    LOGLNC(LOGCAT_APP, "[boot] starting");
 
     if (platform_init() < 0) {
-        LOGLN("[boot] platform init failed");
+        LOGLNC(LOGCAT_APP, "[boot] platform init failed");
         return -4;
     }
 
@@ -77,32 +77,32 @@ int boot_init(boot_context_t *boot)
 
     if (input_init() < 0) {
         boot->input_available = 0;
-        LOGLN("[boot] input init failed, continuing without input");
+        LOGLNC(LOGCAT_APP, "[boot] input init failed, continuing without input");
     } else {
         boot->input_available = input_is_available();
         if (boot->input_available)
-            LOGLN("[boot] input available");
+            LOGLNC(LOGCAT_APP, "[boot] input available");
         else
-            LOGLN("[boot] input unavailable, continuing");
+            LOGLNC(LOGCAT_APP, "[boot] input unavailable, continuing");
     }
 
     if (streaming_init() < 0) {
-        LOGLN("[boot] streaming init failed");
+        LOGLNC(LOGCAT_APP, "[boot] streaming init failed");
         return -5;
     }
 
     if (texture_assets_init() < 0) {
-        LOGLN("[boot] texture assets init failed");
+        LOGLNC(LOGCAT_APP, "[boot] texture assets init failed");
         return -6;
     }
 
     if (resources_init() < 0) {
-        LOGLN("[boot] resources init failed");
+        LOGLNC(LOGCAT_APP, "[boot] resources init failed");
         return -7;
     }
 
     if (gfx2d_init() < 0) {
-        LOGLN("[boot] gfx2d init failed");
+        LOGLNC(LOGCAT_APP, "[boot] gfx2d init failed");
         return -8;
     } else {
         // LOGLN uses scr_printf() that uses PS2SDK’s debug screen drawing path, 
@@ -117,17 +117,17 @@ int boot_init(boot_context_t *boot)
          * but keep this branch for future stricter behavior.
          */
         boot->audio_available = 0;
-        LOGLN("[boot] audio init failed, continuing without audio");
+        LOGLNC(LOGCAT_APP, "[boot] audio init failed, continuing without audio");
     } else {
         boot->audio_available = audio_is_available();
         if (boot->audio_available)
-            LOGLN("[boot] audio available");
+            LOGLNC(LOGCAT_APP, "[boot] audio available");
         else
-            LOGLN("[boot] audio unavailable, continuing");
+            LOGLNC(LOGCAT_APP, "[boot] audio unavailable, continuing");
     }
 
     boot->initialized = 1;
-    LOGLN("[boot] ready");
+    LOGLNC(LOGCAT_APP, "[boot] ready");
 
     return 0;
 }
@@ -142,7 +142,7 @@ void boot_shutdown(boot_context_t *boot)
         return;
     }
 
-    LOGLN("[boot] shutdown");
+    LOGLNC(LOGCAT_APP, "[boot] shutdown");
 
     /*
      * Future shutdown order:
@@ -154,35 +154,35 @@ void boot_shutdown(boot_context_t *boot)
      * memory_shutdown();
      */
 
-    LOGLN("[boot] gfx2d");
+    LOGLNC(LOGCAT_APP, "[boot] gfx2d");
     gfx2d_shutdown();
 
-    LOGLN("[boot] audio");
+    LOGLNC(LOGCAT_APP, "[boot] audio");
     audio_shutdown();
     boot->audio_available = 0;
 
-    LOGLN("[boot] resources");
+    LOGLNC(LOGCAT_APP, "[boot] resources");
     resources_shutdown();
 
-    LOGLN("[boot] texture assets");
+    LOGLNC(LOGCAT_APP, "[boot] texture assets");
     texture_assets_shutdown();
 
-    LOGLN("[boot] streaming");
+    LOGLNC(LOGCAT_APP, "[boot] streaming");
     streaming_shutdown();
 
-    LOGLN("[boot] input");
+    LOGLNC(LOGCAT_APP, "[boot] input");
     input_shutdown();
     boot->input_available = 0;
 
     boot->initialized = 0;
 
-    LOGLN("[boot] memory");
+    LOGLNC(LOGCAT_APP, "[boot] memory");
     memory_shutdown();
 
-    LOGLN("[boot] platform");
+    LOGLNC(LOGCAT_APP, "[boot] platform");
     platform_shutdown();
 
-    LOGLN("[boot] done");
+    LOGLNC(LOGCAT_APP, "[boot] done");
 
     boot_shutdown_screen(boot);
 }
