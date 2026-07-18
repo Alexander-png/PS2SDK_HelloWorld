@@ -522,11 +522,6 @@ int gfx2d_create_texture_from_png_data(const void *data, u32 size, int *out_tex_
         return -1;
     }
 
-    LOGLNC(LOGCAT_GFX, "[gfx2d] texture created tex_id=%d %ux%u",
-        tex_id,
-        (unsigned int)width,
-        (unsigned int)height);
-
     png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_ptr)
         goto cleanup;
@@ -622,6 +617,11 @@ int gfx2d_create_texture_from_png_data(const void *data, u32 size, int *out_tex_
     image_data = NULL;
     result = 0;
 
+    LOGLNC(LOGCAT_GFX, "[gfx2d] texture created tex_id=%d %ux%u",
+        tex_id,
+        (unsigned int)width,
+        (unsigned int)height);
+
 cleanup:
     gfx2d_free_png_rows(rows, (int)height);
 
@@ -634,7 +634,7 @@ cleanup:
         if (image_data)
             mem_free(image_data, MEMTAG_GFX);
     }
-
+    
     if (png_ptr || info_ptr)
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
 
