@@ -54,7 +54,7 @@ int text_font_resource_request(game_app_t *app,
 
     res->desc_res = resource_load_file(&res_desc);
     if (!resource_is_valid(res->desc_res)) {
-        LOGLN("[text_font] failed to request font descriptor path=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[text_font] failed to request font descriptor path=%s",
               desc->fnt_path);
         res->status = TEXT_FONT_RESOURCE_STATUS_FAILED;
         return -1;
@@ -62,7 +62,7 @@ int text_font_resource_request(game_app_t *app,
 
     res->atlas_tex = texture_load_png(desc->atlas_path, STREAM_PRIORITY_NORMAL);
     if (!texture_is_valid(res->atlas_tex)) {
-        LOGLN("[text_font] failed to request font atlas path=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[text_font] failed to request font atlas path=%s",
               desc->atlas_path);
         resource_release(res->desc_res);
         res->desc_res = text_font_resource_invalid_resource();
@@ -72,7 +72,7 @@ int text_font_resource_request(game_app_t *app,
 
     res->status = TEXT_FONT_RESOURCE_STATUS_LOADING;
 
-    LOGLN("[text_font] requested descriptor=%s atlas=%s",
+    LOGLNC(LOGCAT_RESOURCES, "[text_font] requested descriptor=%s atlas=%s",
           desc->fnt_path,
           desc->atlas_path);
     return 0;
@@ -105,7 +105,7 @@ void text_font_resource_update(game_app_t *app,
 
     if (desc_status == RESOURCE_STATUS_FAILED) {
         if (!res->desc_failed_logged) {
-            LOGLN("[text_font] font descriptor failed path=%s",
+            LOGLNC(LOGCAT_RESOURCES, "[text_font] font descriptor failed path=%s",
                   resource_path(res->desc_res));
             res->desc_failed_logged = 1;
         }
@@ -115,7 +115,7 @@ void text_font_resource_update(game_app_t *app,
 
     if (atlas_status == TEXTURE_STATUS_FAILED) {
         if (!res->atlas_failed_logged) {
-            LOGLN("[text_font] font atlas failed path=%s",
+            LOGLNC(LOGCAT_RESOURCES, "[text_font] font atlas failed path=%s",
                   texture_path(res->atlas_tex));
             res->atlas_failed_logged = 1;
         }
@@ -137,7 +137,7 @@ void text_font_resource_update(game_app_t *app,
 
     if (!res->prewarmed) {
         int warm = texture_prewarm(res->atlas_tex);
-        LOGLN("[text_font] prewarm tex_id=%d result=%d", res->tex_id, warm);
+        LOGLNC(LOGCAT_RESOURCES, "[text_font] prewarm tex_id=%d result=%d", res->tex_id, warm);
         res->prewarmed = 1;
     }
 
@@ -149,7 +149,7 @@ void text_font_resource_update(game_app_t *app,
     desc_size = resource_size(res->desc_res);
 
     if (!desc_data || desc_size == 0) {
-        LOGLN("[text_font] descriptor ready but empty");
+        LOGLNC(LOGCAT_RESOURCES, "[text_font] descriptor ready but empty");
         res->build_attempted = 1;
         res->status = TEXT_FONT_RESOURCE_STATUS_FAILED;
         return;
@@ -165,14 +165,14 @@ void text_font_resource_update(game_app_t *app,
     if (text_bmfont_load_from_memory(game_app_state_arena(app),
                                      &res->font,
                                      &load_desc) != 0) {
-        LOGLN("[text_font] text_bmfont_load_from_memory failed");
+        LOGLNC(LOGCAT_RESOURCES, "[text_font] text_bmfont_load_from_memory failed");
         res->status = TEXT_FONT_RESOURCE_STATUS_FAILED;
         return;
     }
 
     res->status = TEXT_FONT_RESOURCE_STATUS_READY;
 
-    LOGLN("[text_font] ready glyphs=%u kernings=%u",
+    LOGLNC(LOGCAT_RESOURCES, "[text_font] ready glyphs=%u kernings=%u",
           (unsigned int)res->font.glyph_count,
           (unsigned int)res->font.kerning_count);
 }

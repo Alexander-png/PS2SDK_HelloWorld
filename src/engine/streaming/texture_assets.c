@@ -67,7 +67,7 @@ static void texture_resource_cb(resource_handle_t rhandle,
 
     if (rstatus != RESOURCE_STATUS_READY) {
         t->status = TEXTURE_STATUS_FAILED;
-        LOGLN("[tex] resource failed index=%d path=%s status=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[tex] resource failed index=%d path=%s status=%s",
               index,
               t->path,
               resource_status_name(rstatus));
@@ -76,13 +76,13 @@ static void texture_resource_cb(resource_handle_t rhandle,
 
     if (!data || size == 0) {
         t->status = TEXTURE_STATUS_FAILED;
-        LOGLN("[tex] resource ready but empty index=%d path=%s", index, t->path);
+        LOGLNC(LOGCAT_RESOURCES, "[tex] resource ready but empty index=%d path=%s", index, t->path);
         return;
     }
 
     if (gfx2d_create_texture_from_png_data(data, size, &tex_id) < 0) {
         t->status = TEXTURE_STATUS_FAILED;
-        LOGLN("[tex] gfx2d_create_texture_from_png_data failed index=%d path=%s", index, t->path);
+        LOGLNC(LOGCAT_RESOURCES, "[tex] gfx2d_create_texture_from_png_data failed index=%d path=%s", index, t->path);
         return;
     }
 
@@ -90,7 +90,7 @@ static void texture_resource_cb(resource_handle_t rhandle,
     t->status  = TEXTURE_STATUS_READY;
     t->prewarmed = 0;
 
-    LOGLN("[tex] ready index=%d path=%s tex_id=%d size=%u",
+    LOGLNC(LOGCAT_RESOURCES, "[tex] ready index=%d path=%s tex_id=%d size=%u",
           index, t->path, t->tex_id, size);
 }
 
@@ -98,7 +98,7 @@ int texture_assets_init(void)
 {
     memset(&g_texturesys, 0, sizeof(g_texturesys));
     g_texturesys.initialized = 1;
-    LOGLN("[tex] init max_items=%d", TEXTURE_MAX_ITEMS);
+    LOGLNC(LOGCAT_RESOURCES, "[tex] init max_items=%d", TEXTURE_MAX_ITEMS);
     return 0;
 }
 
@@ -109,7 +109,7 @@ void texture_assets_shutdown(void)
     if (!g_texturesys.initialized)
         return;
 
-    LOGLN("[tex] shutdown");
+    LOGLNC(LOGCAT_RESOURCES, "[tex] shutdown");
 
     for (i = 0; i < TEXTURE_MAX_ITEMS; ++i) {
         if (g_texturesys.items[i].used) {
@@ -145,7 +145,7 @@ texture_handle_t texture_load_png(const char *path, stream_priority_t prio)
     }
 
     if (i >= TEXTURE_MAX_ITEMS) {
-        LOGLN("[tex] no free slots");
+        LOGLNC(LOGCAT_RESOURCES, "[tex] no free slots");
         return texture_invalid_handle();
     }
 
@@ -184,7 +184,7 @@ texture_handle_t texture_load_png(const char *path, stream_priority_t prio)
     rh = resource_load_file(&desc);
     if (!resource_is_valid(rh)) {
         u16 generation = t->generation;
-        LOGLN("[tex] resource_load_file failed path=%s", t->path);
+        LOGLNC(LOGCAT_RESOURCES, "[tex] resource_load_file failed path=%s", t->path);
         memset(t, 0, sizeof(*t));
         t->generation = generation;
         return texture_invalid_handle();
@@ -192,7 +192,7 @@ texture_handle_t texture_load_png(const char *path, stream_priority_t prio)
 
     t->resource = rh;
 
-    LOGLN("[tex] load index=%d gen=%u path=%s",
+    LOGLNC(LOGCAT_RESOURCES, "[tex] load index=%d gen=%u path=%s",
           i, th.generation, t->path);
 
     return th;
@@ -224,7 +224,7 @@ void texture_release(texture_handle_t handle)
     memset(t, 0, sizeof(*t));
     t->generation = generation;
 
-    LOGLN("[tex] released index=%d", index);
+    LOGLNC(LOGCAT_RESOURCES, "[tex] released index=%d", index);
 }
 
 int texture_is_valid(texture_handle_t handle)

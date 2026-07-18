@@ -115,19 +115,19 @@ static void resource_stream_callback(stream_handle_t stream,
     if (stream_status == STREAM_STATUS_READY &&
         bytes_read == (int)r->size) {
         r->status = RESOURCE_STATUS_READY;
-        LOGLN("[resources] ready index=%d type=%s path=%s size=%u",
+        LOGLNC(LOGCAT_RESOURCES, "[resources] ready index=%d type=%s path=%s size=%u",
               index,
               resource_type_name(r->type),
               r->path,
               r->size);
     } else if (stream_status == STREAM_STATUS_CANCELLED) {
         r->status = RESOURCE_STATUS_FAILED;
-        LOGLN("[resources] cancelled index=%d path=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[resources] cancelled index=%d path=%s",
               index,
               r->path);
     } else {
         r->status = RESOURCE_STATUS_FAILED;
-        LOGLN("[resources] failed index=%d stream_status=%s path=%s bytes_read=%d size=%u",
+        LOGLNC(LOGCAT_RESOURCES, "[resources] failed index=%d stream_status=%s path=%s bytes_read=%d size=%u",
               index,
               streaming_status_name(stream_status),
               r->path,
@@ -144,7 +144,7 @@ int resources_init(void)
     memset(&g_resources, 0, sizeof(g_resources));
     g_resources.initialized = 1;
 
-    LOGLN("[resources] init max_items=%d", RESOURCE_MAX_ITEMS);
+    LOGLNC(LOGCAT_RESOURCES, "[resources] init max_items=%d", RESOURCE_MAX_ITEMS);
     return 0;
 }
 
@@ -155,7 +155,7 @@ void resources_shutdown(void)
     if (!g_resources.initialized)
         return;
 
-    LOGLN("[resources] shutdown");
+    LOGLNC(LOGCAT_RESOURCES, "[resources] shutdown");
 
     for (i = 0; i < RESOURCE_MAX_ITEMS; i++) {
         if (g_resources.items[i].used) {
@@ -218,7 +218,7 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
 
     rc = resource_file_size(desc->path, &size);
     if (rc < 0) {
-        LOGLN("[resources] size failed rc=%d path=%s", rc, desc->path);
+        LOGLNC(LOGCAT_RESOURCES, "[resources] size failed rc=%d path=%s", rc, desc->path);
         return resource_invalid_handle();
     }
 
@@ -228,7 +228,7 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
     }
 
     if (i >= RESOURCE_MAX_ITEMS) {
-        LOGLN("[resources] no free slots");
+        LOGLNC(LOGCAT_RESOURCES, "[resources] no free slots");
         return resource_invalid_handle();
     }
 
@@ -259,7 +259,7 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
         r->size = 0;
         r->status = RESOURCE_STATUS_READY;
 
-        LOGLN("[resources] load zero-size index=%d gen=%u type=%s path=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[resources] load zero-size index=%d gen=%u type=%s path=%s",
               i,
               h.generation,
               resource_type_name(r->type),
@@ -274,7 +274,7 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
     data = mem_alloc(size, 64, MEMTAG_RESOURCE);
     if (!data) {
         u16 generation = r->generation;
-        LOGLN("[resources] alloc failed size=%u path=%s", size, desc->path);
+        LOGLNC(LOGCAT_RESOURCES, "[resources] alloc failed size=%u path=%s", size, desc->path);
         memset(r, 0, sizeof(*r));
         r->generation = generation;
         return resource_invalid_handle();
@@ -302,13 +302,13 @@ resource_handle_t resource_load_file(const resource_load_desc_t *desc)
     if (!streaming_is_valid(r->stream)) {
         u16 generation = r->generation;
         mem_free(r->data, MEMTAG_RESOURCE);
-        LOGLN("[resources] stream request failed path=%s", r->path);
+        LOGLNC(LOGCAT_RESOURCES, "[resources] stream request failed path=%s", r->path);
         memset(r, 0, sizeof(*r));
         r->generation = generation;
         return resource_invalid_handle();
     }
 
-    LOGLN("[resources] load index=%d gen=%u type=%s path=%s size=%u",
+    LOGLNC(LOGCAT_RESOURCES, "[resources] load index=%d gen=%u type=%s path=%s size=%u",
           i,
           h.generation,
           resource_type_name(r->type),
@@ -348,7 +348,7 @@ void resource_release(resource_handle_t handle)
     memset(r, 0, sizeof(*r));
     r->generation = generation;
 
-    LOGLN("[resources] released index=%d", index);
+    LOGLNC(LOGCAT_RESOURCES, "[resources] released index=%d", index);
 }
 
 int resource_is_valid(resource_handle_t handle)
