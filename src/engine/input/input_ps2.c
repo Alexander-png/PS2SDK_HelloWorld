@@ -75,7 +75,7 @@ int input_init(void)
     g_input.port = INPUT_PAD_PORT;
     g_input.slot = INPUT_PAD_SLOT;
 
-    LOGLN("[input] init");
+    LOGLNC(LOGCAT_INPUT, "[input] init");
 
     /*
      * These may already be loaded, depending on your platform boot.
@@ -83,27 +83,27 @@ int input_init(void)
      * below decides whether input is actually available.
      */
     ret = platform_load_module("rom0:SIO2MAN", 0, NULL);
-    LOGLN("[input] SIO2MAN load: %d", ret);
+    LOGLNC(LOGCAT_INPUT, "[input] SIO2MAN load: %d", ret);
 
     ret = platform_load_module("rom0:PADMAN", 0, NULL);
-    LOGLN("[input] PADMAN load: %d", ret);
+    LOGLNC(LOGCAT_INPUT, "[input] PADMAN load: %d", ret);
 
     ret = padInit(0);
-    LOGLN("[input] padInit: %d", ret);
+    LOGLNC(LOGCAT_INPUT, "[input] padInit: %d", ret);
 
     if (ret == 0) {
-        LOGLN("[input] padInit failed");
+        LOGLNC(LOGCAT_INPUT, "[input] padInit failed");
         g_input.initialized = 1;
         g_input.available = 0;
         return 0;
     }
 
     ret = padPortOpen(g_input.port, g_input.slot, g_pad_dma_buf);
-    LOGLN("[input] padPortOpen(%d,%d): %d",
+    LOGLNC(LOGCAT_INPUT, "[input] padPortOpen(%d,%d): %d",
           g_input.port, g_input.slot, ret);
 
     if (ret == 0) {
-        LOGLN("[input] padPortOpen failed");
+        LOGLNC(LOGCAT_INPUT, "[input] padPortOpen failed");
         g_input.initialized = 1;
         g_input.available = 0;
         return 0;
@@ -111,7 +111,7 @@ int input_init(void)
 
     // First wait for basic ready
     if (input_wait_pad_ready() < 0) {
-        LOGLN("[input] pad not ready after open");
+        LOGLNC(LOGCAT_INPUT, "[input] pad not ready after open");
         g_input.initialized = 1;
         g_input.available = 0;
         return 0;
@@ -120,10 +120,10 @@ int input_init(void)
     // Set DualShock mode and wait again
     ret = padSetMainMode(g_input.port, g_input.slot,
                          PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK);
-    LOGLN("[input] padSetMainMode: %d", ret);
+    LOGLNC(LOGCAT_INPUT, "[input] padSetMainMode: %d", ret);
 
     if (input_wait_pad_ready() < 0) {
-        LOGLN("[input] pad not ready after mode set");
+        LOGLNC(LOGCAT_INPUT, "[input] pad not ready after mode set");
         g_input.initialized = 1;
         g_input.available = 0;
         return 0;
@@ -131,7 +131,7 @@ int input_init(void)
 
     g_input.initialized = 1;
     g_input.available = 1;
-    LOGLN("[input] ready");
+    LOGLNC(LOGCAT_INPUT, "[input] ready");
     return 0;
 }
 
@@ -140,7 +140,7 @@ void input_shutdown(void)
     if (!g_input.initialized)
         return;
 
-    LOGLN("[input] shutdown");
+    LOGLNC(LOGCAT_INPUT, "[input] shutdown");
 
     if (g_input.available)
         padPortClose(g_input.port, g_input.slot);

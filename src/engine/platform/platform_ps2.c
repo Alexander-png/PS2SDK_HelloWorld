@@ -31,7 +31,7 @@ int platform_init(void)
     if (s_platform_ready)
         return 0;
 
-    LOGLN("[platform] init");
+    LOGLNC(LOGCAT_PLATFORM, "[platform] init");
 
     SifInitRpc(0);
     SifLoadFileInit();
@@ -39,14 +39,14 @@ int platform_init(void)
 
     rc = StartTimerSystemTime();
     if (rc < 0) {
-        LOGLN("[platform] StartTimerSystemTime failed rc=%d", rc);
+        LOGLNC(LOGCAT_PLATFORM, "[platform] StartTimerSystemTime failed rc=%d", rc);
         return rc;
     }
 
     s_timer_system_started = 1;
     s_platform_ready = 1;
 
-    LOGLN("[platform] SIF/RPC/loadfile/timer ready");
+    LOGLNC(LOGCAT_PLATFORM, "[platform] SIF/RPC/loadfile/timer ready");
     return 0;
 }
 
@@ -66,7 +66,7 @@ void platform_shutdown(void)
      */
 
     s_platform_ready = 0;
-    LOGLN("[platform] shutdown");
+    LOGLNC(LOGCAT_PLATFORM, "[platform] shutdown");
 }
 
 void platform_delay_us(int usec)
