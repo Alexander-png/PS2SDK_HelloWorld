@@ -25,20 +25,20 @@ int audio_init(void)
     rc = audio_driver_init();
     if (rc < 0) {
         g_audio.available = 0;
-        LOGLN("[audio] disabled: driver init failed rc=%d", rc);
+        LOGLNC(LOGCAT_AUDIO, "[audio] disabled: driver init failed rc=%d", rc);
         return 0;
     }
 
     rc = audio_mixer_init(&g_audio.mixer, AUDIO_DEFAULT_MIXBUF_FRAMES);
     if (rc < 0) {
-        LOGLN("[audio] mixer init failed rc=%d", rc);
+        LOGLNC(LOGCAT_AUDIO, "[audio] mixer init failed rc=%d", rc);
         audio_driver_shutdown();
         g_audio.available = 0;
         return 0;
     }
 
     g_audio.available = 1;
-    LOGLN("[audio] system ready");
+    LOGLNC(LOGCAT_AUDIO, "[audio] system ready");
     return 0;
 }
 
@@ -51,7 +51,7 @@ void audio_shutdown(void)
     audio_driver_shutdown();
 
     memset(&g_audio, 0, sizeof(g_audio));
-    LOGLN("[audio] system shutdown");
+    LOGLNC(LOGCAT_AUDIO, "[audio] system shutdown");
 }
 
 void audio_update(float dt)

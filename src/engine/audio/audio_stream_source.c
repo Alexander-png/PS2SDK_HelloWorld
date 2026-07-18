@@ -100,13 +100,26 @@ static void audio_stream_chunk_callback(stream_handle_t handle,
         c->failed = 0;
         ud->src->status = c->ready ? AUDIO_STREAM_SOURCE_STATUS_READY
                                    : AUDIO_STREAM_SOURCE_STATUS_FAILED;
+        LOGLNC(LOGCAT_STREAMING, "[audio:stream] chunk ready path=%s start=%u bytes=%d frames=%u",
+            ud->src->path,
+            c->start_frame,
+            bytes_read,
+            c->frame_count);
     } else if (status == STREAM_STATUS_CANCELLED) {
         c->ready = 0;
         c->failed = 0;
+        LOGLNC(LOGCAT_STREAMING, "[audio:stream] chunk cancelled path=%s start=%u",
+            ud->src->path,
+            c->start_frame);
     } else {
         c->ready = 0;
         c->failed = 1;
         ud->src->status = AUDIO_STREAM_SOURCE_STATUS_FAILED;
+        LOGLNC(LOGCAT_STREAMING, "[audio:stream] chunk failed path=%s start=%u status=%s bytes=%d",
+            ud->src->path,
+            c->start_frame,
+            streaming_status_name(status),
+            bytes_read);
     }
 
     if (streaming_is_valid(handle))
@@ -151,6 +164,10 @@ static int submit_chunk_request(audio_stream_source_t *src,
     ud = (audio_chunk_request_userdata_t *)mem_alloc(sizeof(*ud), 0, MEMTAG_STREAM);
     if (!ud) {
         c->in_flight = 0;
+        LOGLNC(LOGCAT_STREAMING, "[audio:stream] chunk request userdata alloc failed path=%s start=%u bytes=%u",
+            src->path,
+            start_frame,
+            max_bytes);
         return -3;
     }
 
@@ -170,10 +187,20 @@ static int submit_chunk_request(audio_stream_source_t *src,
     if (!streaming_is_valid(c->req)) {
         c->in_flight = 0;
         mem_free(ud, MEMTAG_STREAM);
+        LOGLNC(LOGCAT_STREAMING, "[audio:stream] request failed path=%s offset=%u bytes=%u start=%u",
+            src->path,
+            c->file_offset,
+            max_bytes,
+            start_frame);
         return -4;
     }
 
     src->status = AUDIO_STREAM_SOURCE_STATUS_STREAMING;
+    LOGLNC(LOGCAT_STREAMING, "[audio:stream] request path=%s offset=%u bytes=%u start=%u",
+        src->path,
+        c->file_offset,
+        max_bytes,
+        start_frame);
     return 0;
 }
 
@@ -226,8 +253,12 @@ int audio_stream_source_init(audio_stream_source_t *src,
 
     memset(&info, 0, sizeof(info));
     rc = audio_wav_parse_file(src->path, &info);
-    if (rc < 0)
-        return rc;
+    if (rc < 0) {
+        LOGLNC(LOGCAT_STREAMING, "[audio:stream] wav parse failed rc=%d path=%s",
+            rc,
+            src->path);
+            return rc;
+    }
 
     src->data_offset  = info.data_offset;
     src->data_size    = info.data_size;
@@ -251,6 +282,10 @@ int audio_stream_source_init(audio_stream_source_t *src,
 
         c->data = (u8 *)mem_alloc(chunk_bytes, 64, MEMTAG_AUDIO);
         if (!c->data) {
+            LOGLNC(LOGCAT_STREAMING, "[audio:stream] chunk buffer alloc failed path=%s chunk=%d bytes=%u",
+                src->path,
+                i,
+                chunk_bytes);
             audio_stream_source_destroy(src);
             return -3;
         }
@@ -269,6 +304,11 @@ int audio_stream_source_init(audio_stream_source_t *src,
 
     src->used = 1;
     audio_stream_source_update(src, 0);
+    LOGLNC(LOGCAT_STREAMING, "[audio:stream] source ready path=%s frames=%u chunk_bytes=%u chunk_frames=%u",
+        src->path,
+        src->total_frames,
+        chunk_bytes,
+        src->chunk_frames);
     return 0;
 }
 
@@ -282,16 +322,25 @@ void audio_stream_source_destroy(audio_stream_source_t *src)
     for (i = 0; i < AUDIO_STREAM_SOURCE_MAX_CHUNKS; i++) {
         audio_stream_chunk_t *c = &src->chunks[i];
 
-        if (c->in_flight && streaming_is_valid(c->req))
+        if (c->in_flight && streaming_is_valid(c->req)) {
+            LOGLNC(LOGCAT_STREAMING, "[audio:stream] cancel in-flight chunk path=%s start=%u",
+                src->path,
+                c->start_frame);
             streaming_cancel(c->req);
+        }
 
-        if (streaming_is_valid(c->req))
+        if (streaming_is_valid(c->req)) {
+            LOGLNC(LOGCAT_STREAMING, "[audio:stream] release chunk request path=%s start=%u",
+                src->path,
+                c->start_frame);
             streaming_release(c->req);
+        }
 
         if (c->data)
             mem_free(c->data, MEMTAG_AUDIO);
     }
 
+    LOGLNC(LOGCAT_STREAMING, "[audio:stream] source destroyed path=%s", src->path);
     memset(src, 0, sizeof(*src));
 }
 

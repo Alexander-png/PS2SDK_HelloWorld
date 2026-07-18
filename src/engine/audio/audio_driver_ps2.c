@@ -39,13 +39,13 @@ int audio_driver_init(void)
 
     s_audio_driver_ready = 0;
 
-    LOGLN("[audio] driver init");
+    LOGLNC(LOGCAT_AUDIO, ("[audio] driver init"));
 
     irx_ret = platform_load_module("rom0:LIBSD", 0, NULL);
-    LOGLN("[audio] LIBSD load: %d", irx_ret);
+    LOGLNC(LOGCAT_AUDIO, "[audio] LIBSD load: %d", irx_ret);
 
     if (irx_ret < 0) {
-        LOGLN("[audio] LIBSD load failed: %d", irx_ret);
+        LOGLNC(LOGCAT_AUDIO, "[audio] LIBSD load failed: %d", irx_ret);
         return AUDIO_DRIVER_ERR_LIBSD;
     }
 
@@ -58,10 +58,10 @@ int audio_driver_init(void)
         &mod_ret
     );
 
-    LOGLN("[audio] audsrv.irx exec id=%d ret=%d", mod_id, mod_ret);
+    LOGLNC(LOGCAT_AUDIO, "[audio] audsrv.irx exec id=%d ret=%d", mod_id, mod_ret);
 
     if (mod_id < 0 || mod_ret < 0) {
-        LOGLN("[audio] audsrv.irx exec failed: id=%d ret=%d", mod_id, mod_ret);
+        LOGLNC(LOGCAT_AUDIO, "[audio] audsrv.irx exec failed: id=%d ret=%d", mod_id, mod_ret);
         return AUDIO_DRIVER_ERR_AUDSRV_MODULE;
     }
 
@@ -70,21 +70,21 @@ int audio_driver_init(void)
      * before the EE-side audsrv_init() tries to bind to it.
      */
     platform_delay_us(AUDIO_AUDSRV_STARTUP_DELAY_US);
-    LOGLN("[audio] audsrv.irx startup delay done");
+    LOGLNC(LOGCAT_AUDIO, "[audio] audsrv.irx startup delay done");
 
-    LOGLN("[audio] calling audsrv_init");
+    LOGLNC(LOGCAT_AUDIO, "[audio] calling audsrv_init");
     if (audsrv_init() != 0) {
-        LOGLN("[audio] audsrv_init failed");
+        LOGLNC(LOGCAT_AUDIO, "[audio] audsrv_init failed");
         return AUDIO_DRIVER_ERR_AUDSRV_INIT;
     }
-    LOGLN("[audio] audsrv_init ok");
+    LOGLNC(LOGCAT_AUDIO, "[audio] audsrv_init ok");
 
     fmt.freq = AUDIO_OUTPUT_RATE;
     fmt.bits = AUDIO_OUTPUT_BITS;
     fmt.channels = AUDIO_OUTPUT_CHANNELS;
 
     if (audsrv_set_format(&fmt) != 0) {
-        LOGLN("[audio] audsrv_set_format failed");
+        LOGLNC(LOGCAT_AUDIO, "[audio] audsrv_set_format failed");
         return AUDIO_DRIVER_ERR_FORMAT;
     }
 
@@ -92,7 +92,7 @@ int audio_driver_init(void)
 
     s_audio_driver_ready = 1;
 
-    LOGLN("[audio] audsrv ready: %d Hz stereo s16", AUDIO_OUTPUT_RATE);
+    LOGLNC(LOGCAT_AUDIO, "[audio] audsrv ready: %d Hz stereo s16", AUDIO_OUTPUT_RATE);
     return AUDIO_DRIVER_OK;
 }
 
@@ -104,7 +104,7 @@ void audio_driver_shutdown(void)
     audsrv_stop_audio();
     s_audio_driver_ready = 0;
 
-    LOGLN("[audio] driver shutdown");
+    LOGLNC(LOGCAT_AUDIO, "[audio] driver shutdown");
 }
 
 int audio_driver_is_ready(void)

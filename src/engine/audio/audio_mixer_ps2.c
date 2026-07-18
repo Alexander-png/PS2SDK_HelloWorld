@@ -97,7 +97,7 @@ static void audio_mixer_release_stream_voice_resources(audio_voice_t *v)
 
     st = &v->u.stream;
 
-    LOGLN("[audio:mixer] free stream rb voice asset=%d bytes=%u",
+    LOGLNC(LOGCAT_AUDIO, "[audio:mixer] free stream rb voice asset=%d bytes=%u",
         st->asset_index,
         st->rb_capacity_bytes);
 
@@ -194,7 +194,7 @@ static int audio_mixer_init_stream_voice(audio_mixer_t *m, int voice_handle, int
         return -5;
     }
 
-    LOGLN("[audio:mixer] alloc stream rb voice=%d asset=%d bytes=%u",
+    LOGLNC(LOGCAT_AUDIO, "[audio:mixer] alloc stream rb voice=%d asset=%d bytes=%u",
         voice_handle,
         stream_idx,
         st->rb_capacity_bytes);
@@ -614,7 +614,7 @@ static void audio_mixer_thread(void *arg)
 
                 if (st->underrun_count != st->underrun_count_logged) {
                     st->underrun_count_logged = st->underrun_count;
-                    LOGLN("[audio:mixer] voice=%d underruns=%u eof=%d rb_size=%u rb_free=%u playing=%d paused=%d",
+                    LOGLNC(LOGCAT_AUDIO, "[audio:mixer] voice=%d underruns=%u eof=%d rb_size=%u rb_free=%u playing=%d paused=%d",
                           i,
                           st->underrun_count,
                           st->eof_reached,
