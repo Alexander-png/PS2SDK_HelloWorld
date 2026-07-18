@@ -697,7 +697,8 @@ void gfx2d_free_texture(int tex_id)
         tex->Clut = NULL;
     }
 
-    LOGLNC(LOGCAT_GFX, "[gfx2d] texture freed tex_id=%d", tex_id);
+    LOGLNC(LOGCAT_GFX, "[gfx2d] texture freed tex_id=%d %dx%d",
+        tex_id, tex->Width, tex->Height);
 
     tex->Vram = 0;
     tex->VramClut = 0;
