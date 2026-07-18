@@ -97,6 +97,10 @@ static void audio_mixer_release_stream_voice_resources(audio_voice_t *v)
 
     st = &v->u.stream;
 
+    LOGLN("[audio:mixer] free stream rb voice asset=%d bytes=%u",
+        st->asset_index,
+        st->rb_capacity_bytes);
+
     if (st->rb_storage) {
         mem_free(st->rb_storage, MEMTAG_AUDIO);
         st->rb_storage = NULL;
@@ -189,6 +193,11 @@ static int audio_mixer_init_stream_voice(audio_mixer_t *m, int voice_handle, int
         st->asset_index = -1;
         return -5;
     }
+
+    LOGLN("[audio:mixer] alloc stream rb voice=%d asset=%d bytes=%u",
+        voice_handle,
+        stream_idx,
+        st->rb_capacity_bytes);
 
     st->rb_low_watermark_bytes = st->rb_capacity_bytes / 4;
     st->rb_high_watermark_bytes = (st->rb_capacity_bytes * 3) / 4;
@@ -821,8 +830,8 @@ int audio_mixer_add_sfx_asset(audio_mixer_t *m, const char *wav_path)
 
 static void audio_mixer_remove_stream_asset(audio_mixer_t *m, int stream_idx)
 {
+    int i;
     audio_stream_asset_t *a;
-    int bound_voice = -1;
 
     if (!mixer_is_valid_stream_asset_index(m, stream_idx))
         return;
@@ -830,18 +839,19 @@ static void audio_mixer_remove_stream_asset(audio_mixer_t *m, int stream_idx)
     a = &m->stream_assets[stream_idx];
     a->closing = 1;
 
-    bound_voice = a->bound_voice;
-    a->bound_voice = -1;
+    for (i = 0; i < AUDIO_MIXER_MAX_VOICES; i++) {
+        audio_voice_t *v = &m->voices[i];
 
-    if (bound_voice >= 0 && mixer_is_valid_voice(m, bound_voice)) {
-        audio_voice_t *v = &m->voices[bound_voice];
+        if (!v->used || v->kind != AUDIO_VOICE_KIND_STREAM)
+            continue;
 
-        v->playing = 0;
-        v->paused = 0;
-        audio_mixer_notify_stopped(m, bound_voice, v);
-        audio_mixer_free_voice(m, bound_voice);
+        if (v->u.stream.asset_index == stream_idx) {
+            audio_mixer_stop_voice(m, i);
+            audio_mixer_free_voice(m, i);
+        }
     }
 
+    a->bound_voice = -1;
     audio_stream_source_destroy(&a->source);
     memset(a, 0, sizeof(*a));
     a->bound_voice = -1;

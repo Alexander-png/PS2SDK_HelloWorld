@@ -11,6 +11,8 @@
 #include <png.h>
 #include <gsTexManager.h>
 
+#define GS_VRAM_SIZE (4 * 1024 * 1024)
+
 typedef struct texture_slot {
     int used;
     GSTEXTURE tex;
@@ -29,7 +31,6 @@ typedef struct gfx2d_png_buffer {
     u32 offset;
 } gfx2d_png_buffer_t;
 
-
 typedef struct gfx2d_rgba32_pixel {
     u8 r;
     u8 g;
@@ -47,6 +48,19 @@ static int g_draw_count = 0;
 static unsigned int g_next_order = 0;
 
 static u64 g_clear_color = GS_SETREG_RGBAQ(0x00, 0x00, 0x00, 0x80, 0x00);
+
+static u32 gfx2d_texture_count_used(void)
+{
+    u32 count = 0;
+    int i;
+
+    for (i = 0; i < GFX2D_MAX_TEXTURES; ++i) {
+        if (g_textures[i].used)
+            ++count;
+    }
+
+    return count;
+}
 
 static u8 gfx2d_png_alpha_to_gs(u8 alpha)
 {
@@ -857,4 +871,29 @@ void gfx2d_draw(void)
         if (slot->used)
             gfx2d_draw_slot(slot);
     }
+}
+
+int gfx2d_get_vram_stats(gfx2d_vram_stats_t *out)
+{
+    u32 used = 0;
+
+    if (!out)
+        return -1;
+
+    out->total_bytes = GS_VRAM_SIZE;
+    out->used_bytes = 0;
+    out->free_bytes = GS_VRAM_SIZE;
+    out->texture_count = gfx2d_texture_count_used();
+
+    if (!g_gs)
+        return 0;
+
+    used = (u32)g_gs->CurrentPointer;
+
+    if (used > GS_VRAM_SIZE)
+        used = GS_VRAM_SIZE;
+
+    out->used_bytes = used;
+    out->free_bytes = GS_VRAM_SIZE - used;
+    return 0;
 }

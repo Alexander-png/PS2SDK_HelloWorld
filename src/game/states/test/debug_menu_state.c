@@ -78,7 +78,9 @@ static int debug_menu_rebuild_overlay(game_app_t *app, debug_menu_state_data_t *
         mem_stats_t stats;
         mem_arena_t *state_arena;
         platform_memory_info_t pmem;
+        gfx2d_vram_stats_t vram;
         int have_pmem;
+        int have_vram;
 
         u32 arena_used;
         u32 arena_peak;
@@ -87,6 +89,7 @@ static int debug_menu_rebuild_overlay(game_app_t *app, debug_menu_state_data_t *
         mem_get_stats(&stats);
 
         have_pmem = (platform_get_memory_info(&pmem) == 0);
+        have_vram = (gfx2d_get_vram_stats(&vram) == 0);
 
         state_arena = game_app_state_arena(app);
         arena_used = mem_arena_used(state_arena);
@@ -114,7 +117,21 @@ static int debug_menu_rebuild_overlay(game_app_t *app, debug_menu_state_data_t *
 
         off += snprintf(buf + off, sizeof(buf) - off,
                         "Heap cur   : %u KB\n"
-                        "Heap peak  : %u KB\n"
+                        "Heap peak  : %u KB\n",
+                        stats.total_current / 1024,
+                        stats.total_peak / 1024);
+
+        if (have_vram) {
+            off += snprintf(buf + off, sizeof(buf) - off,
+                            "VRAM used  : %u KB\n"
+                            "VRAM free  : %u KB\n"
+                            "Textures   : %u\n",
+                            vram.used_bytes / 1024,
+                            vram.free_bytes / 1024,
+                            vram.texture_count);
+        }
+
+        off += snprintf(buf + off, sizeof(buf) - off,
                         "\n"
                         "STATE      : %u / %u KB\n"
                         "  a/f      : %u / %u\n"
@@ -128,9 +145,6 @@ static int debug_menu_rebuild_overlay(game_app_t *app, debug_menu_state_data_t *
                         "Arena used : %u KB\n"
                         "Arena cap  : %u KB\n"
                         "Arena peak : %u KB\n",
-                        stats.total_current / 1024,
-                        stats.total_peak / 1024,
-
                         stats.current[MEMTAG_STATE] / 1024,
                         stats.peak[MEMTAG_STATE] / 1024,
                         stats.total_allocs[MEMTAG_STATE],

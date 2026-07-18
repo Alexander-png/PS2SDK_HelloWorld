@@ -80,6 +80,13 @@ typedef struct gfx2d_draw_params {
     gfx2d_color_t color;
 } gfx2d_draw_params_t;
 
+typedef struct gfx2d_vram_stats {
+    u32 total_bytes;
+    u32 used_bytes;
+    u32 free_bytes;
+    u32 texture_count;
+} gfx2d_vram_stats_t;
+
 int  gfx2d_init(void);
 void gfx2d_shutdown(void);
 
@@ -116,6 +123,8 @@ void gfx2d_clear_sprites(void);
 gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h);
 
 void gfx2d_draw(void);
+
+int gfx2d_get_vram_stats(gfx2d_vram_stats_t *out);
 
 #ifdef __cplusplus
 }
