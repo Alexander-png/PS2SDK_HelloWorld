@@ -406,8 +406,10 @@ static void gfx2d_resort_sprite(int sprite_id)
 int gfx2d_init(void)
 {
     g_gs = gsKit_init_global();
-    if (!g_gs)
+    if (!g_gs) {
+        LOGLNC(LOGCAT_GFX, "[gfx2d] gsKit_init_global failed");
         return -1;
+    }
 
     g_gs->PSM  = GS_PSM_CT32;
     g_gs->Mode = gsKit_check_rom();
@@ -433,6 +435,7 @@ int gfx2d_init(void)
     memset(g_textures, 0, sizeof(g_textures));
     gfx2d_clear_sprites();
 
+    LOGLNC(LOGCAT_GFX, "[gfx2d] init mode=%d height=%d", g_gs->Mode, g_gs->Height);
     return 0;
 }
 
@@ -442,6 +445,9 @@ void gfx2d_shutdown(void)
 
     if (!g_gs)
         return;
+
+    LOGLNC(LOGCAT_GFX, "[gfx2d] shutdown textures=%u",
+        (unsigned int)gfx2d_texture_count_used());
 
     gfx2d_clear_sprites();
 
@@ -503,13 +509,23 @@ int gfx2d_create_texture_from_png_data(const void *data, u32 size, int *out_tex_
     int y;
     int result = -1;
 
-    if (!g_gs || !data || size == 0 || !out_tex_id)
+    if (!g_gs || !data || size == 0 || !out_tex_id) {
+        LOGLNC(LOGCAT_GFX, "[gfx2d] create_texture invalid args data=%p size=%u out=%p",
+            data, size, out_tex_id);
         return -1;
+    }
 
     *out_tex_id = -1;
 
-    if (gfx2d_alloc_texture_slot(&tex_id) < 0)
+    if (gfx2d_alloc_texture_slot(&tex_id) < 0) {
+        LOGLNC(LOGCAT_GFX, "[gfx2d] create_texture no free texture slots");
         return -1;
+    }
+
+    LOGLNC(LOGCAT_GFX, "[gfx2d] texture created tex_id=%d %ux%u",
+        tex_id,
+        (unsigned int)width,
+        (unsigned int)height);
 
     png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_ptr)
@@ -610,6 +626,8 @@ cleanup:
     gfx2d_free_png_rows(rows, (int)height);
 
     if (result != 0) {
+        LOGLNC(LOGCAT_GFX, "[gfx2d] create_texture_from_png_data failed tex_id=%d size=%u",
+            tex_id, size);
         if (tex)
             memset(tex, 0, sizeof(*tex));
 
@@ -628,20 +646,27 @@ int gfx2d_touch_texture(int tex_id)
     GSTEXTURE *tex;
     unsigned int transfer_mask;
 
-    if (!g_gs)
+    if (!g_gs) {
+        LOGLNC(LOGCAT_GFX, "[gfx2d] touch_texture failed: gfx not initialized");
         return -1;
+    }
 
-    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used) {
+        LOGLNC(LOGCAT_GFX, "[gfx2d] touch_texture failed: invalid tex_id=%d", tex_id);
         return -1;
+    }
 
     tex = &g_textures[tex_id].tex;
 
-    if (!tex->Mem)
+    if (!tex->Mem) {
+        LOGLNC(LOGCAT_GFX, "[gfx2d] touch_texture failed: no image memory tex_id=%d", tex_id);
         return -1;
+    }
 
     transfer_mask = gsKit_TexManager_bind(g_gs, tex);
     return (int)transfer_mask;
 }
+
 void gfx2d_free_texture(int tex_id)
 {
     GSTEXTURE *tex;
@@ -672,6 +697,8 @@ void gfx2d_free_texture(int tex_id)
         tex->Clut = NULL;
     }
 
+    LOGLNC(LOGCAT_GFX, "[gfx2d] texture freed tex_id=%d", tex_id);
+
     tex->Vram = 0;
     tex->VramClut = 0;
     memset(tex, 0, sizeof(*tex));
@@ -685,8 +712,10 @@ int gfx2d_add_sprite(int tex_id, const gfx2d_draw_params_t *params, int *out_spr
     if (!g_gs || !params || !out_sprite_id)
         return -1;
 
-    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used)
+    if (tex_id < 0 || tex_id >= GFX2D_MAX_TEXTURES || !g_textures[tex_id].used) {
+        LOGLNC(LOGCAT_GFX, "[gfx2d] add_sprite failed: no free sprite slots");
         return -1;
+    }
 
     *out_sprite_id = -1;
 
