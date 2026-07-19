@@ -349,13 +349,13 @@ static int text_test_refresh_block(text_test_state_data_t *data)
     text_block_reveal_reset(&data->block);
 
     if (text_block_refresh(&data->block) != 0) {
-        LOGLN("[state:text_test] text_block_refresh failed case=%s kind=%s",
+        LOGLNC(LOGCAT_TEXT, "[state:text_test] text_block_refresh failed case=%s kind=%s",
               tc->name,
               text_test_case_kind_name(tc->kind));
         return -1;
     }
 
-    LOGLN("[state:text_test] block refreshed case=%d/%d name=%s kind=%s wrap=%d reveal=%s w=%d h=%d align_h=%s align_v=%s",
+    LOGLNC(LOGCAT_TEXT, "[state:text_test] block refreshed case=%d/%d name=%s kind=%s wrap=%d reveal=%s w=%d h=%d align_h=%s align_v=%s",
           (int)(data->test_case_index + 1),
           (int)text_test_case_count(),
           tc->name,
@@ -407,7 +407,7 @@ static int text_test_enter(game_app_t *app, void *userdata)
         16
     );
     if (!data) {
-        LOGLN("[state:text_test] enter failed: no state arena memory");
+        LOGLNC(LOGCAT_STATE, "[state:text_test] enter failed: no state arena memory");
         return -1;
     }
 
@@ -422,7 +422,7 @@ static int text_test_enter(game_app_t *app, void *userdata)
         16
     );
     if (!data->glyphs) {
-        LOGLN("[state:text_test] failed to allocate glyph layout buffer");
+        LOGLNC(LOGCAT_TEXT, "[state:text_test] failed to allocate glyph layout buffer");
         return -1;
     }
 
@@ -433,7 +433,7 @@ static int text_test_enter(game_app_t *app, void *userdata)
         16
     );
     if (!data->rich_items) {
-        LOGLN("[state:text_test] failed to allocate rich layout item buffer");
+        LOGLNC(LOGCAT_TEXT, "[state:text_test] failed to allocate rich layout item buffer");
         return -1;
     }
 
@@ -444,7 +444,7 @@ static int text_test_enter(game_app_t *app, void *userdata)
         16
     );
     if (!data->lines) {
-        LOGLN("[state:text_test] failed to allocate line layout buffer");
+        LOGLNC(LOGCAT_TEXT, "[state:text_test] failed to allocate line layout buffer");
         return -1;
     }
 
@@ -486,11 +486,11 @@ static int text_test_enter(game_app_t *app, void *userdata)
     font_desc.atlas_path = TEST_FONT_ATLAS_PATH;
 
     if (text_font_resource_request(app, &data->font_res, &font_desc) != 0) {
-        LOGLN("[state:text_test] failed to request font resource");
+        LOGLNC(LOGCAT_TEXT, "[state:text_test] failed to request font resource");
         return -1;
     }
 
-    LOGLN("[state:text_test] enter requested descriptor=%s atlas=%s box=(%d,%d,%d,%d)",
+    LOGLNC(LOGCAT_TEXT, "[state:text_test] enter requested descriptor=%s atlas=%s box=(%d,%d,%d,%d)",
           TEST_FONT_DESC_PATH,
           TEST_FONT_ATLAS_PATH,
           (int)TEXT_TEST_BOX_X,
@@ -498,7 +498,7 @@ static int text_test_enter(game_app_t *app, void *userdata)
           (int)TEXT_TEST_BOX_W,
           (int)TEXT_TEST_BOX_H);
 
-    LOGLN("[state:text_test] controls: CROSS=color CIRCLE=reveal_reset TRIANGLE=reveal_finish SQUARE=align_h L1=align_v R1/R2=case");
+    LOGLNC(LOGCAT_TEXT, "[state:text_test] controls: CROSS=color CIRCLE=reveal_reset TRIANGLE=reveal_finish SQUARE=align_h L1=align_v R1/R2=case");
     return 0;
 }
 
@@ -507,14 +507,14 @@ static void text_test_exit(game_app_t *app)
     text_test_state_data_t *data = text_test_data(app);
 
     if (!data) {
-        LOGLN("[state:text_test] exit");
+        LOGLNC(LOGCAT_STATE, "[state:text_test] exit");
         return;
     }
 
     text_font_resource_shutdown(app, &data->font_res);
     game_app_set_state_userdata(app, NULL);
 
-    LOGLN("[state:text_test] exit");
+    LOGLNC(LOGCAT_STATE, "[state:text_test] exit");
 }
 
 static void text_test_fixed_update(game_app_t *app, float dt)
@@ -528,7 +528,7 @@ static void text_test_update(game_app_t *app, float dt)
     text_test_state_data_t *data = text_test_data(app);
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
-        LOGLN("[state:text_test] START pressed, return to menu");
+        LOGLNC(LOGCAT_STATE, "[state:text_test] START pressed, return to menu");
         input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
@@ -546,12 +546,12 @@ static void text_test_update(game_app_t *app, float dt)
         text_block_set_font(&data->block, font);
 
         if (text_test_refresh_block(data) != 0) {
-            LOGLN("[state:text_test] initial refresh failed");
+            LOGLNC(LOGCAT_TEXT, "[state:text_test] initial refresh failed");
             return;
         }
 
         if (!data->font_bound_logged) {
-            LOGLN("[state:text_test] font bound glyphs=%u kernings=%u w=%d h=%d align_h=%s align_v=%s",
+            LOGLNC(LOGCAT_TEXT, "[state:text_test] font bound glyphs=%u kernings=%u w=%d h=%d align_h=%s align_v=%s",
                   (unsigned int)font->glyph_count,
                   (unsigned int)font->kerning_count,
                   (int)text_block_width(&data->block),
@@ -567,7 +567,7 @@ static void text_test_update(game_app_t *app, float dt)
             data->use_yellow = !data->use_yellow;
 
             if (text_test_refresh_block(data) != 0)
-                LOGLN("[state:text_test] refresh failed after CROSS");
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] refresh failed after CROSS");
 
             input_consume();
         }
@@ -591,9 +591,9 @@ static void text_test_update(game_app_t *app, float dt)
                 text_block_set_align_h(&data->block, TEXT_ALIGN_LEFT);
 
             if (text_test_refresh_block(data) != 0)
-                LOGLN("[state:text_test] refresh failed after SQUARE");
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] refresh failed after SQUARE");
             else
-                LOGLN("[state:text_test] horizontal align -> %s",
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] horizontal align -> %s",
                       text_test_align_h_name(data->block.align_h));
 
             input_consume();
@@ -608,9 +608,9 @@ static void text_test_update(game_app_t *app, float dt)
                 text_block_set_align_v(&data->block, TEXT_ALIGN_TOP);
 
             if (text_test_refresh_block(data) != 0)
-                LOGLN("[state:text_test] refresh failed after L1");
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] refresh failed after L1");
             else
-                LOGLN("[state:text_test] vertical align -> %s",
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] vertical align -> %s",
                       text_test_align_v_name(data->block.align_v));
 
             input_consume();
@@ -618,10 +618,10 @@ static void text_test_update(game_app_t *app, float dt)
 
         if (input_button_pressed(INPUT_BUTTON_R1)) {
             if (text_test_cycle_case(data, +1) != 0)
-                LOGLN("[state:text_test] refresh failed after R1");
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] refresh failed after R1");
             else {
                 const text_test_case_t *tc = text_test_current_case(data);
-                LOGLN("[state:text_test] case -> %s", tc ? tc->name : "unknown");
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] case -> %s", tc ? tc->name : "unknown");
             }
 
             input_consume();
@@ -635,7 +635,7 @@ static void text_test_update(game_app_t *app, float dt)
 
                 text_block_set_shake_speed_scale(&data->block, data->shake_speed_scale);
 
-                LOGLN("[state:text_test] shake speed scale -> %.2f",
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] shake speed scale -> %.2f",
                       data->shake_speed_scale);
             } else {
                 data->shake_amp_scale -= TEXT_TEST_SHAKE_AMP_STEP;
@@ -644,7 +644,7 @@ static void text_test_update(game_app_t *app, float dt)
 
                 text_block_set_shake_scale(&data->block, data->shake_amp_scale);
 
-                LOGLN("[state:text_test] shake amp scale -> %.2f",
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] shake amp scale -> %.2f",
                       data->shake_amp_scale);
             }
 
@@ -659,7 +659,7 @@ static void text_test_update(game_app_t *app, float dt)
 
                 text_block_set_shake_speed_scale(&data->block, data->shake_speed_scale);
 
-                LOGLN("[state:text_test] shake speed scale -> %.2f",
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] shake speed scale -> %.2f",
                       data->shake_speed_scale);
             } else {
                 data->shake_amp_scale += TEXT_TEST_SHAKE_AMP_STEP;
@@ -668,7 +668,7 @@ static void text_test_update(game_app_t *app, float dt)
 
                 text_block_set_shake_scale(&data->block, data->shake_amp_scale);
 
-                LOGLN("[state:text_test] shake amp scale -> %.2f",
+                LOGLNC(LOGCAT_TEXT, "[state:text_test] shake amp scale -> %.2f",
                       data->shake_amp_scale);
             }
 
@@ -683,7 +683,7 @@ static void text_test_update(game_app_t *app, float dt)
 
             text_block_set_reveal_speed_scale(&data->block, data->reveal_speed_scale);
 
-            LOGLN("[state:text_test] reveal speed scale -> %.2f",
+            LOGLNC(LOGCAT_TEXT, "[state:text_test] reveal speed scale -> %.2f",
                 data->reveal_speed_scale);
 
             input_consume();
@@ -696,7 +696,7 @@ static void text_test_update(game_app_t *app, float dt)
 
             text_block_set_reveal_speed_scale(&data->block, data->reveal_speed_scale);
 
-            LOGLN("[state:text_test] reveal speed scale -> %.2f",
+            LOGLNC(LOGCAT_TEXT, "[state:text_test] reveal speed scale -> %.2f",
                 data->reveal_speed_scale);
 
             input_consume();
@@ -709,7 +709,7 @@ static void text_test_update(game_app_t *app, float dt)
 
             text_block_set_wave_scale(&data->block, data->wave_scale);
 
-            LOGLN("[state:text_test] wave scale -> %.2f",
+            LOGLNC(LOGCAT_TEXT, "[state:text_test] wave scale -> %.2f",
                 data->wave_scale);
 
             input_consume();
@@ -722,7 +722,7 @@ static void text_test_update(game_app_t *app, float dt)
 
             text_block_set_wave_scale(&data->block, data->wave_scale);
 
-            LOGLN("[state:text_test] wave scale -> %.2f",
+            LOGLNC(LOGCAT_TEXT, "[state:text_test] wave scale -> %.2f",
                 data->wave_scale);
 
             input_consume();

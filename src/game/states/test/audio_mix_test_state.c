@@ -237,7 +237,7 @@ static void audio_mix_test_on_voice_started(audio_mixer_t *m,
     if (s->shutting_down)
         return;
 
-    LOGLN("[state:audio_mix_test] callback started voice=%d", voice_handle);
+    LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] callback started voice=%d", voice_handle);
     s->overlay_dirty = 1;
 }
 
@@ -258,19 +258,19 @@ static void audio_mix_test_on_voice_stopped(audio_mixer_t *m,
         return;
 
     if (voice_handle == s->music_voice) {
-        LOGLN("[state:audio_mix_test] callback stopped music voice=%d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] callback stopped music voice=%d",
               voice_handle);
         s->music_voice = -1;
         s->music_paused = 0;
     } else if (voice_handle == s->last_sfx_voice ||
                audio_mix_test_voice_in_recent(s, voice_handle)) {
-        LOGLN("[state:audio_mix_test] callback stopped sfx voice=%d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] callback stopped sfx voice=%d",
               voice_handle);
 
         if (voice_handle == s->last_sfx_voice)
             s->last_sfx_voice = -1;
     } else {
-        LOGLN("[state:audio_mix_test] callback stopped unknown voice=%d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] callback stopped unknown voice=%d",
               voice_handle);
     }
 
@@ -418,7 +418,7 @@ static int audio_mix_test_start_music_voice(audio_mix_test_state_data_t *s)
                           s);
 
     if (voice < 0) {
-        LOGLN("[state:audio_mix_test] music audio_play failed rc=%d", voice);
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music audio_play failed rc=%d", voice);
         return -1;
     }
 
@@ -427,7 +427,7 @@ static int audio_mix_test_start_music_voice(audio_mix_test_state_data_t *s)
 
     audio_voice_set_pan(s->music_voice, s->music_pan);
 
-    LOGLN("[state:audio_mix_test] music playing asset=%d voice=%d loop=1 pan=%d/100",
+    LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music playing asset=%d voice=%d loop=1 pan=%d/100",
           s->music_asset,
           s->music_voice,
           (int)(s->music_pan * 100.0f));
@@ -445,7 +445,7 @@ static int audio_mix_test_open_music(audio_mix_test_state_data_t *s)
     );
 
     if (s->music_asset < 0) {
-        LOGLN("[state:audio_mix_test] audio_asset_load_stream failed: %d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] audio_asset_load_stream failed: %d",
               s->music_asset);
         s->music_asset = -1;
         return -1;
@@ -454,7 +454,7 @@ static int audio_mix_test_open_music(audio_mix_test_state_data_t *s)
     s->music_asset_ok = 1;
 
     if (audio_asset_preload(s->music_asset) < 0) {
-        LOGLN("[state:audio_mix_test] audio_asset_preload failed: %d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] audio_asset_preload failed: %d",
               s->music_asset);
         audio_asset_unload(s->music_asset);
         s->music_asset = -1;
@@ -480,13 +480,13 @@ static void audio_mix_test_load_sfx_one(const char *tag,
     *out_handle = audio_asset_load_sfx(path);
     if (*out_handle < 0) {
         *out_ok = 0;
-        LOGLN("[state:audio_mix_test] %s load failed path=%s rc=%d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] %s load failed path=%s rc=%d",
               tag, path, *out_handle);
         return;
     }
 
     *out_ok = 1;
-    LOGLN("[state:audio_mix_test] %s loaded handle=%d path=%s",
+    LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] %s loaded handle=%d path=%s",
           tag, *out_handle, path);
 }
 
@@ -498,7 +498,7 @@ static void audio_mix_test_trigger_sfx(audio_mix_test_state_data_t *s,
     int voice;
 
     if (!sfx_ok || sfx_handle < 0) {
-        LOGLN("[state:audio_mix_test] %s unavailable", tag);
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] %s unavailable", tag);
         return;
     }
 
@@ -511,7 +511,7 @@ static void audio_mix_test_trigger_sfx(audio_mix_test_state_data_t *s,
                           s);
 
     if (voice < 0) {
-        LOGLN("[state:audio_mix_test] %s play failed rc=%d", tag, voice);
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] %s play failed rc=%d", tag, voice);
         return;
     }
 
@@ -522,7 +522,7 @@ static void audio_mix_test_trigger_sfx(audio_mix_test_state_data_t *s,
     audio_mix_test_push_recent_voice(s, voice);
     s->overlay_dirty = 1;
 
-    LOGLN("[state:audio_mix_test] %s voice=%d pan=%d/100",
+    LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] %s voice=%d pan=%d/100",
           tag, voice, (int)(s->sfx_pan * 100.0f));
 }
 
@@ -536,7 +536,7 @@ static void audio_mix_test_trigger_burst(audio_mix_test_state_data_t *s,
     int ok_count = 0;
 
     if (!s || !sfx_ok || sfx_handle < 0) {
-        LOGLN("[state:audio_mix_test] %s burst unavailable", tag);
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] %s burst unavailable", tag);
         return;
     }
 
@@ -550,7 +550,7 @@ static void audio_mix_test_trigger_burst(audio_mix_test_state_data_t *s,
                                   s);
 
         if (voice < 0) {
-            LOGLN("[state:audio_mix_test] %s burst[%d] failed rc=%d",
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] %s burst[%d] failed rc=%d",
                   tag, i, voice);
             continue;
         }
@@ -563,7 +563,7 @@ static void audio_mix_test_trigger_burst(audio_mix_test_state_data_t *s,
         ok_count++;
     }
 
-    LOGLN("[state:audio_mix_test] %s burst count=%d ok=%d pan=%d/100",
+    LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] %s burst count=%d ok=%d pan=%d/100",
           tag, count, ok_count, (int)(s->sfx_pan * 100.0f));
 
     s->overlay_dirty = 1;
@@ -580,12 +580,12 @@ static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data
                 if (s->music_voice >= 0)
                     audio_voice_resume(s->music_voice);
                 s->music_paused = 0;
-                LOGLN("[state:audio_mix_test] music resume");
+                LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music resume");
             } else {
                 if (s->music_voice >= 0)
                     audio_voice_pause(s->music_voice);
                 s->music_paused = 1;
-                LOGLN("[state:audio_mix_test] music pause");
+                LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music pause");
             }
             s->overlay_dirty = 1;
         }
@@ -595,10 +595,10 @@ static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data
                 audio_voice_is_playing(s->music_voice)) {
                 audio_voice_stop(s->music_voice);
                 s->music_paused = 0;
-                LOGLN("[state:audio_mix_test] music stop");
+                LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music stop");
             } else {
                 if (audio_mix_test_start_music_voice(s) == 0)
-                    LOGLN("[state:audio_mix_test] music play");
+                    LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music play");
             }
             s->overlay_dirty = 1;
         }
@@ -609,7 +609,7 @@ static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data
                 s->music_volume = 100;
             if (s->music_voice >= 0)
                 audio_voice_set_volume(s->music_voice, s->music_volume);
-            LOGLN("[state:audio_mix_test] music volume=%d", s->music_volume);
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music volume=%d", s->music_volume);
             s->overlay_dirty = 1;
         }
 
@@ -619,7 +619,7 @@ static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data
                 s->music_volume = 0;
             if (s->music_voice >= 0)
                 audio_voice_set_volume(s->music_voice, s->music_volume);
-            LOGLN("[state:audio_mix_test] music volume=%d", s->music_volume);
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music volume=%d", s->music_volume);
             s->overlay_dirty = 1;
         }
 
@@ -629,7 +629,7 @@ static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data
                 s->music_speed = 3.0f;
             if (s->music_voice >= 0)
                 audio_voice_set_speed(s->music_voice, s->music_speed);
-            LOGLN("[state:audio_mix_test] music speed=%d/100",
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music speed=%d/100",
                   (int)(s->music_speed * 100.0f));
             s->overlay_dirty = 1;
         }
@@ -640,7 +640,7 @@ static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data
                 s->music_speed = (1.0f / 3.0f);
             if (s->music_voice >= 0)
                 audio_voice_set_speed(s->music_voice, s->music_speed);
-            LOGLN("[state:audio_mix_test] music speed=%d/100",
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music speed=%d/100",
                   (int)(s->music_speed * 100.0f));
             s->overlay_dirty = 1;
         }
@@ -658,7 +658,7 @@ static void audio_mix_test_update_page1_pan_controls(audio_mix_test_state_data_t
         if (s->music_voice >= 0)
             audio_voice_set_pan(s->music_voice, s->music_pan);
 
-        LOGLN("[state:audio_mix_test] music pan=%d/100",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music pan=%d/100",
               (int)(s->music_pan * 100.0f));
         s->overlay_dirty = 1;
     }
@@ -669,21 +669,21 @@ static void audio_mix_test_update_page1_pan_controls(audio_mix_test_state_data_t
         if (s->music_voice >= 0)
             audio_voice_set_pan(s->music_voice, s->music_pan);
 
-        LOGLN("[state:audio_mix_test] music pan=%d/100",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music pan=%d/100",
               (int)(s->music_pan * 100.0f));
         s->overlay_dirty = 1;
     }
 
     if (input_button_pressed(INPUT_BUTTON_UP)) {
         s->sfx_pan = audio_mix_test_clamp_pan(s->sfx_pan + AUDIO_MIX_TEST_PAN_STEP);
-        LOGLN("[state:audio_mix_test] sfx pan=%d/100",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] sfx pan=%d/100",
               (int)(s->sfx_pan * 100.0f));
         s->overlay_dirty = 1;
     }
 
     if (input_button_pressed(INPUT_BUTTON_DOWN)) {
         s->sfx_pan = audio_mix_test_clamp_pan(s->sfx_pan - AUDIO_MIX_TEST_PAN_STEP);
-        LOGLN("[state:audio_mix_test] sfx pan=%d/100",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] sfx pan=%d/100",
               (int)(s->sfx_pan * 100.0f));
         s->overlay_dirty = 1;
     }
@@ -695,7 +695,7 @@ static void audio_mix_test_update_page1_pan_controls(audio_mix_test_state_data_t
         if (s->music_voice >= 0)
             audio_voice_set_pan(s->music_voice, s->music_pan);
 
-        LOGLN("[state:audio_mix_test] pans centered");
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] pans centered");
         s->overlay_dirty = 1;
     }
 }
@@ -747,7 +747,7 @@ static int audio_mix_test_enter(game_app_t *app, void *userdata)
         16
     );
     if (!s) {
-        LOGLN("[state:audio_mix_test] enter failed: no state arena memory");
+        LOGLNC(LOGCAT_STATE, "[state:audio_mix_test] enter failed: no state arena memory");
         return -1;
     }
 
@@ -761,14 +761,14 @@ static int audio_mix_test_enter(game_app_t *app, void *userdata)
     overlay_desc.h = 320;
 
     if (debug_overlay_init(app, &s->overlay, &overlay_desc) != 0) {
-        LOGLN("[state:audio_mix_test] overlay init failed");
+        LOGLNC(LOGCAT_STATE, "[state:audio_mix_test] overlay init failed");
         return -1;
     }
 
-    LOGLN("[state:audio_mix_test] enter");
+    LOGLNC(LOGCAT_STATE, "[state:audio_mix_test] enter");
 
     if (!audio_is_available()) {
-        LOGLN("[state:audio_mix_test] audio unavailable");
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] audio unavailable");
         audio_mix_test_rebuild_overlay(s);
         s->overlay_dirty = 0;
         return 0;
@@ -804,7 +804,7 @@ static void audio_mix_test_exit(game_app_t *app)
 {
     audio_mix_test_state_data_t *s = audio_mix_test_data(app);
 
-    LOGLN("[state:audio_mix_test] exit");
+    LOGLNC(LOGCAT_STATE, "[state:audio_mix_test] exit");
 
     if (!s)
         return;
@@ -855,7 +855,7 @@ static void audio_mix_test_update(game_app_t *app, float dt)
     s->uptime_sec += dt;
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
-        LOGLN("[state:audio_mix_test] START pressed, return to menu");
+        LOGLNC(LOGCAT_STATE, "[state:audio_mix_test] START pressed, return to menu");
         input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
@@ -877,7 +877,7 @@ static void audio_mix_test_update(game_app_t *app, float dt)
     }
 
     if (do_periodic_log) {
-        LOGLN("[state:audio_mix_test] music playing=%d paused=%d vol=%d speed=%d/100 music_pan=%d/100 sfx_pan=%d/100 last_voice=%d last_voice_playing=%d recent_playing=%d sfx_count=%d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music playing=%d paused=%d vol=%d speed=%d/100 music_pan=%d/100 sfx_pan=%d/100 last_voice=%d last_voice_playing=%d recent_playing=%d sfx_count=%d",
               (s->music_voice >= 0) ? audio_voice_is_playing(s->music_voice) : 0,
               (s->music_voice >= 0) ? audio_voice_is_paused(s->music_voice) : 0,
               s->music_volume,

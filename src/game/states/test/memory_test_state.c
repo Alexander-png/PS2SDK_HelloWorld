@@ -272,7 +272,7 @@ static int memory_test_enter(game_app_t *app, void *userdata)
         16
     );
     if (!data) {
-        LOGLN("[state:memory_test] enter failed: no state arena memory");
+        LOGLNC(LOGCAT_STATE, "[state:memory_test] enter failed: no state arena memory");
         return -1;
     }
 
@@ -293,11 +293,11 @@ static int memory_test_enter(game_app_t *app, void *userdata)
     overlay_desc.h = 260;
 
     if (debug_overlay_init(app, &data->overlay, &overlay_desc) != 0) {
-        LOGLN("[state:memory_test] overlay init failed");
+        LOGLNC(LOGCAT_STATE, "[state:memory_test] overlay init failed");
         return -1;
     }
 
-    LOGLN("[state:memory_test] enter");
+    LOGLNC(LOGCAT_STATE, "[state:memory_test] enter");
     LOGLN("[state:memory_test] CROSS=alloc/free, CIRCLE=overrun, TRIANGLE=underrun, SQUARE=leak, START=quit");
 
     memory_test_push_event(data, "enter");
@@ -324,7 +324,7 @@ static void memory_test_exit(game_app_t *app)
               data->leak_runs);
     }
 
-    LOGLN("[state:memory_test] exit");
+    LOGLNC(LOGCAT_STATE, "[state:memory_test] exit");
 
     if (!data)
         return;
@@ -357,7 +357,7 @@ static void memory_test_update(game_app_t *app, float dt)
             return;
 
         if (!data->exit_armed) {
-            LOGLN("[state:memory_test] START pressed, show summary");
+            LOGLNC(LOGCAT_STATE, "[state:memory_test] START pressed, show summary");
             memory_test_print_summary(data);
             input_consume();
             if (data->overlay_dirty) {
@@ -367,7 +367,7 @@ static void memory_test_update(game_app_t *app, float dt)
             return;
         }
 
-        LOGLN("[state:memory_test] START pressed, return to menu");
+        LOGLNC(LOGCAT_STATE, "[state:memory_test] START pressed, return to menu");
         input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;

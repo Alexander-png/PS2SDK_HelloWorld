@@ -129,7 +129,7 @@ static int sprite_test_try_create(sprite_test_data_t *s, const char *tag)
 
     st = texture_status(s->texture);
     if (st == TEXTURE_STATUS_FAILED) {
-        LOGLN("[state:sprite_test] texture failed tag=%s path=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[state:sprite_test] texture failed tag=%s path=%s",
               tag ? tag : "?",
               texture_path(s->texture));
         return -1;
@@ -140,13 +140,13 @@ static int sprite_test_try_create(sprite_test_data_t *s, const char *tag)
 
     s->tex_id = texture_tex_id(s->texture);
     if (s->tex_id < 0) {
-        LOGLN("[state:sprite_test] ready but no tex_id tag=%s", tag ? tag : "?");
+        LOGLNC(LOGCAT_RESOURCES, "[state:sprite_test] ready but no tex_id tag=%s", tag ? tag : "?");
         return -1;
     }
 
     if (!s->prewarmed) {
         int warm = texture_prewarm(s->texture);
-        LOGLN("[state:sprite_test] prewarm tag=%s tex_id=%d result=%d",
+        LOGLNC(LOGCAT_RESOURCES, "[state:sprite_test] prewarm tag=%s tex_id=%d result=%d",
               tag ? tag : "?",
               s->tex_id,
               warm);
@@ -154,14 +154,14 @@ static int sprite_test_try_create(sprite_test_data_t *s, const char *tag)
     }
 
     if (gfx2d_add_sprite(s->tex_id, &s->draw_params, &s->sprite_id) < 0) {
-        LOGLN("[state:sprite_test] failed to add sprite tag=%s tex_id=%d",
+        LOGLNC(LOGCAT_GFX, "[state:sprite_test] failed to add sprite tag=%s tex_id=%d",
               tag ? tag : "?",
               s->tex_id);
         return -1;
     }
 
     s->sprite_created = 1;
-    LOGLN("[state:sprite_test] sprite ready tag=%s tex_id=%d sprite_id=%d",
+    LOGLNC(LOGCAT_GFX, "[state:sprite_test] sprite ready tag=%s tex_id=%d sprite_id=%d",
           tag ? tag : "?",
           s->tex_id,
           s->sprite_id);
@@ -181,7 +181,7 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
         16
     );
     if (!data) {
-        LOGLN("[state:sprite_test] enter failed: no state arena memory");
+        LOGLNC(LOGCAT_STATE, "[state:sprite_test] enter failed: no state arena memory");
         return -1;
     }
 
@@ -213,7 +213,7 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     if (!texture_is_valid(data->sprite.texture)
         || !texture_is_valid(data->sprite1.texture)
         || !texture_is_valid(data->sprite2.texture)) {
-        LOGLN("[state:sprite_test] failed to request one or more textures");
+        LOGLNC(LOGCAT_RESOURCES, "[state:sprite_test] failed to request one or more textures");
         return -1;
     }
 
@@ -225,13 +225,13 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     overlay_desc.h = 140;
 
     if (debug_overlay_init(app, &data->overlay, &overlay_desc) != 0) {
-        LOGLN("[state:sprite_test] overlay init failed");
+        LOGLNC(LOGCAT_STATE, "[state:sprite_test] overlay init failed");
         return -1;
     }
 
     sprite_test_rebuild_overlay(data);
 
-    LOGLN("[state:sprite_test] enter requested textures");
+    LOGLNC(LOGCAT_STATE, "[state:sprite_test] enter requested textures");
     return 0;
 }
 
@@ -240,7 +240,7 @@ static void sprite_test_exit(game_app_t *app)
     sprite_test_state_data_t *data = sprite_test_data(app);
 
     if (!data) {
-        LOGLN("[state:sprite_test] exit");
+        LOGLNC(LOGCAT_STATE, "[state:sprite_test] exit");
         return;
     }
 
@@ -260,7 +260,7 @@ static void sprite_test_exit(game_app_t *app)
 
     game_app_set_state_userdata(app, NULL);
 
-    LOGLN("[state:sprite_test] exit");
+    LOGLNC(LOGCAT_STATE, "[state:sprite_test] exit");
 }
 
 static void sprite_test_fixed_update(game_app_t *app, float dt)
@@ -275,7 +275,7 @@ static void sprite_test_update(game_app_t *app, float dt)
     float move;
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
-        LOGLN("[state:sprite_test] START pressed, return to menu");
+        LOGLNC(LOGCAT_STATE, "[state:sprite_test] START pressed, return to menu");
         input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;

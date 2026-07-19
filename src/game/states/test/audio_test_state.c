@@ -128,14 +128,14 @@ static int audio_test_start_voice(audio_test_state_data_t *data)
                        data->speed,
                        1);
     if (voice < 0) {
-        LOGLN("[state:audio_test] audio_play failed rc=%d", voice);
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_test] audio_play failed rc=%d", voice);
         return -1;
     }
 
     data->voice = voice;
     data->paused = 0;
 
-    LOGLN("[state:audio_test] playing asset=%d voice=%d loop=1",
+    LOGLNC(LOGCAT_AUDIO, "[state:audio_test] playing asset=%d voice=%d loop=1",
           data->asset,
           data->voice);
     return 0;
@@ -155,7 +155,7 @@ static int audio_test_enter(game_app_t *app, void *userdata)
         16
     );
     if (!data) {
-        LOGLN("[state:audio_test] enter failed: no state arena memory");
+        LOGLNC(LOGCAT_STATE, "[state:audio_test] enter failed: no state arena memory");
         return -1;
     }
 
@@ -169,15 +169,15 @@ static int audio_test_enter(game_app_t *app, void *userdata)
     overlay_desc.h = 220;
 
     if (debug_overlay_init(app, &data->overlay, &overlay_desc) != 0) {
-        LOGLN("[state:audio_test] overlay init failed");
+        LOGLNC(LOGCAT_STATE, "[state:audio_test] overlay init failed");
         return -1;
     }
 
-    LOGLN("[state:audio_test] enter");
-    LOGLN("[state:audio_test] wav path: %s", AUDIO_TEST_WAV_PATH);
+    LOGLNC(LOGCAT_STATE, "[state:audio_test] enter");
+    LOGLNC(LOGCAT_AUDIO, "[state:audio_test] wav path: %s", AUDIO_TEST_WAV_PATH);
 
     if (!audio_is_available()) {
-        LOGLN("[state:audio_test] audio unavailable");
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_test] audio unavailable");
         audio_test_rebuild_overlay(data);
         data->overlay_dirty = 0;
         return 0;
@@ -189,7 +189,7 @@ static int audio_test_enter(game_app_t *app, void *userdata)
     );
 
     if (data->asset < 0) {
-        LOGLN("[state:audio_test] audio_asset_load_stream failed: %d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_test] audio_asset_load_stream failed: %d",
               data->asset);
         audio_test_rebuild_overlay(data);
         data->overlay_dirty = 0;
@@ -198,9 +198,9 @@ static int audio_test_enter(game_app_t *app, void *userdata)
 
     data->asset_ok = 1;
 
-    LOGLN("[state:audio_test] calling audio_asset_preload...");
+    LOGLNC(LOGCAT_AUDIO, "[state:audio_test] calling audio_asset_preload...");
     if (audio_asset_preload(data->asset) < 0) {
-        LOGLN("[state:audio_test] audio_asset_preload failed: %d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_test] audio_asset_preload failed: %d",
               data->asset);
         audio_asset_unload(data->asset);
         data->asset = -1;
@@ -228,7 +228,7 @@ static void audio_test_exit(game_app_t *app)
 {
     audio_test_state_data_t *data = audio_test_data(app);
 
-    LOGLN("[state:audio_test] exit");
+    LOGLNC(LOGCAT_STATE, "[state:audio_test] exit");
 
     if (!data)
         return;
@@ -266,7 +266,7 @@ static void audio_test_update(game_app_t *app, float dt)
     data->uptime_sec += dt;
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
-        LOGLN("[state:audio_test] START pressed, return to menu");
+        LOGLNC(LOGCAT_STATE, "[state:audio_test] START pressed, return to menu");
         input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
         return;
@@ -277,11 +277,11 @@ static void audio_test_update(game_app_t *app, float dt)
             if (data->paused) {
                 audio_voice_resume(data->voice);
                 data->paused = 0;
-                LOGLN("[state:audio_test] resume");
+                LOGLNC(LOGCAT_AUDIO, "[state:audio_test] resume");
             } else {
                 audio_voice_pause(data->voice);
                 data->paused = 1;
-                LOGLN("[state:audio_test] pause");
+                LOGLNC(LOGCAT_AUDIO, "[state:audio_test] pause");
             }
             data->overlay_dirty = 1;
         }
@@ -290,10 +290,10 @@ static void audio_test_update(game_app_t *app, float dt)
             if (audio_voice_is_playing(data->voice)) {
                 audio_voice_stop(data->voice);
                 data->paused = 0;
-                LOGLN("[state:audio_test] stop");
+                LOGLNC(LOGCAT_AUDIO, "[state:audio_test] stop");
             } else {
                 if (audio_test_start_voice(data) == 0)
-                    LOGLN("[state:audio_test] play");
+                    LOGLNC(LOGCAT_AUDIO, "[state:audio_test] play");
             }
             data->overlay_dirty = 1;
         }
@@ -303,7 +303,7 @@ static void audio_test_update(game_app_t *app, float dt)
             if (data->volume > 100)
                 data->volume = 100;
             audio_voice_set_volume(data->voice, data->volume);
-            LOGLN("[state:audio_test] volume=%d", data->volume);
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] volume=%d", data->volume);
             data->overlay_dirty = 1;
         }
 
@@ -312,7 +312,7 @@ static void audio_test_update(game_app_t *app, float dt)
             if (data->volume < 0)
                 data->volume = 0;
             audio_voice_set_volume(data->voice, data->volume);
-            LOGLN("[state:audio_test] volume=%d", data->volume);
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] volume=%d", data->volume);
             data->overlay_dirty = 1;
         }
 
@@ -321,7 +321,7 @@ static void audio_test_update(game_app_t *app, float dt)
             if (data->speed > 3.0f)
                 data->speed = 3.0f;
             audio_voice_set_speed(data->voice, data->speed);
-            LOGLN("[state:audio_test] speed=%d/100", (int)(data->speed * 100.0f));
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] speed=%d/100", (int)(data->speed * 100.0f));
             data->overlay_dirty = 1;
         }
 
@@ -330,7 +330,7 @@ static void audio_test_update(game_app_t *app, float dt)
             if (data->speed < (1.0f / 3.0f))
                 data->speed = (1.0f / 3.0f);
             audio_voice_set_speed(data->voice, data->speed);
-            LOGLN("[state:audio_test] speed=%d/100", (int)(data->speed * 100.0f));
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] speed=%d/100", (int)(data->speed * 100.0f));
             data->overlay_dirty = 1;
         }
     }
@@ -345,11 +345,11 @@ static void audio_test_update(game_app_t *app, float dt)
 
     if (do_periodic_log) {
         if (!audio_is_available()) {
-            LOGLN("[state:audio_test] audio unavailable");
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] audio unavailable");
         } else if (!data->asset_ok || data->asset < 0) {
-            LOGLN("[state:audio_test] no asset");
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] no asset");
         } else {
-            LOGLN("[state:audio_test] playing=%d paused=%d volume=%d speed=%d/100",
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] playing=%d paused=%d volume=%d speed=%d/100",
                   (data->voice >= 0) ? audio_voice_is_playing(data->voice) : 0,
                   (data->voice >= 0) ? audio_voice_is_paused(data->voice) : 0,
                   data->volume,

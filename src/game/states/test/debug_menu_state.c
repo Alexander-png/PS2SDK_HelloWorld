@@ -188,7 +188,7 @@ static int debug_menu_enter(game_app_t *app, void *userdata)
         16
     );
     if (!data) {
-        LOGLN("[state:debug_menu] enter failed: no state arena memory");
+        LOGLNC(LOGCAT_STATE, "[state:debug_menu] enter failed: no state arena memory");
         return -1;
     }
 
@@ -204,16 +204,16 @@ static int debug_menu_enter(game_app_t *app, void *userdata)
     overlay_desc.h = 400;
 
     if (debug_overlay_init(app, &data->overlay, &overlay_desc) != 0) {
-        LOGLN("[state:debug_menu] overlay init failed");
+        LOGLNC(LOGCAT_STATE, "[state:debug_menu] overlay init failed");
         return -1;
     }
 
     if (debug_menu_rebuild_overlay(app, data) != 0) {
-        LOGLN("[state:debug_menu] initial overlay build failed");
+        LOGLNC(LOGCAT_STATE, "[state:debug_menu] initial overlay build failed");
         return -1;
     }
 
-    LOGLN("[state:debug_menu] enter");
+    LOGLNC(LOGCAT_STATE, "[state:debug_menu] enter");
     return 0;
 }
 
@@ -225,7 +225,7 @@ static void debug_menu_exit(game_app_t *app)
         debug_overlay_shutdown(app, &data->overlay);
 
     game_app_set_state_userdata(app, NULL);
-    LOGLN("[state:debug_menu] exit");
+    LOGLNC(LOGCAT_STATE, "[state:debug_menu] exit");
 }
 
 static void debug_menu_fixed_update(game_app_t *app, float dt)
@@ -244,7 +244,7 @@ static void debug_menu_update(game_app_t *app, float dt)
     debug_overlay_update(app, &data->overlay, dt);
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
-        LOGLN("[state:debug_menu] START pressed, quit");
+        LOGLNC(LOGCAT_STATE, "[state:debug_menu] START pressed, quit");
         input_consume();
         game_app_request_quit();
         return;
@@ -256,7 +256,7 @@ static void debug_menu_update(game_app_t *app, float dt)
             data->page = 0;
 
         if (debug_menu_rebuild_overlay(app, data) != 0)
-            LOGLN("[state:debug_menu] overlay rebuild failed after L2");
+            LOGLNC(LOGCAT_STATE, "[state:debug_menu] overlay rebuild failed after L2");
 
         input_consume();
         return;
@@ -269,7 +269,7 @@ static void debug_menu_update(game_app_t *app, float dt)
                 data->selected = DEBUG_MENU_COUNT - 1;
 
             if (debug_menu_rebuild_overlay(app, data) != 0)
-                LOGLN("[state:debug_menu] overlay rebuild failed after UP");
+                LOGLNC(LOGCAT_STATE, "[state:debug_menu] overlay rebuild failed after UP");
 
             input_consume();
         }
@@ -280,7 +280,7 @@ static void debug_menu_update(game_app_t *app, float dt)
                 data->selected = 0;
 
             if (debug_menu_rebuild_overlay(app, data) != 0)
-                LOGLN("[state:debug_menu] overlay rebuild failed after DOWN");
+                LOGLNC(LOGCAT_STATE, "[state:debug_menu] overlay rebuild failed after DOWN");
 
             input_consume();
         }
@@ -288,7 +288,7 @@ static void debug_menu_update(game_app_t *app, float dt)
         if (input_button_pressed(INPUT_BUTTON_CROSS)) {
             const game_state_desc_t *next = g_menu[data->selected].state_fn();
 
-            LOGLN("[state:debug_menu] enter item=%d name=%s",
+            LOGLNC(LOGCAT_STATE, "[state:debug_menu] enter item=%d name=%s",
                   data->selected,
                   next && next->name ? next->name : "unnamed");
 

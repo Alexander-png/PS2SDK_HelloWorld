@@ -157,7 +157,7 @@ static void resource_test_set_phase(resource_test_ctx_t *ctx,
     if (ctx->phase != phase) {
         old_phase = ctx->phase;
 
-        LOGLN("[state:resource_test] phase %s -> %s",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] phase %s -> %s",
               resource_test_phase_name(old_phase),
               resource_test_phase_name(phase));
 
@@ -259,7 +259,7 @@ static void resource_test_on_loaded(resource_handle_t handle,
     resource_test_ctx_t *ctx = (resource_test_ctx_t *)userdata;
 
     if (!ctx) {
-        LOGLN("[state:resource_test] callback with null ctx handle=(%u,%u)",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] callback with null ctx handle=(%u,%u)",
               handle.index,
               handle.generation);
         return;
@@ -274,7 +274,7 @@ static void resource_test_on_loaded(resource_handle_t handle,
     ctx->last_callback_size = size;
     ctx->last_callback_data = data;
 
-    LOGLN("[state:resource_test] callback #%d tag=%s handle=(%u,%u) valid=%d status=%s type=%s size=%u data=%p path=%s",
+    LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] callback #%d tag=%s handle=(%u,%u) valid=%d status=%s type=%s size=%u data=%p path=%s",
           ctx->callback_count,
           ctx->tag ? ctx->tag : "null",
           handle.index,
@@ -318,7 +318,7 @@ static int resource_test_queue(resource_test_ctx_t *ctx,
 
     ctx->handle = resource_load_file(&desc);
     if (!resource_is_valid(ctx->handle)) {
-        LOGLN("[state:resource_test] queue failed tag=%s type=%s path=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] queue failed tag=%s type=%s path=%s",
               tag,
               resource_type_name(type),
               path);
@@ -334,7 +334,7 @@ static int resource_test_queue(resource_test_ctx_t *ctx,
     ctx->expected_path = path;
     ctx->tag = tag;
 
-    LOGLN("[state:resource_test] queued tag=%s handle=(%u,%u) type=%s path=%s",
+    LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] queued tag=%s handle=(%u,%u) type=%s path=%s",
           tag,
           ctx->handle.index,
           ctx->handle.generation,
@@ -365,7 +365,7 @@ static int resource_test_wait_for_terminal(resource_test_ctx_t *ctx,
         return -100;
 
     if (!resource_is_valid(handle)) {
-        LOGLN("[state:resource_test] %s wait invalid handle", tag);
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] %s wait invalid handle", tag);
         resource_test_push_event(ctx, "%s wait invalid handle", tag);
         return -1;
     }
@@ -378,7 +378,7 @@ static int resource_test_wait_for_terminal(resource_test_ctx_t *ctx,
         return 1;
 
     if (phase_time >= timeout_sec) {
-        LOGLN("[state:resource_test] %s wait timeout ms=%d path=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] %s wait timeout ms=%d path=%s",
               tag,
               (int)(phase_time * 1000.0f),
               resource_path(handle));
@@ -392,7 +392,7 @@ static int resource_test_wait_for_terminal(resource_test_ctx_t *ctx,
 
     if ((phase_time - ctx->last_wait_log_time) >= RESOURCE_TEST_LOG_INTERVAL_SEC) {
         ctx->last_wait_log_time = phase_time;
-        LOGLN("[state:resource_test] %s waiting ms=%d status=%s path=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] %s waiting ms=%d status=%s path=%s",
               tag,
               (int)(phase_time * 1000.0f),
               resource_status_name(st),
@@ -421,7 +421,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
         return -100;
 
     if (!resource_is_valid(ctx->handle)) {
-        LOGLN("[state:resource_test] verify failed tag=%s reason=invalid_handle", tag);
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=invalid_handle", tag);
         resource_test_push_event(ctx,
             "verify FAILED tag=%s reason=invalid_handle",
             tag);
@@ -434,7 +434,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
     data = resource_data(ctx->handle);
     size = resource_size(ctx->handle);
 
-    LOGLN("[state:resource_test] verify tag=%s status=%s type=%s size=%u data=%p path=%s callback=%d cb_status=%s cb_size=%u cb_data=%p",
+    LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify tag=%s status=%s type=%s size=%u data=%p path=%s callback=%d cb_status=%s cb_size=%u cb_data=%p",
           tag,
           resource_status_name(status),
           resource_type_name(type),
@@ -447,7 +447,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
           ctx->last_callback_data);
 
     if (status != RESOURCE_STATUS_READY) {
-        LOGLN("[state:resource_test] verify failed tag=%s reason=status_not_ready", tag);
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=status_not_ready", tag);
         resource_test_push_event(ctx,
             "verify FAILED tag=%s reason=status_not_ready",
             tag);
@@ -455,7 +455,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
     }
 
     if (type != ctx->expected_type) {
-        LOGLN("[state:resource_test] verify failed tag=%s reason=type_mismatch expected=%s actual=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=type_mismatch expected=%s actual=%s",
               tag,
               resource_type_name(ctx->expected_type),
               resource_type_name(type));
@@ -468,7 +468,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
     }
 
     if (strcmp(path, ctx->expected_path) != 0) {
-        LOGLN("[state:resource_test] verify failed tag=%s reason=path_mismatch expected=%s actual=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=path_mismatch expected=%s actual=%s",
               tag,
               ctx->expected_path,
               path);
@@ -481,7 +481,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
     }
 
     if (!ctx->last_callback_fired) {
-        LOGLN("[state:resource_test] verify failed tag=%s reason=callback_not_fired", tag);
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=callback_not_fired", tag);
         resource_test_push_event(ctx,
             "verify FAILED tag=%s reason=callback_not_fired",
             tag);
@@ -489,7 +489,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
     }
 
     if (ctx->last_callback_status != RESOURCE_STATUS_READY) {
-        LOGLN("[state:resource_test] verify failed tag=%s reason=callback_status_not_ready status=%s",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=callback_status_not_ready status=%s",
               tag,
               resource_status_name(ctx->last_callback_status));
         resource_test_push_event(ctx,
@@ -500,7 +500,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
     }
 
     if (ctx->last_callback_size != size) {
-        LOGLN("[state:resource_test] verify failed tag=%s reason=callback_size_mismatch cb=%u actual=%u",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=callback_size_mismatch cb=%u actual=%u",
               tag,
               ctx->last_callback_size,
               size);
@@ -513,7 +513,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
     }
 
     if (ctx->last_callback_data != data) {
-        LOGLN("[state:resource_test] verify failed tag=%s reason=callback_data_mismatch cb=%p actual=%p",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=callback_data_mismatch cb=%p actual=%p",
               tag,
               ctx->last_callback_data,
               data);
@@ -527,7 +527,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
 
     if (size == 0) {
         if (data != NULL) {
-            LOGLN("[state:resource_test] verify failed tag=%s reason=zero_size_nonnull_data data=%p",
+            LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=zero_size_nonnull_data data=%p",
                   tag,
                   data);
             resource_test_push_event(ctx,
@@ -537,7 +537,7 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
             return -9;
         }
 
-        LOGLN("[state:resource_test] verify ok tag=%s zero-size resource", tag);
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify ok tag=%s zero-size resource", tag);
         resource_test_push_event(ctx,
             "verify OK tag=%s zero-size resource",
             tag);
@@ -545,14 +545,14 @@ static int resource_test_verify_loaded(resource_test_ctx_t *ctx,
     }
 
     if (!data) {
-        LOGLN("[state:resource_test] verify failed tag=%s reason=null_data_nonzero_size", tag);
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify failed tag=%s reason=null_data_nonzero_size", tag);
         resource_test_push_event(ctx,
             "verify FAILED tag=%s reason=null_data_nonzero_size",
             tag);
         return -10;
     }
 
-    LOGLN("[state:resource_test] verify ok tag=%s first_bytes=%02x %02x %02x %02x",
+    LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] verify ok tag=%s first_bytes=%02x %02x %02x %02x",
           tag,
           size > 0 ? ((unsigned char *)data)[0] : 0,
           size > 1 ? ((unsigned char *)data)[1] : 0,
@@ -581,14 +581,14 @@ static void resource_test_release_current(resource_test_ctx_t *ctx,
     old_handle = ctx->handle;
 
     if (!resource_is_valid(old_handle)) {
-        LOGLN("[state:resource_test] release skipped tag=%s reason=invalid_handle", tag);
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] release skipped tag=%s reason=invalid_handle", tag);
         resource_test_push_event(ctx,
             "release skipped tag=%s reason=invalid_handle",
             tag);
         return;
     }
 
-    LOGLN("[state:resource_test] releasing tag=%s handle=(%u,%u) type=%s path=%s",
+    LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] releasing tag=%s handle=(%u,%u) type=%s path=%s",
           tag,
           old_handle.index,
           old_handle.generation,
@@ -605,7 +605,7 @@ static void resource_test_release_current(resource_test_ctx_t *ctx,
 
     resource_release(old_handle);
 
-    LOGLN("[state:resource_test] released tag=%s old_valid_now=%d",
+    LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] released tag=%s old_valid_now=%d",
           tag,
           resource_is_valid(old_handle));
 
@@ -624,7 +624,7 @@ static void resource_test_release_current(resource_test_ctx_t *ctx,
 #ifndef RESOURCE_TEST_FAILF
 #define RESOURCE_TEST_FAILF(ctx, ...) \
     do { \
-        LOGLN("[state:resource_test] " __VA_ARGS__); \
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] " __VA_ARGS__); \
         resource_test_push_event(ctx, "FAIL: " __VA_ARGS__); \
         resource_test_set_phase(ctx, RESOURCE_TEST_PHASE_FAILED); \
     } while (0)
@@ -644,7 +644,7 @@ static int resource_test_enter(game_app_t *app, void *userdata)
         16
     );
     if (!ctx) {
-        LOGLN("[state:resource_test] enter failed: no state arena memory");
+        LOGLNC(LOGCAT_STATE, "[state:resource_test] enter failed: no state arena memory");
         return -1;
     }
 
@@ -665,16 +665,16 @@ static int resource_test_enter(game_app_t *app, void *userdata)
     overlay_desc.h = 260;
 
     if (debug_overlay_init(app, &ctx->overlay, &overlay_desc) != 0) {
-        LOGLN("[state:resource_test] overlay init failed");
+        LOGLNC(LOGCAT_STATE, "[state:resource_test] overlay init failed");
         return -1;
     }
 
-    LOGLN("[state:resource_test] enter");
-    LOGLN("[state:resource_test] automatic test begin path=%s timeout_ms=%d",
+    LOGLNC(LOGCAT_STATE, "[state:resource_test] enter");
+    LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] automatic test begin path=%s timeout_ms=%d",
           TEST_RESOURCE_PATH,
           (int)(RESOURCE_TEST_TIMEOUT_SEC * 1000.0f));
-    LOGLN("[state:resource_test] phases: raw -> release -> sprite_bank -> release");
-    LOGLN("[state:resource_test] START pressed, quit");
+    LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] phases: raw -> release -> sprite_bank -> release");
+    LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] START pressed, quit");
 
     resource_test_push_event(ctx, "enter");
     resource_test_push_event(ctx,
@@ -695,7 +695,7 @@ static void resource_test_exit(game_app_t *app)
 {
     resource_test_ctx_t *ctx = resource_test_data(app);
 
-    LOGLN("[state:resource_test] exit");
+    LOGLNC(LOGCAT_STATE, "[state:resource_test] exit");
 
     if (!ctx)
         return;
@@ -807,7 +807,7 @@ static void resource_test_update(game_app_t *app, float dt)
 
     case RESOURCE_TEST_PHASE_SPRITE_RELEASE:
         resource_test_release_current(ctx, "sprite_bank");
-        LOGLN("[state:resource_test] all tests passed total_ticks=%d total_ms=%d callbacks=%d",
+        LOGLNC(LOGCAT_RESOURCES, "[state:resource_test] all tests passed total_ticks=%d total_ms=%d callbacks=%d",
               ctx->total_ticks,
               (int)(ctx->total_time * 1000.0f),
               ctx->callback_count);
@@ -832,7 +832,7 @@ static void resource_test_update(game_app_t *app, float dt)
     }
 
     if (input_button_pressed(INPUT_BUTTON_START)) {
-        LOGLN("[state:resource_test] START pressed, quit phase=%s",
+        LOGLNC(LOGCAT_STATE, "[state:resource_test] START pressed, quit phase=%s",
               resource_test_phase_name(ctx->phase));
         input_consume();
         game_app_request_state_change(debug_menu_state_desc(), NULL);
