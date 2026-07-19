@@ -202,7 +202,7 @@ static int text_bmfont_parse_page(text_bmfont_parse_ctx_t *ctx, const char *line
         return -1;
 
     if (id != 0) {
-        LOGLN("[bmfont] %s: only page id=0 is supported",
+        LOGLNC(LOGCAT_TEXT, "[bmfont] %s: only page id=0 is supported",
               ctx->debug_name ? ctx->debug_name : "<unknown>");
         return -1;
     }
@@ -300,20 +300,20 @@ static int text_bmfont_first_pass(text_bmfont_parse_ctx_t *ctx)
 
         if (text_bmfont_starts_with(line, "common ")) {
             if (text_bmfont_parse_common(ctx, line) != 0) {
-                LOGLN("[bmfont] %s: failed to parse common line",
+                LOGLNC(LOGCAT_TEXT, "[bmfont] %s: failed to parse common line",
                       ctx->debug_name ? ctx->debug_name : "<unknown>");
                 return -1;
             }
         } else if (text_bmfont_starts_with(line, "page ")) {
             if (text_bmfont_parse_page(ctx, line) != 0) {
-                LOGLN("[bmfont] %s: failed to parse page line",
+                LOGLNC(LOGCAT_TEXT, "[bmfont] %s: failed to parse page line",
                       ctx->debug_name ? ctx->debug_name : "<unknown>");
                 return -1;
             }
         } else if (text_bmfont_starts_with(line, "chars ")) {
             int count = 0;
             if (text_bmfont_parse_int_field(line, "count", &count) != 0 || count < 0) {
-                LOGLN("[bmfont] %s: failed to parse chars count",
+                LOGLNC(LOGCAT_TEXT, "[bmfont] %s: failed to parse chars count",
                       ctx->debug_name ? ctx->debug_name : "<unknown>");
                 return -1;
             }
@@ -323,7 +323,7 @@ static int text_bmfont_first_pass(text_bmfont_parse_ctx_t *ctx)
         } else if (text_bmfont_starts_with(line, "kernings ")) {
             int count = 0;
             if (text_bmfont_parse_int_field(line, "count", &count) != 0 || count < 0) {
-                LOGLN("[bmfont] %s: failed to parse kernings count",
+                LOGLNC(LOGCAT_TEXT, "[bmfont] %s: failed to parse kernings count",
                       ctx->debug_name ? ctx->debug_name : "<unknown>");
                 return -1;
             }
@@ -337,33 +337,33 @@ static int text_bmfont_first_pass(text_bmfont_parse_ctx_t *ctx)
     }
 
     if (!ctx->saw_common) {
-        LOGLN("[bmfont] %s: missing common line",
+        LOGLNC(LOGCAT_TEXT, "[bmfont] %s: missing common line",
               ctx->debug_name ? ctx->debug_name : "<unknown>");
         return -1;
     }
 
     if (ctx->pages != 1) {
-        LOGLN("[bmfont] %s: only pages=1 is supported, got %d",
+        LOGLNC(LOGCAT_TEXT, "[bmfont] %s: only pages=1 is supported, got %d",
               ctx->debug_name ? ctx->debug_name : "<unknown>",
               ctx->pages);
         return -1;
     }
 
     if (!ctx->saw_page) {
-        LOGLN("[bmfont] %s: missing page line",
+        LOGLNC(LOGCAT_TEXT, "[bmfont] %s: missing page line",
               ctx->debug_name ? ctx->debug_name : "<unknown>");
         return -1;
     }
 
     if (ctx->chars_declared != 0 && ctx->chars_declared != ctx->chars_found) {
-        LOGLN("[bmfont] %s: chars count mismatch declared=%u found=%u",
+        LOGLNC(LOGCAT_TEXT, "[bmfont] %s: chars count mismatch declared=%u found=%u",
               ctx->debug_name ? ctx->debug_name : "<unknown>",
               ctx->chars_declared,
               ctx->chars_found);
     }
 
     if (ctx->kernings_declared != 0 && ctx->kernings_declared != ctx->kernings_found) {
-        LOGLN("[bmfont] %s: kernings count mismatch declared=%u found=%u",
+        LOGLNC(LOGCAT_TEXT, "[bmfont] %s: kernings count mismatch declared=%u found=%u",
               ctx->debug_name ? ctx->debug_name : "<unknown>",
               ctx->kernings_declared,
               ctx->kernings_found);
@@ -396,20 +396,20 @@ static int text_bmfont_second_pass(const text_bmfont_parse_ctx_t *ctx, text_font
 
         if (text_bmfont_starts_with(line, "char ")) {
             if (glyph_index >= font->glyph_count) {
-                LOGLN("[bmfont] %s: too many char lines",
+                LOGLNC(LOGCAT_TEXT, "[bmfont] %s: too many char lines",
                       ctx->debug_name ? ctx->debug_name : "<unknown>");
                 return -1;
             }
 
             if (text_bmfont_parse_char_line(line, &font->glyphs[glyph_index]) != 0) {
-                LOGLN("[bmfont] %s: failed to parse char line index=%u",
+                LOGLNC(LOGCAT_TEXT, "[bmfont] %s: failed to parse char line index=%u",
                       ctx->debug_name ? ctx->debug_name : "<unknown>",
                       glyph_index);
                 return -1;
             }
 
             if (font->glyphs[glyph_index].page != 0) {
-                LOGLN("[bmfont] %s: glyph page %u is unsupported",
+                LOGLNC(LOGCAT_TEXT, "[bmfont] %s: glyph page %u is unsupported",
                       ctx->debug_name ? ctx->debug_name : "<unknown>",
                       (unsigned int)font->glyphs[glyph_index].page);
                 return -1;
@@ -418,13 +418,13 @@ static int text_bmfont_second_pass(const text_bmfont_parse_ctx_t *ctx, text_font
             glyph_index++;
         } else if (text_bmfont_starts_with(line, "kerning ")) {
             if (kerning_index >= font->kerning_count) {
-                LOGLN("[bmfont] %s: too many kerning lines",
+                LOGLNC(LOGCAT_TEXT, "[bmfont] %s: too many kerning lines",
                       ctx->debug_name ? ctx->debug_name : "<unknown>");
                 return -1;
             }
 
             if (text_bmfont_parse_kerning_line(line, &font->kernings[kerning_index]) != 0) {
-                LOGLN("[bmfont] %s: failed to parse kerning line index=%u",
+                LOGLNC(LOGCAT_TEXT, "[bmfont] %s: failed to parse kerning line index=%u",
                       ctx->debug_name ? ctx->debug_name : "<unknown>",
                       kerning_index);
                 return -1;
@@ -438,7 +438,7 @@ static int text_bmfont_second_pass(const text_bmfont_parse_ctx_t *ctx, text_font
     }
 
     if (glyph_index != font->glyph_count) {
-        LOGLN("[bmfont] %s: glyph parse mismatch expected=%u parsed=%u",
+        LOGLNC(LOGCAT_TEXT, "[bmfont] %s: glyph parse mismatch expected=%u parsed=%u",
               ctx->debug_name ? ctx->debug_name : "<unknown>",
               font->glyph_count,
               glyph_index);
@@ -446,7 +446,7 @@ static int text_bmfont_second_pass(const text_bmfont_parse_ctx_t *ctx, text_font
     }
 
     if (kerning_index != font->kerning_count) {
-        LOGLN("[bmfont] %s: kerning parse mismatch expected=%u parsed=%u",
+        LOGLNC(LOGCAT_TEXT, "[bmfont] %s: kerning parse mismatch expected=%u parsed=%u",
               ctx->debug_name ? ctx->debug_name : "<unknown>",
               font->kerning_count,
               kerning_index);
@@ -463,7 +463,7 @@ int text_bmfont_load_from_memory(mem_arena_t *arena,
     text_bmfont_parse_ctx_t ctx;
 
     if (!arena || !font || !desc || !desc->fnt_text || desc->fnt_size == 0) {
-        LOGLN("[bmfont] invalid load arguments");
+        LOGLNC(LOGCAT_TEXT, "[bmfont] invalid load arguments");
         return -1;
     }
 
@@ -494,7 +494,7 @@ int text_bmfont_load_from_memory(mem_arena_t *arena,
             16
         );
         if (!font->glyphs) {
-            LOGLN("[bmfont] %s: failed to allocate glyph table",
+            LOGLNC(LOGCAT_TEXT, "[bmfont] %s: failed to allocate glyph table",
                   desc->debug_name ? desc->debug_name : "<unknown>");
             return -1;
         }
@@ -508,7 +508,7 @@ int text_bmfont_load_from_memory(mem_arena_t *arena,
             16
         );
         if (!font->kernings) {
-            LOGLN("[bmfont] %s: failed to allocate kerning table",
+            LOGLNC(LOGCAT_TEXT, "[bmfont] %s: failed to allocate kerning table",
                   desc->debug_name ? desc->debug_name : "<unknown>");
             return -1;
         }
@@ -517,7 +517,7 @@ int text_bmfont_load_from_memory(mem_arena_t *arena,
     if (text_bmfont_second_pass(&ctx, font) != 0)
         return -1;
 
-    LOGLN("[bmfont] %s: loaded glyphs=%u kernings=%u line_height=%u base=%d atlas=%ux%u",
+    LOGLNC(LOGCAT_TEXT, "[bmfont] %s: loaded glyphs=%u kernings=%u line_height=%u base=%d atlas=%ux%u",
           desc->debug_name ? desc->debug_name : "<unknown>",
           (unsigned int)font->glyph_count,
           (unsigned int)font->kerning_count,

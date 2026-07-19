@@ -92,7 +92,7 @@ static int text_layout_advance_line(text_layout_t *layout,
         return -1;
 
     if (layout->line_count >= layout->line_capacity) {
-        LOGLN("[text] build_boxed: line capacity exceeded count=%u capacity=%u",
+        LOGLNC(LOGCAT_TEXT, "[text] build_boxed: line capacity exceeded count=%u capacity=%u",
               (unsigned int)layout->line_count,
               (unsigned int)layout->line_capacity);
         return -1;
@@ -222,7 +222,7 @@ static int text_emit_token(text_layout_t *layout,
             continue;
 
         if (layout->glyph_count >= layout->glyph_capacity) {
-            LOGLN("[text] build_boxed: glyph capacity exceeded count=%u capacity=%u",
+            LOGLNC(LOGCAT_TEXT, "[text] build_boxed: glyph capacity exceeded count=%u capacity=%u",
                   (unsigned int)layout->glyph_count,
                   (unsigned int)layout->glyph_capacity);
             return -1;
@@ -308,7 +308,7 @@ static int text_emit_token_char_wrapped(text_layout_t *layout,
         }
 
         if (layout->glyph_count >= layout->glyph_capacity) {
-            LOGLN("[text] build_boxed: glyph capacity exceeded count=%u capacity=%u",
+            LOGLNC(LOGCAT_TEXT, "[text] build_boxed: glyph capacity exceeded count=%u capacity=%u",
                   (unsigned int)layout->glyph_count,
                   (unsigned int)layout->glyph_capacity);
             return -1;
@@ -348,7 +348,7 @@ static int text_emit_token_char_wrapped(text_layout_t *layout,
             glyph = text_font_find_glyph(font, cp);
             if (glyph) {
                 if (layout->glyph_count >= layout->glyph_capacity) {
-                    LOGLN("[text] build_boxed: glyph capacity exceeded count=%u capacity=%u",
+                    LOGLNC(LOGCAT_TEXT, "[text] build_boxed: glyph capacity exceeded count=%u capacity=%u",
                           (unsigned int)layout->glyph_count,
                           (unsigned int)layout->glyph_capacity);
                     return -1;
@@ -569,19 +569,19 @@ int text_layout_build_plain(text_layout_t *layout,
     text_codepoint_t prev_codepoint;
 
     if (!layout || !font || !utf8_text || !params) {
-        LOGLN("[text] build_plain: invalid args layout=%p font=%p text=%p params=%p",
+        LOGLNC(LOGCAT_TEXT, "[text] build_plain: invalid args layout=%p font=%p text=%p params=%p",
               layout, font, utf8_text, params);
         return -1;
     }
 
     if (!layout->glyphs || !layout->lines) {
-        LOGLN("[text] build_plain: missing buffers glyphs=%p lines=%p",
+        LOGLNC(LOGCAT_TEXT, "[text] build_plain: missing buffers glyphs=%p lines=%p",
               layout->glyphs, layout->lines);
         return -1;
     }
 
     if (layout->line_capacity == 0) {
-        LOGLN("[text] build_plain: line_capacity=0");
+        LOGLNC(LOGCAT_TEXT, "[text] build_plain: line_capacity=0");
         return -1;
     }
 
@@ -605,11 +605,11 @@ int text_layout_build_plain(text_layout_t *layout,
         text_layout_glyph_t *out_glyph;
 
         if (!text_utf8_decode(&p, &cp)) {
-            LOGLN("[text] build_plain: utf8 decode failed");
+            LOGLNC(LOGCAT_TEXT, "[text] build_plain: utf8 decode failed");
             break;
         }
 
-        LOGLN("[text] build_plain: cp=U+%04X", (unsigned int)cp);
+        LOGLNC(LOGCAT_TEXT, "[text] build_plain: cp=U+%04X", (unsigned int)cp);
 
         if (cp == '\r')
             continue;
@@ -621,7 +621,7 @@ int text_layout_build_plain(text_layout_t *layout,
             layout->lines[layout->line_count - 1].width = line_width;
 
             if (layout->line_count >= layout->line_capacity) {
-                LOGLN("[text] build_plain: line capacity exceeded count=%u capacity=%u",
+                LOGLNC(LOGCAT_TEXT, "[text] build_plain: line capacity exceeded count=%u capacity=%u",
                       (unsigned int)layout->line_count,
                       (unsigned int)layout->line_capacity);
                 return -1;
@@ -641,12 +641,12 @@ int text_layout_build_plain(text_layout_t *layout,
 
         glyph = text_font_find_glyph(font, cp);
         if (!glyph) {
-            LOGLN("[text] build_plain: glyph not found cp=U+%04X", (unsigned int)cp);
+            LOGLNC(LOGCAT_TEXT, "[text] build_plain: glyph not found cp=U+%04X", (unsigned int)cp);
             continue;
         }
 
         if (layout->glyph_count >= layout->glyph_capacity) {
-            LOGLN("[text] build_plain: glyph capacity exceeded count=%u capacity=%u",
+            LOGLNC(LOGCAT_TEXT, "[text] build_plain: glyph capacity exceeded count=%u capacity=%u",
                   (unsigned int)layout->glyph_count,
                   (unsigned int)layout->glyph_capacity);
             return -1;
@@ -680,7 +680,7 @@ int text_layout_build_plain(text_layout_t *layout,
 
     layout->height = (short)(layout->line_count * font->line_height);
 
-    LOGLN("[text] build_plain: ok glyphs=%u lines=%u width=%d height=%d",
+    LOGLNC(LOGCAT_TEXT, "[text] build_plain: ok glyphs=%u lines=%u width=%d height=%d",
           (unsigned int)layout->glyph_count,
           (unsigned int)layout->line_count,
           (int)layout->width,
@@ -775,7 +775,7 @@ static int text_layout_build_boxed_charwrap(text_layout_t *layout,
             }
 
             if (layout->glyph_count >= layout->glyph_capacity) {
-                LOGLN("[text] build_boxed_charwrap: glyph capacity exceeded count=%u capacity=%u",
+                LOGLNC(LOGCAT_TEXT, "[text] build_boxed_charwrap: glyph capacity exceeded count=%u capacity=%u",
                       (unsigned int)layout->glyph_count,
                       (unsigned int)layout->glyph_capacity);
                 return -1;
@@ -826,7 +826,7 @@ static int text_layout_build_boxed_charwrap(text_layout_t *layout,
         }
 
         if (layout->glyph_count >= layout->glyph_capacity) {
-            LOGLN("[text] build_boxed_charwrap: glyph capacity exceeded count=%u capacity=%u",
+            LOGLNC(LOGCAT_TEXT, "[text] build_boxed_charwrap: glyph capacity exceeded count=%u capacity=%u",
                   (unsigned int)layout->glyph_count,
                   (unsigned int)layout->glyph_capacity);
             return -1;
@@ -858,12 +858,13 @@ static int text_layout_build_boxed_charwrap(text_layout_t *layout,
         layout->lines[layout->line_count - 1].width = line_width;
 
     layout->height = (short)(layout->line_count * font->line_height);
-
-    LOGLN("[text] build_boxed_charwrap: ok glyphs=%u lines=%u width=%d height=%d",
-          (unsigned int)layout->glyph_count,
-          (unsigned int)layout->line_count,
-          (int)layout->width,
-          (int)layout->height);
+    
+    // Commented due its noisy
+    // LOGLNC(LOGCAT_TEXT, "[text] build_boxed_charwrap: ok glyphs=%u lines=%u width=%d height=%d",
+    //       (unsigned int)layout->glyph_count,
+    //       (unsigned int)layout->line_count,
+    //       (int)layout->width,
+    //       (int)layout->height);
 
     return 0;
 }
@@ -885,27 +886,28 @@ int text_layout_build_boxed(text_layout_t *layout,
     int has_pending_space;
 
     if (!layout || !font || !utf8_text || !params) {
-        LOGLN("[text] build_boxed: invalid args layout=%p font=%p text=%p params=%p",
+        LOGLNC(LOGCAT_TEXT, "[text] build_boxed: invalid args layout=%p font=%p text=%p params=%p",
               layout, font, utf8_text, params);
         return -1;
     }
 
     if (!layout->glyphs || !layout->lines) {
-        LOGLN("[text] build_boxed: missing buffers glyphs=%p lines=%p",
+        LOGLNC(LOGCAT_TEXT, "[text] build_boxed: missing buffers glyphs=%p lines=%p",
               layout->glyphs, layout->lines);
         return -1;
     }
 
     if (layout->line_capacity == 0) {
-        LOGLN("[text] build_boxed: line_capacity=0");
+        LOGLNC(LOGCAT_TEXT, "[text] build_boxed: line_capacity=0");
         return -1;
     }
 
-    LOGLN("[text] build_boxed: origin=(%d,%d) max_width=%d wrap_mode=%d",
-        (int)params->origin_x,
-        (int)params->origin_y,
-        (int)params->max_width,
-        (int)params->wrap_mode);
+    // Commented due its noisy
+    // LOGLNC(LOGCAT_TEXT, "[text] build_boxed: origin=(%d,%d) max_width=%d wrap_mode=%d",
+    //     (int)params->origin_x,
+    //     (int)params->origin_y,
+    //     (int)params->max_width,
+    //     (int)params->wrap_mode);
 
     text_layout_reset(layout);
 
@@ -938,7 +940,7 @@ int text_layout_build_boxed(text_layout_t *layout,
             layout->lines[layout->line_count - 1].width = line_width;
 
             if (layout->line_count >= layout->line_capacity) {
-                LOGLN("[text] build_boxed: line capacity exceeded count=%u capacity=%u",
+                LOGLNC(LOGCAT_TEXT, "[text] build_boxed: line capacity exceeded count=%u capacity=%u",
                       (unsigned int)layout->line_count,
                       (unsigned int)layout->line_capacity);
                 return -1;
@@ -1044,14 +1046,14 @@ int text_layout_build_boxed(text_layout_t *layout,
 
                         if (emit_p < token.end) {
                             if (layout->line_count >= layout->line_capacity) {
-                                LOGLN("[text] build_boxed: line capacity exceeded count=%u capacity=%u",
+                                LOGLNC(LOGCAT_TEXT, "[text] build_boxed: line capacity exceeded count=%u capacity=%u",
                                     (unsigned int)layout->line_count,
                                     (unsigned int)layout->line_capacity);
                                 return -1;
                             }
 
                             if (layout->glyph_count == glyphs_before && pen_x == pen_x_before) {
-                                LOGLN("[text] build_boxed: word fallback char wrap made no progress");
+                                LOGLNC(LOGCAT_TEXT, "[text] build_boxed: word fallback char wrap made no progress");
                                 return -1;
                             }
 
@@ -1107,7 +1109,7 @@ int text_layout_build_boxed(text_layout_t *layout,
 
             if (word_fits_empty_line) {
                 if (layout->line_count >= layout->line_capacity) {
-                    LOGLN("[text] build_boxed: line capacity exceeded count=%u capacity=%u",
+                    LOGLNC(LOGCAT_TEXT, "[text] build_boxed: line capacity exceeded count=%u capacity=%u",
                         (unsigned int)layout->line_count,
                         (unsigned int)layout->line_capacity);
                     return -1;
@@ -1138,7 +1140,7 @@ int text_layout_build_boxed(text_layout_t *layout,
             }
 
             if (layout->line_count >= layout->line_capacity) {
-                LOGLN("[text] build_boxed: line capacity exceeded count=%u capacity=%u",
+                LOGLNC(LOGCAT_TEXT, "[text] build_boxed: line capacity exceeded count=%u capacity=%u",
                     (unsigned int)layout->line_count,
                     (unsigned int)layout->line_capacity);
                 return -1;
@@ -1181,14 +1183,14 @@ int text_layout_build_boxed(text_layout_t *layout,
 
                     if (emit_p < token.end) {
                         if (layout->line_count >= layout->line_capacity) {
-                            LOGLN("[text] build_boxed: line capacity exceeded count=%u capacity=%u",
+                            LOGLNC(LOGCAT_TEXT, "[text] build_boxed: line capacity exceeded count=%u capacity=%u",
                                 (unsigned int)layout->line_count,
                                 (unsigned int)layout->line_capacity);
                             return -1;
                         }
 
                         if (layout->glyph_count == glyphs_before && pen_x == pen_x_before) {
-                            LOGLN("[text] build_boxed: word fallback char wrap made no progress");
+                            LOGLNC(LOGCAT_TEXT, "[text] build_boxed: word fallback char wrap made no progress");
                             return -1;
                         }
 
@@ -1218,11 +1220,12 @@ int text_layout_build_boxed(text_layout_t *layout,
 
     layout->height = (short)(layout->line_count * font->line_height);
 
-    LOGLN("[text] build_boxed: ok glyphs=%u lines=%u width=%d height=%d",
-          (unsigned int)layout->glyph_count,
-          (unsigned int)layout->line_count,
-          (int)layout->width,
-          (int)layout->height);
+    // Commented due its noisy
+    // LOGLNC(LOGCAT_TEXT, "[text] build_boxed: ok glyphs=%u lines=%u width=%d height=%d",
+    //       (unsigned int)layout->glyph_count,
+    //       (unsigned int)layout->line_count,
+    //       (int)layout->width,
+    //       (int)layout->height);
 
     return 0;
 }

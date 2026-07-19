@@ -282,17 +282,17 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
     unsigned short current_group;
 
     if (!layout || !font || !runs || !params) {
-        LOGLN("[text_rich] build_plain: invalid args");
+        LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: invalid args");
         return -1;
     }
 
     if (!layout->items || !layout->lines) {
-        LOGLN("[text_rich] build_plain: missing buffers");
+        LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: missing buffers");
         return -1;
     }
 
     if (layout->line_capacity == 0) {
-        LOGLN("[text_rich] build_plain: line_capacity=0");
+        LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: line_capacity=0");
         return -1;
     }
 
@@ -316,7 +316,7 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
         const char *p = run->text_start;
 
         if (!run->text_start || !run->text_end || run->text_start > run->text_end) {
-            LOGLN("[text_rich] build_plain: invalid run bounds index=%u",
+            LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: invalid run bounds index=%u",
                 (unsigned int)run_index);
                 return -1;
         }
@@ -330,7 +330,7 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
             text_layout_item_t *item;
 
             if (!text_rich_utf8_decode_bounded(&p, run->text_end, &cp)) {
-                LOGLN("[text_rich] build_plain: utf8 decode failed");
+                LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: utf8 decode failed");
                 return -1;
             }
 
@@ -344,7 +344,7 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
                 layout->lines[layout->line_count - 1].width = line_width;
 
                 if (layout->line_count >= layout->line_capacity) {
-                    LOGLN("[text_rich] build_plain: line capacity exceeded");
+                    LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: line capacity exceeded");
                     return -1;
                 }
 
@@ -366,7 +366,7 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
                 continue;
 
             if (layout->item_count >= layout->item_capacity) {
-                LOGLN("[text_rich] build_plain: item capacity exceeded");
+                LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: item capacity exceeded");
                 return -1;
             }
 
@@ -429,7 +429,7 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
 
     layout->height = (short)(layout->line_count * font->line_height);
 
-    LOGLN("[text_rich] build_plain: ok items=%u lines=%u groups=%u width=%d height=%d",
+    LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: ok items=%u lines=%u groups=%u width=%d height=%d",
           (unsigned int)layout->item_count,
           (unsigned int)layout->line_count,
           (unsigned int)layout->reveal_group_count,

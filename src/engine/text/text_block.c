@@ -414,12 +414,13 @@ int text_block_refresh(text_block_t *tb)
         if (!tb->font->glyphs || tb->font->glyph_count == 0 || tb->font->tex_id < 0)
             return -1;
 
-        LOGLN("[text_block] refresh rich=%d wrap_mode=%d reveal_mode=%d max_width=%d dirty=0x%X",
-              tb->use_rich_text,
-              (int)tb->params.wrap_mode,
-              (int)tb->reveal_mode,
-              (int)tb->params.max_width,
-              (unsigned int)tb->dirty_flags);
+        // Commented due its noisy
+        // LOGLNC(LOGCAT_TEXT, "[text_block] refresh rich=%d wrap_mode=%d reveal_mode=%d max_width=%d dirty=0x%X",
+        //       tb->use_rich_text,
+        //       (int)tb->params.wrap_mode,
+        //       (int)tb->reveal_mode,
+        //       (int)tb->params.max_width,
+        //       (unsigned int)tb->dirty_flags);
 
         if (!tb->use_rich_text) {
             if (!tb->text_utf8)
@@ -433,7 +434,7 @@ int text_block_refresh(text_block_t *tb)
                                                 tb->font,
                                                 tb->text_utf8,
                                                 &tb->params) != 0) {
-                        LOGLN("[text_block] text_layout_build_plain failed");
+                        LOGLNC(LOGCAT_TEXT, "[text_block] text_layout_build_plain failed");
                         return -1;
                     }
                     break;
@@ -445,7 +446,7 @@ int text_block_refresh(text_block_t *tb)
                                                     tb->font,
                                                     tb->text_utf8,
                                                     &tb->params) != 0) {
-                            LOGLN("[text_block] text_layout_build_plain failed");
+                            LOGLNC(LOGCAT_TEXT, "[text_block] text_layout_build_plain failed");
                             return -1;
                         }
                     } else {
@@ -453,7 +454,7 @@ int text_block_refresh(text_block_t *tb)
                                                     tb->font,
                                                     tb->text_utf8,
                                                     &tb->params) != 0) {
-                            LOGLN("[text_block] text_layout_build_boxed failed wrap_mode=%d",
+                            LOGLNC(LOGCAT_TEXT, "[text_block] text_layout_build_boxed failed wrap_mode=%d",
                                   (int)tb->params.wrap_mode);
                             return -1;
                         }
@@ -461,7 +462,7 @@ int text_block_refresh(text_block_t *tb)
                     break;
 
                 default:
-                    LOGLN("[text_block] unknown wrap_mode=%d", (int)tb->params.wrap_mode);
+                    LOGLNC(LOGCAT_TEXT, "[text_block] unknown wrap_mode=%d", (int)tb->params.wrap_mode);
                     return -1;
             }
         } else {
@@ -485,12 +486,12 @@ int text_block_refresh(text_block_t *tb)
                                 tb->rich_runs,
                                 tb->rich_run_capacity,
                                 &tb->rich_run_count) != 0) {
-                LOGLN("[text_block] text_rich_parse failed capacity=%u",
+                LOGLNC(LOGCAT_TEXT, "[text_block] text_rich_parse failed capacity=%u",
                     (unsigned int)tb->rich_run_capacity);
                 return -1;
             }
 
-            LOGLN("[text_block] rich parse ok runs=%u/%u",
+            LOGLNC(LOGCAT_TEXT, "[text_block] rich parse ok runs=%u/%u",
                 (unsigned int)tb->rich_run_count,
                 (unsigned int)tb->rich_run_capacity);
 
@@ -500,7 +501,7 @@ int text_block_refresh(text_block_t *tb)
                                              tb->rich_run_count,
                                              &tb->params,
                                             tb->reveal_mode) != 0) {
-                LOGLN("[text_block] text_rich_layout_build_plain failed");
+                LOGLNC(LOGCAT_TEXT, "[text_block] text_rich_layout_build_plain failed");
                 return -1;
             }
         }
