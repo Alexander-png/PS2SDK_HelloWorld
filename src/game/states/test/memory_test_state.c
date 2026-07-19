@@ -174,7 +174,7 @@ static void run_alloc_free_test(game_app_t *app)
         data->alloc_free_runs++;
 
     if (!p) {
-        LOGLN("[state:memory_test] alloc_free: allocation failed");
+        LOGLNC(LOGCAT_MEMORY, "[state:memory_test] alloc_free: allocation failed");
         memory_test_push_event(data, "alloc_free: allocation failed");
         return;
     }
@@ -182,7 +182,7 @@ static void run_alloc_free_test(game_app_t *app)
     memset(p, 0x11, 32);
     mem_free(p, MEMTAG_TEMP);
 
-    LOGLN("[state:memory_test] alloc_free: done, expected no memory errors");
+    LOGLNC(LOGCAT_MEMORY, "[state:memory_test] alloc_free: done, expected no memory errors");
     memory_test_push_event(data,
         "alloc_free: done, expected no memory errors");
 }
@@ -196,7 +196,7 @@ static void run_overrun_test(game_app_t *app)
         data->overrun_runs++;
 
     if (!p) {
-        LOGLN("[state:memory_test] overrun: allocation failed");
+        LOGLNC(LOGCAT_MEMORY, "[state:memory_test] overrun: allocation failed");
         memory_test_push_event(data, "overrun: allocation failed");
         return;
     }
@@ -204,7 +204,7 @@ static void run_overrun_test(game_app_t *app)
     memset(p, 0x22, 32);
     p[32] = 0x99;
 
-    LOGLN("[state:memory_test] overrun: wrote 1 byte past end, free expected to report overrun");
+    LOGLNC(LOGCAT_MEMORY, "[state:memory_test] overrun: wrote 1 byte past end, free expected to report overrun");
     memory_test_push_event(data,
         "overrun: wrote 1 byte past end, free expected to report overrun");
 
@@ -220,7 +220,7 @@ static void run_underrun_test(game_app_t *app)
         data->underrun_runs++;
 
     if (!p) {
-        LOGLN("[state:memory_test] underrun: allocation failed");
+        LOGLNC(LOGCAT_MEMORY, "[state:memory_test] underrun: allocation failed");
         memory_test_push_event(data, "underrun: allocation failed");
         return;
     }
@@ -228,7 +228,7 @@ static void run_underrun_test(game_app_t *app)
     memset(p, 0x33, 32);
     p[-1] = 0x77;
 
-    LOGLN("[state:memory_test] underrun: wrote 1 byte before start, free expected to report underrun");
+    LOGLNC(LOGCAT_MEMORY, "[state:memory_test] underrun: wrote 1 byte before start, free expected to report underrun");
     memory_test_push_event(data,
         "underrun: wrote 1 byte before start, free expected to report underrun");
 
@@ -244,14 +244,14 @@ static void run_leak_test(game_app_t *app)
         data->leak_runs++;
 
     if (!p) {
-        LOGLN("[state:memory_test] leak: allocation failed");
+        LOGLNC(LOGCAT_MEMORY, "[state:memory_test] leak: allocation failed");
         memory_test_push_event(data, "leak: allocation failed");
         return;
     }
 
     memset(p, 0x44, 64);
 
-    LOGLN("[state:memory_test] leak: intentionally leaked 64 bytes, exit should report leak");
+    LOGLNC(LOGCAT_MEMORY, "[state:memory_test] leak: intentionally leaked 64 bytes, exit should report leak");
     memory_test_push_event(data,
         "leak: intentionally leaked 64 bytes, exit should report leak");
 
@@ -298,7 +298,7 @@ static int memory_test_enter(game_app_t *app, void *userdata)
     }
 
     LOGLNC(LOGCAT_STATE, "[state:memory_test] enter");
-    LOGLN("[state:memory_test] CROSS=alloc/free, CIRCLE=overrun, TRIANGLE=underrun, SQUARE=leak, START=quit");
+    LOGLNC(LOGCAT_MEMORY, "[state:memory_test] CROSS=alloc/free, CIRCLE=overrun, TRIANGLE=underrun, SQUARE=leak, START=quit");
 
     memory_test_push_event(data, "enter");
     memory_test_push_event(data,
@@ -316,7 +316,7 @@ static void memory_test_exit(game_app_t *app)
     memory_test_state_data_t *data = memory_test_data(app);
 
     if (data) {
-        LOGLN("[state:memory_test] summary time_ms=%d alloc_free=%u overrun=%u underrun=%u leak=%u",
+        LOGLNC(LOGCAT_MEMORY, "[state:memory_test] summary time_ms=%d alloc_free=%u overrun=%u underrun=%u leak=%u",
               (int)(data->enter_time_sec * 1000.0f),
               data->alloc_free_runs,
               data->overrun_runs,
