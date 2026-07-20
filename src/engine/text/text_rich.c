@@ -80,7 +80,7 @@ static int text_rich_parse_color_tag(const char *tag_start,
 
     if (len == 7 && strncmp(tag_start, "/color]", 7) == 0) {
         out_tag->kind = TEXT_RICH_TAG_CLOSE_COLOR;
-        out_tag->color = text_color_white();
+        out_tag->color = text_color_default();
         return 0;
     }
 
@@ -122,14 +122,14 @@ static int text_rich_parse_shake_tag(const char *tag_start,
     if ((tag_end - tag_start) == 6 &&
         strncmp(tag_start, "shake]", 6) == 0) {
         out_tag->kind = TEXT_RICH_TAG_OPEN_SHAKE;
-        out_tag->color = text_color_white();
+        out_tag->color = text_color_default();
         return 0;
     }
 
     if ((tag_end - tag_start) == 7 &&
         strncmp(tag_start, "/shake]", 7) == 0) {
         out_tag->kind = TEXT_RICH_TAG_CLOSE_SHAKE;
-        out_tag->color = text_color_white();
+        out_tag->color = text_color_default();
         return 0;
     }
 
@@ -146,14 +146,14 @@ static int text_rich_parse_wave_tag(const char *tag_start,
     if ((tag_end - tag_start) == 5 &&
         strncmp(tag_start, "wave]", 5) == 0) {
         out_tag->kind = TEXT_RICH_TAG_OPEN_WAVE;
-        out_tag->color = text_color_white();
+        out_tag->color = text_color_default();
         return 0;
     }
 
     if ((tag_end - tag_start) == 6 &&
         strncmp(tag_start, "/wave]", 6) == 0) {
         out_tag->kind = TEXT_RICH_TAG_CLOSE_WAVE;
-        out_tag->color = text_color_white();
+        out_tag->color = text_color_default();
         return 0;
     }
 
@@ -211,7 +211,7 @@ void text_rich_style_init(text_rich_style_t *style)
     if (!style)
         return;
 
-    style->color = text_color_white();
+    style->color = text_color_default();
     text_rich_effect_params_init(&style->effects);
 }
 
@@ -243,7 +243,7 @@ void text_rich_effect_params_apply_defaults(text_rich_effect_params_t *params)
 
     if (params->flags & TEXT_RICH_EFFECT_WAVE) {
         if (params->amp_x <= 0.0f)
-            params->amp_x = 0.0f;
+            params->amp_x = 3.0f;
         if (params->amp_y <= 0.0f)
             params->amp_y = 3.0f;
         if (params->speed <= 0.0f)

@@ -138,6 +138,125 @@ static int text_rich_is_space_cp(text_codepoint_t cp)
     return (cp == ' ' || cp == '\t');
 }
 
+static int text_rich_layout_newline(text_rich_layout_t *layout,
+                                    const text_font_t *font,
+                                    short origin_x,
+                                    short *pen_x,
+                                    short *pen_y,
+                                    short *line_width,
+                                    text_codepoint_t *prev_codepoint,
+                                    int *in_word)
+{
+    if (!layout || !font || !pen_x || !pen_y || !line_width || !prev_codepoint || !in_word)
+        return -1;
+
+    if (*line_width > layout->width)
+        layout->width = *line_width;
+
+    if (layout->line_count == 0)
+        return -1;
+
+    layout->lines[layout->line_count - 1].width = *line_width;
+
+    if (layout->line_count >= layout->line_capacity)
+        return -1;
+
+    *pen_x = origin_x;
+    *pen_y = (short)(*pen_y + font->line_height);
+    *line_width = 0;
+    *prev_codepoint = 0;
+    *in_word = 0;
+
+    layout->lines[layout->line_count].first_item = layout->item_count;
+    layout->lines[layout->line_count].item_count = 0;
+    layout->lines[layout->line_count].width = 0;
+    layout->line_count++;
+
+    return 0;
+}
+
+static int text_rich_layout_move_word_to_newline(text_rich_layout_t *layout,
+                                                 const text_font_t *font,
+                                                 const text_layout_params_t *params,
+                                                 short line_origin_x,
+                                                 unsigned short word_start_item,
+                                                 short word_start_pen_x,
+                                                 short word_start_line_width,
+                                                 text_codepoint_t word_start_prev_codepoint,
+                                                 short *pen_x,
+                                                 short *pen_y,
+                                                 short *line_width,
+                                                 text_codepoint_t *prev_codepoint,
+                                                 int *in_word)
+{
+    unsigned short move_begin;
+    unsigned short move_end;
+    unsigned short moved_count;
+    unsigned short old_line_index;
+    unsigned short new_line_index;
+    unsigned short i;
+    short dx;
+    short dy;
+
+    if (!layout || !font || !params || !pen_x || !pen_y || !line_width || !prev_codepoint || !in_word)
+        return -1;
+
+    if (word_start_item >= layout->item_count)
+        return 0;
+
+    move_begin = word_start_item;
+    move_end = layout->item_count;
+    moved_count = (unsigned short)(move_end - move_begin);
+    old_line_index = (unsigned short)(layout->line_count - 1);
+
+    layout->item_count = word_start_item;
+    layout->lines[old_line_index].item_count =
+        (unsigned short)(layout->lines[old_line_index].item_count - moved_count);
+    layout->lines[old_line_index].width = word_start_line_width;
+
+    if (word_start_line_width > layout->width)
+        layout->width = word_start_line_width;
+
+    *pen_x = word_start_pen_x;
+    *line_width = word_start_line_width;
+    *prev_codepoint = word_start_prev_codepoint;
+
+    if (text_rich_layout_newline(layout,
+                                 font,
+                                 line_origin_x,
+                                 pen_x,
+                                 pen_y,
+                                 line_width,
+                                 prev_codepoint,
+                                 in_word) != 0) {
+        return -1;
+    }
+
+    new_line_index = (unsigned short)(layout->line_count - 1);
+    dx = (short)(line_origin_x - word_start_pen_x);
+    dy = font->line_height;
+
+    for (i = 0; i < moved_count; ++i) {
+        text_layout_item_t item = layout->items[move_begin + i];
+        item.x = (short)(item.x + dx);
+        item.y = (short)(item.y + dy);
+        layout->items[layout->item_count++] = item;
+        layout->lines[new_line_index].item_count++;
+    }
+
+    if (layout->item_count > layout->lines[new_line_index].first_item) {
+        text_layout_item_t *last = &layout->items[layout->item_count - 1];
+        *line_width = (short)((last->x + last->glyph->xadvance + params->style.tracking) - line_origin_x);
+    } else {
+        *line_width = 0;
+    }
+
+    layout->lines[new_line_index].width = *line_width;
+    *pen_x = (short)(line_origin_x + *line_width);
+
+    return 0;
+}
+
 static float text_rich_noise_01(int seed, float t)
 {
     float v = sinf((float)seed * 12.9898f + t * 78.233f) * 43758.5453f;
@@ -265,12 +384,12 @@ void text_rich_layout_reset(text_rich_layout_t *layout)
     layout->height = 0;
 }
 
-int text_rich_layout_build_plain(text_rich_layout_t *layout,
-                                 const text_font_t *font,
-                                 const text_rich_run_t *runs,
-                                 unsigned short run_count,
-                                 const text_layout_params_t *params,
-                                 text_reveal_mode_t reveal_mode)
+int text_rich_layout_build(text_rich_layout_t *layout,
+                           const text_font_t *font,
+                           const text_rich_run_t *runs,
+                           unsigned short run_count,
+                           const text_layout_params_t *params,
+                           text_reveal_mode_t reveal_mode)
 {
     unsigned short run_index;
     short pen_x;
@@ -280,6 +399,13 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
     text_codepoint_t prev_codepoint;
     int in_word;
     unsigned short current_group;
+    text_wrap_mode_t wrap_mode;
+
+    unsigned short word_start_item;
+    short word_start_pen_x;
+    short word_start_line_width;
+    text_codepoint_t word_start_prev_codepoint;
+    int word_active;
 
     if (!layout || !font || !runs || !params) {
         LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: invalid args");
@@ -305,10 +431,19 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
     prev_codepoint = 0;
     in_word = 0;
     current_group = 0;
+    wrap_mode = params->wrap_mode;
+
+    word_start_item = 0;
+    word_start_pen_x = pen_x;
+    word_start_line_width = 0;
+    word_start_prev_codepoint = 0;
+    word_active = 0;
+
+    wrap_mode = params->wrap_mode;
 
     layout->line_count = 1;
-    layout->lines[0].first_glyph = 0;
-    layout->lines[0].glyph_count = 0;
+    layout->lines[0].first_item = 0;
+    layout->lines[0].item_count = 0;
     layout->lines[0].width = 0;
 
     for (run_index = 0; run_index < run_count; ++run_index) {
@@ -338,27 +473,30 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
                 continue;
 
             if (cp == '\n') {
-                if (line_width > layout->width)
-                    layout->width = line_width;
-
-                layout->lines[layout->line_count - 1].width = line_width;
-
-                if (layout->line_count >= layout->line_capacity) {
-                    LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: line capacity exceeded");
+                if (text_rich_layout_newline(layout,
+                                             font,
+                                             line_origin_x,
+                                             &pen_x,
+                                             &pen_y,
+                                             &line_width,
+                                             &prev_codepoint,
+                                             &in_word) != 0) {
+                    LOGLNC(LOGCAT_TEXT, "[text_rich] build: line capacity exceeded");
                     return -1;
                 }
-
-                pen_x = line_origin_x;
-                pen_y += font->line_height;
-                line_width = 0;
-                prev_codepoint = 0;
-                in_word = 0;
-
-                layout->lines[layout->line_count].first_glyph = layout->item_count;
-                layout->lines[layout->line_count].glyph_count = 0;
-                layout->lines[layout->line_count].width = 0;
-                layout->line_count++;
                 continue;
+            }
+
+            if (wrap_mode == TEXT_WRAP_WORD) {
+                if (text_rich_is_space_cp(cp)) {
+                    word_active = 0;
+                } else if (!word_active) {
+                    word_active = 1;
+                    word_start_item = layout->item_count;
+                    word_start_pen_x = pen_x;
+                    word_start_line_width = line_width;
+                    word_start_prev_codepoint = prev_codepoint;
+                }
             }
 
             glyph = text_font_find_glyph(font, cp);
@@ -371,6 +509,58 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
             }
 
             pen_x += text_font_get_kerning(font, prev_codepoint, cp);
+            
+            if (wrap_mode != TEXT_WRAP_NONE && params->max_width > 0) {
+                int glyph_left = pen_x + glyph->xoffset;
+                int glyph_right = glyph_left + glyph->atlas_w;
+                int max_right = params->origin_x + params->max_width;
+
+                if (pen_x > line_origin_x && glyph_right > max_right) {
+                    int moved_word = 0;
+
+                    if (wrap_mode == TEXT_WRAP_WORD &&
+                        word_active &&
+                        word_start_item < layout->item_count &&
+                        word_start_pen_x > line_origin_x) {
+                        if (text_rich_layout_move_word_to_newline(layout,
+                                                                  font,
+                                                                  params,
+                                                                  line_origin_x,
+                                                                  word_start_item,
+                                                                  word_start_pen_x,
+                                                                  word_start_line_width,
+                                                                  word_start_prev_codepoint,
+                                                                  &pen_x,
+                                                                  &pen_y,
+                                                                  &line_width,
+                                                                  &prev_codepoint,
+                                                                  &in_word) != 0) {
+                            LOGLNC(LOGCAT_TEXT, "[text_rich] build: line capacity exceeded during word wrap");
+                            return -1;
+                        }
+
+                        word_start_item = layout->lines[layout->line_count - 1].first_item;
+                        word_start_pen_x = line_origin_x;
+                        word_start_line_width = 0;
+                        word_start_prev_codepoint = 0;
+                        moved_word = 1;
+                    }
+
+                    if (!moved_word) {
+                        if (text_rich_layout_newline(layout,
+                                                     font,
+                                                     line_origin_x,
+                                                     &pen_x,
+                                                     &pen_y,
+                                                     &line_width,
+                                                     &prev_codepoint,
+                                                     &in_word) != 0) {
+                            LOGLNC(LOGCAT_TEXT, "[text_rich] build: line capacity exceeded during char wrap");
+                            return -1;
+                        }
+                    }
+                }
+            }
 
             /* In TEXT_REVEAL_WORD mode, whitespace items are emitted using the current
                group so that spacing appears together with the preceding revealed word. */
@@ -416,7 +606,7 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
             line_width = (short)(pen_x - line_origin_x);
             prev_codepoint = cp;
 
-            layout->lines[layout->line_count - 1].glyph_count++;
+            layout->lines[layout->line_count - 1].item_count++;
             layout->lines[layout->line_count - 1].width = line_width;
         }
     }
@@ -437,14 +627,6 @@ int text_rich_layout_build_plain(text_rich_layout_t *layout,
           (int)layout->height);
 
     return 0;
-}
-
-void text_rich_draw_layout(const text_font_t *font,
-                           const text_rich_layout_t *layout,
-                           const text_reveal_state_t *reveal,
-                           float time_seconds)
-{
-    text_rich_draw_layout_ex(font, layout, reveal, time_seconds, NULL);
 }
 
 void text_rich_draw_layout_ex(const text_font_t *font,

@@ -3,14 +3,6 @@
 
 #include <string.h>
 
-static void text_block_mark_dirty(text_block_t *tb, unsigned int flags)
-{
-    if (!tb)
-        return;
-
-    tb->dirty_flags |= flags;
-}
-
 static void text_block_apply_horizontal_alignment(text_block_t *tb)
 {
     unsigned short line_index;
@@ -18,584 +10,431 @@ static void text_block_apply_horizontal_alignment(text_block_t *tb)
     if (!tb)
         return;
 
-    if (tb->align_h == TEXT_ALIGN_LEFT)
+    if (tb->box_w <= 0)
         return;
 
-    if (tb->box.w <= 0)
-        return;
+    for (line_index = 0; line_index < tb->layout.line_count; ++line_index) {
+        text_layout_line_t *line = &tb->layout.lines[line_index];
+        short offset_x = 0;
+        unsigned short first;
+        unsigned short end;
+        unsigned short i;
 
-    if (!tb->use_rich_text) {
-        for (line_index = 0; line_index < tb->layout.line_count; ++line_index) {
-            text_layout_line_t *line = &tb->layout.lines[line_index];
-            short offset_x = 0;
-            unsigned short i;
-            unsigned short first;
-            unsigned short end;
+        if (line->width >= tb->box_w)
+            continue;
 
-            if (line->glyph_count == 0)
-                continue;
+        if (tb->align_h == TEXT_ALIGN_CENTER)
+            offset_x = (short)((tb->box_w - line->width) / 2);
+        else if (tb->align_h == TEXT_ALIGN_RIGHT)
+            offset_x = (short)(tb->box_w - line->width);
+        else
+            offset_x = 0;
 
-            if (tb->align_h == TEXT_ALIGN_CENTER)
-                offset_x = (short)((tb->box.w - line->width) / 2);
-            else if (tb->align_h == TEXT_ALIGN_RIGHT)
-                offset_x = (short)(tb->box.w - line->width);
+        if (offset_x == 0)
+            continue;
 
-            if (offset_x == 0)
-                continue;
+        first = line->first_item;
+        end = (unsigned short)(first + line->item_count);
 
-            first = line->first_glyph;
-            end = (unsigned short)(first + line->glyph_count);
+        if (end > tb->layout.item_count)
+            end = tb->layout.item_count;
 
-            for (i = first; i < end; ++i)
-                tb->layout.glyphs[i].x = (short)(tb->layout.glyphs[i].x + offset_x);
-        }
-    } else {
-        for (line_index = 0; line_index < tb->rich_layout.line_count; ++line_index) {
-            text_layout_line_t *line = &tb->rich_layout.lines[line_index];
-            short offset_x = 0;
-            unsigned short i;
-            unsigned short first;
-            unsigned short end;
-
-            if (line->glyph_count == 0)
-                continue;
-
-            if (tb->align_h == TEXT_ALIGN_CENTER)
-                offset_x = (short)((tb->box.w - line->width) / 2);
-            else if (tb->align_h == TEXT_ALIGN_RIGHT)
-                offset_x = (short)(tb->box.w - line->width);
-
-            if (offset_x == 0)
-                continue;
-
-            first = line->first_glyph;
-            end = (unsigned short)(first + line->glyph_count);
-
-            for (i = first; i < end; ++i)
-                tb->rich_layout.items[i].x = (short)(tb->rich_layout.items[i].x + offset_x);
-        }
+        for (i = first; i < end; ++i)
+            tb->layout.items[i].x = (short)(tb->layout.items[i].x + offset_x);
     }
 }
 
 static void text_block_apply_vertical_alignment(text_block_t *tb)
 {
-    unsigned short i;
-    short offset_y = 0;
     short layout_height;
+    short offset_y;
+    unsigned short i;
 
     if (!tb)
         return;
 
-    if (tb->align_v == TEXT_ALIGN_TOP)
+    if (tb->box_h <= 0)
         return;
 
-    if (tb->box.h <= 0)
-        return;
-
-    layout_height = tb->use_rich_text ? tb->rich_layout.height : tb->layout.height;
-    if (layout_height >= tb->box.h)
+    layout_height = tb->layout.height;
+    if (layout_height >= tb->box_h)
         return;
 
     if (tb->align_v == TEXT_ALIGN_MIDDLE)
-        offset_y = (short)((tb->box.h - layout_height) / 2);
+        offset_y = (short)((tb->box_h - layout_height) / 2);
     else if (tb->align_v == TEXT_ALIGN_BOTTOM)
-        offset_y = (short)(tb->box.h - layout_height);
+        offset_y = (short)(tb->box_h - layout_height);
+    else
+        offset_y = 0;
 
     if (offset_y == 0)
         return;
 
-    if (!tb->use_rich_text) {
-        for (i = 0; i < tb->layout.glyph_count; ++i)
-            tb->layout.glyphs[i].y = (short)(tb->layout.glyphs[i].y + offset_y);
-    } else {
-        for (i = 0; i < tb->rich_layout.item_count; ++i)
-            tb->rich_layout.items[i].y = (short)(tb->rich_layout.items[i].y + offset_y);
-    }
+    for (i = 0; i < tb->layout.item_count; ++i)
+        tb->layout.items[i].y = (short)(tb->layout.items[i].y + offset_y);
 }
 
-void text_block_init(text_block_t *tb,
-                     text_layout_glyph_t *glyph_buffer,
-                     unsigned short glyph_capacity,
-                     text_rich_run_t *rich_run_buffer,
-                     unsigned short rich_run_capacity,
-                     text_layout_item_t *rich_item_buffer,
-                     unsigned short rich_item_capacity,
-                     text_layout_line_t *line_buffer,
+void text_block_init(text_block_t *blk,
+                     text_rich_run_t *runs,
+                     unsigned short run_capacity,
+                     text_layout_item_t *items,
+                     unsigned short item_capacity,
+                     text_layout_line_t *lines,
                      unsigned short line_capacity,
-                     float seconds_per_glyph)
+                     float reveal_seconds_per_unit)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    memset(tb, 0, sizeof(*tb));
+    memset(blk, 0, sizeof(*blk));
 
-    text_layout_init(&tb->layout,
-                     glyph_buffer,
-                     glyph_capacity,
-                     line_buffer,
-                     line_capacity);
+    blk->font = NULL;
 
-    text_rich_layout_init(&tb->rich_layout,
-                          rich_item_buffer,
-                          rich_item_capacity,
-                          line_buffer,
-                          line_capacity);
+    blk->box_x = 0;
+    blk->box_y = 0;
+    blk->box_w = 0;
+    blk->box_h = 0;
 
-    text_style_init(&tb->params.style);
-    tb->params.origin_x = 0;
-    tb->params.origin_y = 0;
-    tb->params.max_width = 0;
-    tb->params.wrap_mode = TEXT_WRAP_NONE;
+    blk->align_h = TEXT_ALIGN_LEFT;
+    blk->align_v = TEXT_ALIGN_TOP;
 
-    text_reveal_state_init(&tb->reveal, seconds_per_glyph);
-    tb->reveal_mode = TEXT_REVEAL_NONE;
-    text_rich_draw_params_init(&tb->rich_draw_params);
+    text_style_init(&blk->base_style);
 
-    tb->font = NULL;
-    tb->text_utf8 = NULL;
-    tb->rich_text_utf8 = NULL;
-    tb->use_rich_text = 0;
+    blk->wrap_mode = TEXT_WRAP_WORD;
+    blk->reveal_mode = TEXT_REVEAL_GLYPH;
 
-    tb->rich_runs = rich_run_buffer;
-    tb->rich_run_capacity = rich_run_capacity;
-    tb->rich_run_count = 0;
+    blk->reveal_seconds_per_unit =
+        (reveal_seconds_per_unit > 0.0f) ? reveal_seconds_per_unit : 0.03f;
 
-    tb->box.x = 0;
-    tb->box.y = 0;
-    tb->box.w = 0;
-    tb->box.h = 0;
+    text_reveal_state_init(&blk->reveal, blk->reveal_seconds_per_unit);
+    blk->time_seconds = 0.0f;
 
-    tb->align_h = TEXT_ALIGN_LEFT;
-    tb->align_v = TEXT_ALIGN_TOP;
-    tb->dirty_flags = TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN;
+    blk->shake_amp_scale_x = 1.0f;
+    blk->shake_amp_scale_y = 1.0f;
+    blk->shake_speed_scale = 1.0f;
 
-    tb->effect_time_seconds = 0.0f;
+    blk->wave_amp_scale_x = 1.0f;
+    blk->wave_amp_scale_y = 1.0f;
+    blk->wave_speed_scale = 1.0f;
+
+    blk->reveal_speed_scale = 1.0f;
+
+    blk->text_utf8 = NULL;
+
+    blk->runs = runs;
+    blk->run_capacity = run_capacity;
+    blk->run_count = 0;
+
+    blk->items = items;
+    blk->item_capacity = item_capacity;
+
+    blk->lines = lines;
+    blk->line_capacity = line_capacity;
+
+    text_rich_layout_init(&blk->layout,
+                          blk->items,
+                          blk->item_capacity,
+                          blk->lines,
+                          blk->line_capacity);
 }
 
-void text_block_set_font(text_block_t *tb, const text_font_t *font)
+void text_block_set_font(text_block_t *blk, const text_font_t *font)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    tb->font = font;
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
+    blk->font = font;
 }
 
-void text_block_set_text(text_block_t *tb, const char *utf8_text)
+void text_block_set_text(text_block_t *blk, const char *text_utf8)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    tb->text_utf8 = utf8_text;
-    tb->use_rich_text = 0;
-    text_reveal_state_reset(&tb->reveal);
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
+    blk->text_utf8 = text_utf8;
 }
 
-void text_block_set_rich_text(text_block_t *tb, const char *markup_utf8)
+void text_block_set_reveal_mode(text_block_t *blk, text_reveal_mode_t reveal_mode)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    tb->rich_text_utf8 = markup_utf8;
-    tb->use_rich_text = 1;
-    text_reveal_state_reset(&tb->reveal);
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
+    blk->reveal_mode = reveal_mode;
 }
 
-void text_block_set_reveal_mode(text_block_t *tb, text_reveal_mode_t mode)
+void text_block_set_origin(text_block_t *blk, short x, short y)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (tb->reveal_mode == mode)
-        return;
-
-    tb->reveal_mode = mode;
-    text_reveal_state_reset(&tb->reveal);
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT);
+    blk->box_x = x;
+    blk->box_y = y;
 }
 
-void text_block_set_origin(text_block_t *tb, short x, short y)
+void text_block_set_box(text_block_t *blk, short x, short y, short w, short h)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    tb->box.x = x;
-    tb->box.y = y;
-    tb->params.origin_x = x;
-    tb->params.origin_y = y;
-
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
+    blk->box_x = x;
+    blk->box_y = y;
+    blk->box_w = w;
+    blk->box_h = h;
 }
 
-void text_block_set_box(text_block_t *tb, short x, short y, short w, short h)
+void text_block_set_align_h(text_block_t *blk, text_align_h_t align_h)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    tb->box.x = x;
-    tb->box.y = y;
-    tb->box.w = w;
-    tb->box.h = h;
-
-    tb->params.origin_x = x;
-    tb->params.origin_y = y;
-    tb->params.max_width = w;
-
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
+    blk->align_h = align_h;
 }
 
-void text_block_set_align_h(text_block_t *tb, text_align_h_t align_h)
+void text_block_set_align_v(text_block_t *blk, text_align_v_t align_v)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (tb->align_h == align_h)
-        return;
-
-    tb->align_h = align_h;
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
+    blk->align_v = align_v;
 }
 
-void text_block_set_align_v(text_block_t *tb, text_align_v_t align_v)
+void text_block_set_style(text_block_t *blk, const text_style_t *style)
 {
-    if (!tb)
+    if (!blk || !style)
         return;
 
-    if (tb->align_v == align_v)
-        return;
-
-    tb->align_v = align_v;
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
+    blk->base_style = *style;
 }
 
-void text_block_set_wrap_mode(text_block_t *tb, text_wrap_mode_t wrap_mode)
+void text_block_set_wrap_mode(text_block_t *blk, text_wrap_mode_t wrap_mode)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (tb->params.wrap_mode == wrap_mode)
-        return;
-
-    tb->params.wrap_mode = wrap_mode;
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN);
+    blk->wrap_mode = wrap_mode;
 }
 
-void text_block_set_shake_scale(text_block_t *tb, float amp_scale)
+void text_block_set_shake_scale(text_block_t *blk, float amp_scale)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (amp_scale < 0.0f)
-        amp_scale = 0.0f;
-
-    tb->rich_draw_params.shake_amp_scale_x = amp_scale;
-    tb->rich_draw_params.shake_amp_scale_y = amp_scale;
+    blk->shake_amp_scale_x = amp_scale;
+    blk->shake_amp_scale_y = amp_scale;
 }
 
-void text_block_set_shake_scale_xy(text_block_t *tb, float amp_scale_x, float amp_scale_y)
+void text_block_set_shake_scale_xy(text_block_t *blk, float amp_scale_x, float amp_scale_y)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (amp_scale_x < 0.0f)
-        amp_scale_x = 0.0f;
-    if (amp_scale_y < 0.0f)
-        amp_scale_y = 0.0f;
-
-    tb->rich_draw_params.shake_amp_scale_x = amp_scale_x;
-    tb->rich_draw_params.shake_amp_scale_y = amp_scale_y;
+    blk->shake_amp_scale_x = amp_scale_x;
+    blk->shake_amp_scale_y = amp_scale_y;
 }
 
-void text_block_set_shake_speed_scale(text_block_t *tb, float speed_scale)
+void text_block_set_shake_speed_scale(text_block_t *blk, float speed_scale)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (speed_scale <= 0.0f)
-        speed_scale = 1.0f;
-
-    tb->rich_draw_params.shake_speed_scale = speed_scale;
+    blk->shake_speed_scale = speed_scale;
 }
 
-void text_block_reset_rich_draw_params(text_block_t *tb)
+void text_block_reset_rich_draw_params(text_block_t *blk)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    text_rich_draw_params_init(&tb->rich_draw_params);
+    blk->shake_amp_scale_x = 1.0f;
+    blk->shake_amp_scale_y = 1.0f;
+    blk->shake_speed_scale = 1.0f;
+
+    blk->wave_amp_scale_x = 1.0f;
+    blk->wave_amp_scale_y = 1.0f;
+    blk->wave_speed_scale = 1.0f;
 }
 
-void text_block_set_reveal_speed_scale(text_block_t *tb, float speed_scale)
+void text_block_set_wave_scale(text_block_t *blk, float amp_scale)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (speed_scale < 0.0f)
-        speed_scale = 0.0f;
-
-    tb->reveal.speed_scale = speed_scale;
+    blk->wave_amp_scale_x = amp_scale;
+    blk->wave_amp_scale_y = amp_scale;
 }
 
-void text_block_set_wave_scale(text_block_t *tb, float amp_scale)
+void text_block_set_wave_scale_xy(text_block_t *blk, float amp_scale_x, float amp_scale_y)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (amp_scale < 0.0f)
-        amp_scale = 0.0f;
-    
-    tb->rich_draw_params.wave_amp_scale_x = amp_scale;
-    tb->rich_draw_params.wave_amp_scale_y = amp_scale;
+    blk->wave_amp_scale_x = amp_scale_x;
+    blk->wave_amp_scale_y = amp_scale_y;
 }
 
-void text_block_set_wave_scale_xy(text_block_t *tb, float amp_scale_x, float amp_scale_y)
+void text_block_set_wave_speed_scale(text_block_t *blk, float speed_scale)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (amp_scale_x < 0.0f)
-        amp_scale_x = 0.0f;
-
-    if (amp_scale_y < 0.0f)
-        amp_scale_y = 0.0f;
-
-    tb->rich_draw_params.wave_amp_scale_x = amp_scale_x;
-    tb->rich_draw_params.wave_amp_scale_y = amp_scale_y;
+    blk->wave_speed_scale = speed_scale;
 }
 
-void text_block_set_wave_speed_scale(text_block_t *tb, float speed_scale)
+void text_block_set_reveal_speed_scale(text_block_t *blk, float speed_scale)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (speed_scale < 0.0f)
-        speed_scale = 0.0f;
-    
-    tb->rich_draw_params.wave_speed_scale = speed_scale;
+    blk->reveal_speed_scale = speed_scale;
 }
 
-void text_block_set_style(text_block_t *tb, const text_style_t *style)
+int text_block_refresh(text_block_t *blk)
 {
-    unsigned short i;
+    text_layout_params_t lp;
 
-    if (!tb || !style)
-        return;
-
-    tb->params.style = *style;
-
-    if (!tb->use_rich_text) {
-        for (i = 0; i < tb->layout.glyph_count; ++i) {
-            tb->layout.glyphs[i].color = style->color;
-            tb->layout.glyphs[i].layer = style->layer;
-        }
-    } else {
-        for (i = 0; i < tb->rich_layout.item_count; ++i) {
-            tb->rich_layout.items[i].layer = style->layer;
-        }
-    }
-
-    text_block_mark_dirty(tb, TEXT_BLOCK_DIRTY_STYLE);
-}
-
-int text_block_refresh(text_block_t *tb)
-{
-    if (!tb)
+    if (!blk) {
+        LOGLNC(LOGCAT_TEXT, "[text_block] refresh failed: blk=NULL");
         return -1;
-
-    if (!tb->dirty_flags)
-        return 0;
-
-    if ((tb->dirty_flags & (TEXT_BLOCK_DIRTY_LAYOUT | TEXT_BLOCK_DIRTY_ALIGN)) != 0) {
-        if (!tb->font)
-            return -1;
-
-        if (!tb->font->glyphs || tb->font->glyph_count == 0 || tb->font->tex_id < 0)
-            return -1;
-
-        // Commented due its noisy
-        // LOGLNC(LOGCAT_TEXT, "[text_block] refresh rich=%d wrap_mode=%d reveal_mode=%d max_width=%d dirty=0x%X",
-        //       tb->use_rich_text,
-        //       (int)tb->params.wrap_mode,
-        //       (int)tb->reveal_mode,
-        //       (int)tb->params.max_width,
-        //       (unsigned int)tb->dirty_flags);
-
-        if (!tb->use_rich_text) {
-            if (!tb->text_utf8)
-                return -1;
-
-            text_layout_reset(&tb->layout);
-
-            switch (tb->params.wrap_mode) {
-                case TEXT_WRAP_NONE:
-                    if (text_layout_build_plain(&tb->layout,
-                                                tb->font,
-                                                tb->text_utf8,
-                                                &tb->params) != 0) {
-                        LOGLNC(LOGCAT_TEXT, "[text_block] text_layout_build_plain failed");
-                        return -1;
-                    }
-                    break;
-
-                case TEXT_WRAP_WORD:
-                case TEXT_WRAP_CHAR:
-                    if (tb->params.max_width <= 0) {
-                        if (text_layout_build_plain(&tb->layout,
-                                                    tb->font,
-                                                    tb->text_utf8,
-                                                    &tb->params) != 0) {
-                            LOGLNC(LOGCAT_TEXT, "[text_block] text_layout_build_plain failed");
-                            return -1;
-                        }
-                    } else {
-                        if (text_layout_build_boxed(&tb->layout,
-                                                    tb->font,
-                                                    tb->text_utf8,
-                                                    &tb->params) != 0) {
-                            LOGLNC(LOGCAT_TEXT, "[text_block] text_layout_build_boxed failed wrap_mode=%d",
-                                  (int)tb->params.wrap_mode);
-                            return -1;
-                        }
-                    }
-                    break;
-
-                default:
-                    LOGLNC(LOGCAT_TEXT, "[text_block] unknown wrap_mode=%d", (int)tb->params.wrap_mode);
-                    return -1;
-            }
-        } else {
-            text_rich_style_t base_style;
-
-            tb->rich_run_count = 0;
-
-            if (!tb->rich_text_utf8)
-                return -1;
-
-            if (!tb->rich_runs || tb->rich_run_capacity == 0)
-                return -1;
-
-            text_rich_layout_reset(&tb->rich_layout);
-
-            text_rich_style_init(&base_style);
-            base_style.color = tb->params.style.color;
-
-            if (text_rich_parse(tb->rich_text_utf8,
-                                &base_style,
-                                tb->rich_runs,
-                                tb->rich_run_capacity,
-                                &tb->rich_run_count) != 0) {
-                LOGLNC(LOGCAT_TEXT, "[text_block] text_rich_parse failed capacity=%u",
-                    (unsigned int)tb->rich_run_capacity);
-                return -1;
-            }
-
-            LOGLNC(LOGCAT_TEXT, "[text_block] rich parse ok runs=%u/%u",
-                (unsigned int)tb->rich_run_count,
-                (unsigned int)tb->rich_run_capacity);
-
-            if (text_rich_layout_build_plain(&tb->rich_layout,
-                                             tb->font,
-                                             tb->rich_runs,
-                                             tb->rich_run_count,
-                                             &tb->params,
-                                            tb->reveal_mode) != 0) {
-                LOGLNC(LOGCAT_TEXT, "[text_block] text_rich_layout_build_plain failed");
-                return -1;
-            }
-        }
-
-        text_block_apply_horizontal_alignment(tb);
-        text_block_apply_vertical_alignment(tb);
     }
 
-    tb->dirty_flags &= ~(TEXT_BLOCK_DIRTY_LAYOUT |
-                         TEXT_BLOCK_DIRTY_ALIGN |
-                         TEXT_BLOCK_DIRTY_STYLE);
+    if (!blk->font) {
+        LOGLNC(LOGCAT_TEXT, "[text_block] refresh failed: font=NULL");
+        return -1;
+    }
+
+    if (!blk->items || blk->item_capacity == 0) {
+        LOGLNC(LOGCAT_TEXT, "[text_block] refresh failed: items buffer missing");
+        return -1;
+    }
+
+    if (!blk->lines || blk->line_capacity == 0) {
+        LOGLNC(LOGCAT_TEXT, "[text_block] refresh failed: lines buffer missing");
+        return -1;
+    }
+
+    if (!blk->runs || blk->run_capacity == 0) {
+        LOGLNC(LOGCAT_TEXT, "[text_block] refresh failed: runs buffer missing");
+        return -1;
+    }
+
+    text_rich_style_t rich_base_style;
+    text_rich_style_init(&rich_base_style);
+    rich_base_style.color = blk->base_style.color;
+
+    if (!blk->text_utf8) {
+        LOGLNC(LOGCAT_TEXT, "[text_block] refresh failed: text_utf8=NULL");
+        return -1;
+    }
+
+    if (text_rich_parse(blk->text_utf8,
+        &rich_base_style,
+        blk->runs,
+        blk->run_capacity,
+        &blk->run_count) != 0) {
+            LOGLNC(LOGCAT_TEXT, "[text_block] refresh failed: text_rich_parse failed");
+            return -1;
+    }
+
+    text_rich_layout_reset(&blk->layout);
+
+    memset(&lp, 0, sizeof(lp));
+    lp.origin_x = blk->box_x;
+    lp.origin_y = blk->box_y;
+    lp.max_width = blk->box_w;
+    lp.wrap_mode = blk->wrap_mode;
+    lp.style = blk->base_style;
+
+    if (text_rich_layout_build(&blk->layout,
+                               blk->font,
+                               blk->runs,
+                               blk->run_count,
+                               &lp,
+                               blk->reveal_mode) != 0) {
+        LOGLNC(LOGCAT_TEXT,
+              "[text_block] refresh failed: text_rich_layout_build failed runs=%u wrap=%d box=(%d,%d,%d,%d)",
+              (unsigned int)blk->run_count,
+              (int)blk->wrap_mode,
+              (int)blk->box_x,
+              (int)blk->box_y,
+              (int)blk->box_w,
+              (int)blk->box_h);
+        return -1;
+    }
+
+    text_block_apply_horizontal_alignment(blk);
+    text_block_apply_vertical_alignment(blk);
+
+    text_reveal_state_init(&blk->reveal, blk->reveal_seconds_per_unit);
+
+    // Commented due noisy
+    // LOGLNC(LOGCAT_TEXT,
+    //       "[text_block] refresh ok runs=%u items=%u lines=%u groups=%u size=%dx%d",
+    //       (unsigned int)blk->run_count,
+    //       (unsigned int)blk->layout.item_count,
+    //       (unsigned int)blk->layout.line_count,
+    //       (unsigned int)blk->layout.reveal_group_count,
+    //       (int)blk->layout.width,
+    //       (int)blk->layout.height);
 
     return 0;
 }
 
-short text_block_width(const text_block_t *tb)
+short text_block_width(const text_block_t *blk)
 {
-    if (!tb)
-        return 0;
-
-    return tb->use_rich_text ? tb->rich_layout.width : tb->layout.width;
+    return blk ? blk->layout.width : 0;
 }
 
-short text_block_height(const text_block_t *tb)
+short text_block_height(const text_block_t *blk)
 {
-    if (!tb)
-        return 0;
-
-    return tb->use_rich_text ? tb->rich_layout.height : tb->layout.height;
+    return blk ? blk->layout.height : 0;
 }
 
-void text_block_reveal_reset(text_block_t *tb)
+void text_block_reveal_reset(text_block_t *blk)
 {
-    if (!tb)
+    if (!blk)
         return;
 
-    if (tb->reveal_mode == TEXT_REVEAL_NONE)
-        return;
-
-    text_reveal_state_reset(&tb->reveal);
+    text_reveal_state_init(&blk->reveal, blk->reveal_seconds_per_unit);
 }
 
-void text_block_reveal_finish(text_block_t *tb)
+void text_block_reveal_finish(text_block_t *blk)
 {
-    unsigned short total_units;
-
-    if (!tb)
+    if (!blk)
         return;
 
-    if (tb->reveal_mode == TEXT_REVEAL_NONE)
-        return;
-
-    total_units = tb->use_rich_text
-        ? tb->rich_layout.reveal_group_count
-        : tb->layout.glyph_count;
-
-    text_reveal_state_finish(&tb->reveal, total_units);
+    blk->reveal.visible_units = blk->layout.reveal_group_count;
 }
 
-void text_block_update(text_block_t *tb, float dt)
+void text_block_update(text_block_t *blk, float dt)
 {
-    unsigned short total_units;
-
-    if (!tb)
+    if (!blk)
         return;
 
-    if (tb->reveal_mode == TEXT_REVEAL_NONE)
-        return;
+    blk->time_seconds += dt;
 
-    total_units = tb->use_rich_text
-        ? tb->rich_layout.reveal_group_count
-        : tb->layout.glyph_count;
-
-    tb->effect_time_seconds += dt;
-
-    text_reveal_state_update(&tb->reveal, total_units, dt);
+    text_reveal_state_update(&blk->reveal,
+                             blk->layout.reveal_group_count,
+                             dt * blk->reveal_speed_scale);
 }
 
-void text_block_draw(const text_block_t *tb)
+void text_block_draw(const text_block_t *blk)
 {
-    const text_reveal_state_t *reveal;
+    text_rich_draw_params_t dp;
 
-    if (!tb || !tb->font)
+    if (!blk || !blk->font)
         return;
 
-    reveal = (tb->reveal_mode == TEXT_REVEAL_NONE) ? NULL : &tb->reveal;
+    text_rich_draw_params_init(&dp);
+    dp.shake_amp_scale_x = blk->shake_amp_scale_x;
+    dp.shake_amp_scale_y = blk->shake_amp_scale_y;
+    dp.shake_speed_scale = blk->shake_speed_scale;
+    dp.wave_amp_scale_x = blk->wave_amp_scale_x;
+    dp.wave_amp_scale_y = blk->wave_amp_scale_y;
+    dp.wave_speed_scale = blk->wave_speed_scale;
 
-    if (!tb->use_rich_text) {
-        text_draw_layout(tb->font, &tb->layout, reveal);
-    } else {
-        text_rich_draw_layout_ex(tb->font,
-                                 &tb->rich_layout,
-                                 reveal,
-                                 tb->effect_time_seconds,
-                                 &tb->rich_draw_params);
-    }
+    text_rich_draw_layout_ex(blk->font,
+                             &blk->layout,
+                             &blk->reveal,
+                             blk->time_seconds,
+                             &dp);
 }

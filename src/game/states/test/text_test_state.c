@@ -101,7 +101,6 @@ typedef struct text_test_state_data {
     text_font_resource_t font_res;
     text_block_t block;
 
-    text_layout_glyph_t *glyphs;
     text_layout_item_t *rich_items;
     text_layout_line_t *lines;
     text_rich_draw_params_t rich_draw_params;
@@ -117,14 +116,8 @@ typedef struct text_test_state_data {
     float wave_scale;
 } text_test_state_data_t;
 
-typedef enum text_test_case_kind {
-    TEXT_TEST_CASE_PLAIN = 0,
-    TEXT_TEST_CASE_RICH  = 1
-} text_test_case_kind_t;
-
 typedef struct text_test_case {
     const char *name;
-    text_test_case_kind_t kind;
     text_wrap_mode_t wrap_mode;
     text_reveal_mode_t reveal_mode;
     const char *text_utf8;
@@ -206,45 +199,36 @@ static const char s_rich_wave_shake[] =
     "[shake][wave]Both[/wave][/shake]";
 
 static const text_test_case_t s_text_test_cases[] = {
-    { "demo_word",            TEXT_TEST_CASE_PLAIN, TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_demo_word },
-    { "long_mixed_char",      TEXT_TEST_CASE_PLAIN, TEXT_WRAP_CHAR, TEXT_REVEAL_GLYPH, s_long_mixed_char },
-    { "word_simple",          TEXT_TEST_CASE_PLAIN, TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_word_simple },
-    { "char_cyrillic_long",   TEXT_TEST_CASE_PLAIN, TEXT_WRAP_CHAR, TEXT_REVEAL_GLYPH, s_char_cyrillic_long },
-    { "word_cyrillic_mixed",  TEXT_TEST_CASE_PLAIN, TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_word_cyrillic_mixed },
+    { "demo_word",            TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_demo_word },
+    { "long_mixed_char",      TEXT_WRAP_CHAR, TEXT_REVEAL_GLYPH, s_long_mixed_char },
+    { "word_simple",          TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_word_simple },
+    { "char_cyrillic_long",   TEXT_WRAP_CHAR, TEXT_REVEAL_GLYPH, s_char_cyrillic_long },
+    { "word_cyrillic_mixed",  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_word_cyrillic_mixed },
 
-    { "rich_color_rgb",       TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgb },
-    { "rich_color_rgba",      TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgba },
-    { "rich_shake_basic",     TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_shake_basic },
-    { "rich_color_shake",     TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_and_shake },
-    { "rich_shake_in_color",  TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_nested_shake_in_color },
-    { "rich_adjacent_tags",   TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_adjacent_tags },
-    { "rich_unclosed_tag",    TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_unclosed_color },
-    { "rich_reveal_words",    TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_reveal_words_basic },
-    { "rich_yellow_ok",       TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_yellow_ok },
-    { "rich_shake_ok",        TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_shake_ok },
-    { "rich_shake_nested",    TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_yello_shake_nested },
-    { "rich_mismatch",        TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_mismatch },
-    { "rich_leading_close",   TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_leading_close },
+    { "rich_color_rgb",       TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgb },
+    { "rich_color_rgba",      TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_rgba },
+    { "rich_shake_basic",     TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_shake_basic },
+    { "rich_color_shake",     TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_and_shake },
+    { "rich_shake_in_color",  TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_nested_shake_in_color },
+    { "rich_adjacent_tags",   TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_adjacent_tags },
+    { "rich_unclosed_tag",    TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_unclosed_color },
+    { "rich_reveal_words",    TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_reveal_words_basic },
+    { "rich_yellow_ok",       TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_color_yellow_ok },
+    { "rich_shake_ok",        TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_shake_ok },
+    { "rich_shake_nested",    TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_yello_shake_nested },
+    { "rich_mismatch",        TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_mismatch },
+    { "rich_leading_close",   TEXT_WRAP_WORD, TEXT_REVEAL_WORD,  s_rich_leading_close },
 
-    { "rich_plain",           TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_plain },
-    { "rich_shake",           TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_shake },
-    { "rich_wave",            TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_wave },
-    { "rich_wave_shake",      TEXT_TEST_CASE_RICH,  TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_wave_shake },
+    { "rich_plain",           TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_plain },
+    { "rich_shake",           TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_shake },
+    { "rich_wave",            TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_wave },
+    { "rich_wave_shake",      TEXT_WRAP_WORD, TEXT_REVEAL_GLYPH, s_rich_wave_shake },
 
 };
 
 static int text_test_case_count(void)
 {
     return (int)(sizeof(s_text_test_cases) / sizeof(s_text_test_cases[0]));
-}
-
-static const char *text_test_case_kind_name(text_test_case_kind_t kind)
-{
-    switch (kind) {
-        case TEXT_TEST_CASE_PLAIN: return "plain";
-        case TEXT_TEST_CASE_RICH:  return "rich";
-        default:                   return "unknown";
-    }
 }
 
 static const char *text_test_reveal_mode_name(text_reveal_mode_t mode)
@@ -274,6 +258,16 @@ static const char *text_test_align_v_name(text_align_v_t align_v)
         case TEXT_ALIGN_BOTTOM: return "bottom";
         default:                return "unknown";
     }
+}
+
+text_color_t text_color_white(void)
+{
+    return text_color_rgba(0xFF, 0xFF, 0xFF, 0xFF);
+}
+
+text_color_t text_color_yellow(void)
+{
+    return text_color_rgba(0xFF, 0xFF, 0x00, 0xFF);
 }
 
 static void text_test_apply_style(text_test_state_data_t *data)
@@ -320,11 +314,7 @@ static void text_test_apply_case(text_test_state_data_t *data)
 
     text_block_set_wrap_mode(&data->block, tc->wrap_mode);
     text_block_set_reveal_mode(&data->block, tc->reveal_mode);
-
-    if (tc->kind == TEXT_TEST_CASE_RICH)
-        text_block_set_rich_text(&data->block, tc->text_utf8);
-    else
-        text_block_set_text(&data->block, tc->text_utf8);
+    text_block_set_text(&data->block, tc->text_utf8);
 }
 
 static int text_test_refresh_block(text_test_state_data_t *data)
@@ -349,17 +339,15 @@ static int text_test_refresh_block(text_test_state_data_t *data)
     text_block_reveal_reset(&data->block);
 
     if (text_block_refresh(&data->block) != 0) {
-        LOGLNC(LOGCAT_TEXT, "[state:text_test] text_block_refresh failed case=%s kind=%s",
-              tc->name,
-              text_test_case_kind_name(tc->kind));
+        LOGLNC(LOGCAT_TEXT, "[state:text_test] text_block_refresh failed case=%s",
+              tc->name);
         return -1;
     }
 
-    LOGLNC(LOGCAT_TEXT, "[state:text_test] block refreshed case=%d/%d name=%s kind=%s wrap=%d reveal=%s w=%d h=%d align_h=%s align_v=%s",
+    LOGLNC(LOGCAT_TEXT, "[state:text_test] block refreshed case=%d/%d name=%s wrap=%d reveal=%s w=%d h=%d align_h=%s align_v=%s",
           (int)(data->test_case_index + 1),
           (int)text_test_case_count(),
           tc->name,
-          text_test_case_kind_name(tc->kind),
           (int)tc->wrap_mode,
           text_test_reveal_mode_name(tc->reveal_mode),
           (int)text_block_width(&data->block),
@@ -415,17 +403,6 @@ static int text_test_enter(game_app_t *app, void *userdata)
     
     game_app_set_state_userdata(app, data);
 
-    data->glyphs = (text_layout_glyph_t *)mem_arena_calloc(
-        game_app_state_arena(app),
-        TEXT_TEST_GLYPH_CAPACITY,
-        sizeof(text_layout_glyph_t),
-        16
-    );
-    if (!data->glyphs) {
-        LOGLNC(LOGCAT_TEXT, "[state:text_test] failed to allocate glyph layout buffer");
-        return -1;
-    }
-
     data->rich_items = (text_layout_item_t *)mem_arena_calloc(
         game_app_state_arena(app),
         TEXT_TEST_GLYPH_CAPACITY,
@@ -449,8 +426,6 @@ static int text_test_enter(game_app_t *app, void *userdata)
     }
 
     text_block_init(&data->block,
-        data->glyphs,
-        TEXT_TEST_GLYPH_CAPACITY,
         data->rich_runs,
         TEXT_TEST_RICH_RUN_CAPACITY,
         data->rich_items,
@@ -469,6 +444,8 @@ static int text_test_enter(game_app_t *app, void *userdata)
 
     text_block_set_shake_scale(&data->block, data->shake_amp_scale);
     text_block_set_shake_speed_scale(&data->block, data->shake_speed_scale);
+    text_block_set_wave_scale(&data->block, data->wave_scale);
+    text_block_set_wave_speed_scale(&data->block, data->shake_speed_scale);
 
     text_block_set_box(&data->block,
         TEXT_TEST_BOX_X,

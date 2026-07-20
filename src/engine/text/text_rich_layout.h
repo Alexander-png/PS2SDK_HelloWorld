@@ -77,17 +77,12 @@ void text_rich_draw_params_init(text_rich_draw_params_t *params);
 
 void text_rich_layout_reset(text_rich_layout_t *layout);
 
-int text_rich_layout_build_plain(text_rich_layout_t *layout,
+int text_rich_layout_build(text_rich_layout_t *layout,
                                  const text_font_t *font,
                                  const text_rich_run_t *runs,
                                  unsigned short run_count,
                                  const text_layout_params_t *params,
                                  text_reveal_mode_t reveal_mode);
-
-void text_rich_draw_layout(const text_font_t *font,
-                           const text_rich_layout_t *layout,
-                           const text_reveal_state_t *reveal,
-                           float time_seconds);
 
 void text_rich_draw_layout_ex(const text_font_t *font,
                               const text_rich_layout_t *layout,

@@ -92,7 +92,7 @@ void debug_overlay_desc_init(debug_overlay_desc_t *desc)
     desc->h = DEBUG_OVERLAY_DEFAULT_H;
     desc->glyph_capacity = DEBUG_OVERLAY_DEFAULT_GLYPH_CAPACITY;
     desc->line_capacity = DEBUG_OVERLAY_DEFAULT_LINE_CAPACITY;
-    desc->color = text_color_white();
+    desc->color = text_color_default();
     desc->tracking = 0;
     desc->layer = DEBUG_OVERLAY_DEFAULT_LAYER;
 }
@@ -117,14 +117,25 @@ int debug_overlay_init(game_app_t *app,
     ovl->ready = 0;
     ovl->font_bound_logged = 0;
 
-    ovl->glyphs = (text_layout_glyph_t *)mem_arena_calloc(
+    ovl->runs = (text_rich_run_t *)mem_arena_calloc(
         game_app_state_arena(app),
         desc->glyph_capacity,
-        sizeof(text_layout_glyph_t),
+        sizeof(text_rich_run_t),
         16
     );
-    if (!ovl->glyphs) {
-        LOGLN("[debug_overlay] glyph buffer alloc failed");
+    if (!ovl->runs) {
+        LOGLN("[debug_overlay] runs buffer alloc failed");
+        return -1;
+    }
+
+    ovl->items = (text_layout_item_t *)mem_arena_calloc(
+        game_app_state_arena(app),
+        desc->glyph_capacity,
+        sizeof(text_layout_item_t),
+        16
+    );
+    if (!ovl->items) {
+        LOGLN("[debug_overlay] item buffer alloc failed");
         return -1;
     }
 
@@ -140,12 +151,10 @@ int debug_overlay_init(game_app_t *app,
     }
 
     text_block_init(&ovl->block,
-                    ovl->glyphs,
+                    ovl->runs,
                     desc->glyph_capacity,
-                    NULL,
-                    0,
-                    NULL,
-                    0,
+                    ovl->items,
+                    desc->glyph_capacity,
                     ovl->lines,
                     desc->line_capacity,
                     0.03f);

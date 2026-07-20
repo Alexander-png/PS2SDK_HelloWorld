@@ -35,7 +35,8 @@ typedef struct debug_overlay {
     text_font_resource_t font_res;
     text_block_t block;
 
-    text_layout_glyph_t *glyphs;
+    text_rich_run_t *runs;
+    text_layout_item_t *items;
     text_layout_line_t *lines;
 
     char text[DEBUG_OVERLAY_TEXT_CAPACITY];

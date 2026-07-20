@@ -21,61 +21,65 @@ typedef enum text_align_v {
     TEXT_ALIGN_BOTTOM = 2
 } text_align_v_t;
 
-typedef enum text_block_dirty_flags {
-    TEXT_BLOCK_DIRTY_NONE   = 0,
-    TEXT_BLOCK_DIRTY_LAYOUT = 1 << 0,
-    TEXT_BLOCK_DIRTY_ALIGN  = 1 << 1,
-    TEXT_BLOCK_DIRTY_STYLE  = 1 << 2
-} text_block_dirty_flags_t;
-
-typedef struct text_block_box {
-    short x;
-    short y;
-    short w;
-    short h;
-} text_block_box_t;
-
 typedef struct text_block {
+    /* Font and box */
     const text_font_t *font;
 
-    const char *text_utf8;
-    const char *rich_text_utf8;
-    int use_rich_text;
+    short box_x;
+    short box_y;
+    short box_w;
+    short box_h;
 
-    text_rich_run_t *rich_runs;
-    unsigned short rich_run_capacity;
-    unsigned short rich_run_count;
-    
-    text_layout_t layout;
-    text_rich_layout_t rich_layout;
-    text_layout_params_t params;
-    text_reveal_state_t reveal;
-    text_reveal_mode_t reveal_mode;
-    text_rich_draw_params_t rich_draw_params;
-
-    text_block_box_t box;
     text_align_h_t align_h;
     text_align_v_t align_v;
 
-    unsigned int dirty_flags;
+    /* Style / params */
+    text_style_t base_style;
+    text_wrap_mode_t wrap_mode;
+    text_reveal_mode_t reveal_mode;
 
-    float effect_time_seconds;
+    float reveal_seconds_per_unit;
+
+    /* Reveal/animation state */
+    text_reveal_state_t reveal;
+    float time_seconds;
+
+    float shake_amp_scale_x;
+    float shake_amp_scale_y;
+    float shake_speed_scale;
+
+    float wave_amp_scale_x;
+    float wave_amp_scale_y;
+    float wave_speed_scale;
+
+    float reveal_speed_scale;
+
+    const char *text_utf8;
+
+    /* Rich parse buffer */
+    text_rich_run_t *runs;
+    unsigned short run_count;
+    unsigned short run_capacity;
+
+    /* Rich layout */
+    text_rich_layout_t layout;
+    text_layout_item_t *items;
+    unsigned short item_capacity;
+    text_layout_line_t *lines;
+    unsigned short line_capacity;
 } text_block_t;
 
-void text_block_init(text_block_t *tb,
-                     text_layout_glyph_t *glyph_buffer,
-                     unsigned short glyph_capacity,
-                     text_rich_run_t *rich_run_buffer,
-                     unsigned short rich_run_capacity,
-                     text_layout_item_t *rich_item_buffer,
-                     unsigned short rich_item_capacity,
-                     text_layout_line_t *line_buffer,
+void text_block_init(text_block_t *blk,
+                     text_rich_run_t *runs,
+                     unsigned short run_capacity,
+                     text_layout_item_t *items,
+                     unsigned short item_capacity,
+                     text_layout_line_t *lines,
                      unsigned short line_capacity,
-                     float seconds_per_glyph);
+                     float reveal_seconds_per_unit);
 
 void text_block_set_font(text_block_t *tb, const text_font_t *font);
-void text_block_set_text(text_block_t *tb, const char *utf8_text);
-void text_block_set_rich_text(text_block_t *tb, const char *markup_utf8);
+void text_block_set_text(text_block_t *tb, const char *markup_utf8);
 void text_block_set_reveal_mode(text_block_t *tb, text_reveal_mode_t mode);
 
 void text_block_set_origin(text_block_t *tb, short x, short y);
