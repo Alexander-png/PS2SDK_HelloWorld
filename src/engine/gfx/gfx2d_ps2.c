@@ -62,7 +62,7 @@ static u32 gfx2d_texture_count_used(void)
     return count;
 }
 
-static u8 gfx2d_png_alpha_to_gs(u8 alpha)
+static u8 gfx2d_modulate_to_gs(u8 alpha)
 {
     return (u8)(((int)alpha * 128 + 127) / 255);
 }
@@ -73,9 +73,7 @@ static void gfx2d_pack_rgba32_for_gs(void *dst_data,
                                      int height)
 {
     gfx2d_rgba32_pixel_t *dst;
-    int x;
-    int y;
-    int k;
+    int x, y, k;
 
     if (!dst_data || !rows || width <= 0 || height <= 0)
         return;
@@ -85,15 +83,25 @@ static void gfx2d_pack_rgba32_for_gs(void *dst_data,
 
     for (y = 0; y < height; ++y) {
         png_bytep src = rows[y];
-
         for (x = 0; x < width; ++x) {
             dst[k].r = src[4 * x + 0];
             dst[k].g = src[4 * x + 1];
             dst[k].b = src[4 * x + 2];
-            dst[k].a = gfx2d_png_alpha_to_gs(src[4 * x + 3]);
+            dst[k].a = gfx2d_modulate_to_gs(src[4 * x + 3]);
             ++k;
         }
     }
+}
+
+static u64 gfx2d_make_rgbaq(gfx2d_color_t color)
+{
+    return GS_SETREG_RGBAQ(
+        gfx2d_modulate_to_gs(color.r),
+        gfx2d_modulate_to_gs(color.g),
+        gfx2d_modulate_to_gs(color.b),
+        gfx2d_modulate_to_gs(color.a),
+        0x00
+    );
 }
 
 static void gfx2d_free_png_rows(png_bytep *rows, int height)
@@ -140,11 +148,6 @@ static int gfx2d_alloc_texture_slot(int *out_tex_id)
     }
 
     return -1;
-}
-
-static u64 gfx2d_make_rgbaq(gfx2d_color_t color)
-{
-    return GS_SETREG_RGBAQ(color.r, color.g, color.b, color.a, 0x00);
 }
 
 static float gfx2d_resolve_halign(gfx2d_halign_t align, float w)
@@ -879,10 +882,10 @@ gfx2d_draw_params_t gfx2d_sprite_params(float x, float y, float w, float h)
     p.flip_x = 0;
     p.flip_y = 0;
 
-    p.color.r = 0x80;
-    p.color.g = 0x80;
-    p.color.b = 0x80;
-    p.color.a = 0x80; 
+    p.color.r = 0xFF;
+    p.color.g = 0xFF;
+    p.color.b = 0xFF;
+    p.color.a = 0xFF;
 
     return p;
 }

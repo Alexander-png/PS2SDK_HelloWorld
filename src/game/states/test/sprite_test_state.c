@@ -198,10 +198,10 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
 
     data->sprite1.draw_params = gfx2d_sprite_params(306.0f, 168.0f, 206.0f, 168.0f);
     data->sprite1.draw_params.layer = 10;
-    data->sprite1.draw_params.color.r = 0x80;
-    data->sprite1.draw_params.color.g = 0x80;
-    data->sprite1.draw_params.color.b = 0x80;
-    data->sprite1.draw_params.color.a = 0x80;
+    // data->sprite1.draw_params.color.r = 0xFF;
+    // data->sprite1.draw_params.color.g = 0xFF;
+    // data->sprite1.draw_params.color.b = 0xFF;
+    // data->sprite1.draw_params.color.a = 0xFF;
 
     data->sprite2.draw_params = gfx2d_sprite_params(100.0f, 50.0f, 110.0f, 84.0f);
     data->sprite2.draw_params.layer = 0;

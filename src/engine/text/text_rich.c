@@ -104,7 +104,7 @@ static int text_rich_parse_color_tag(const char *tag_start,
         if (text_rich_hex_byte(tag_start + 13, &a) != 0)
             return -1;
     } else {
-        a = 0x80;
+        a = 0xFF;
     }
 
     out_tag->kind = TEXT_RICH_TAG_OPEN_COLOR;

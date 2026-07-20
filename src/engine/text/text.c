@@ -511,12 +511,12 @@ text_color_t text_color_rgba(unsigned char r,
 
 text_color_t text_color_white(void)
 {
-    return text_color_rgba(0x80, 0x80, 0x80, 0x80);
+    return text_color_rgba(0xFF, 0xFF, 0xFF, 0xFF);
 }
 
 text_color_t text_color_yellow(void)
 {
-    return text_color_rgba(0x80, 0x80, 0x00, 0x80);
+    return text_color_rgba(0xFF, 0xFF, 0xFF, 0xFF);
 }
 
 void text_style_init(text_style_t *style)
