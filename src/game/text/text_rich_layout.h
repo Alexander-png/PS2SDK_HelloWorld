@@ -2,7 +2,7 @@
 #define TEXT_RICH_LAYOUT_H
 
 #include "engine/text/text.h"
-#include "engine/text/text_rich.h"
+#include "game/text/text_rich.h"
 
 #ifdef __cplusplus
 extern "C" {

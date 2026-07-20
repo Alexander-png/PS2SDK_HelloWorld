@@ -56,11 +56,11 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/text/text.c \
                  $(SRC_DIR)/engine/text/text_bmfont.c \
                  $(SRC_DIR)/engine/text/text_font_resource.c \
-                 $(SRC_DIR)/engine/text/text_block.c \
-                 $(SRC_DIR)/engine/text/text_rich.c \
-                 $(SRC_DIR)/engine/text/text_rich_layout.c \
                  $(SRC_DIR)/engine/debug/screen_console_ps2.c \
-                 $(SRC_DIR)/engine/debug/debug_overlay.c \
+                 $(SRC_DIR)/game/text/text_block.c \
+                 $(SRC_DIR)/game/text/text_rich.c \
+                 $(SRC_DIR)/game/text/text_rich_layout.c \
+                 $(SRC_DIR)/game/debug/debug_overlay.c \
                  $(SRC_DIR)/game/states/test/debug_menu_state.c \
                  $(SRC_DIR)/game/states/test/audio_test_state.c \
                  $(SRC_DIR)/game/states/test/resource_test_state.c \

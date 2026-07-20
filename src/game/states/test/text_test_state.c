@@ -1,13 +1,13 @@
-#include "game/states/test/text_test_state.h"
-#include "game/states/test/debug_menu_state.h"
-
 #include "engine/logging/log.h"
 #include "engine/gfx/gfx2d.h"
 #include "engine/input/input.h"
 #include "engine/memory/memory_arena.h"
 #include "engine/text/text.h"
-#include "engine/text/text_block.h"
 #include "engine/text/text_font_resource.h"
+
+#include "game/states/test/text_test_state.h"
+#include "game/states/test/debug_menu_state.h"
+#include "game/text/text_block.h"
 
 #ifndef TEST_FONT_DESC_PATH
 #define TEST_FONT_DESC_PATH "8bitoperator_32.fnt"

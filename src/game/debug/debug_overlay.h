@@ -3,7 +3,7 @@
 
 #include "game_app.h"
 #include "engine/text/text.h"
-#include "engine/text/text_block.h"
+#include "game/text/text_block.h"
 #include "engine/text/text_font_resource.h"
 
 #ifdef __cplusplus

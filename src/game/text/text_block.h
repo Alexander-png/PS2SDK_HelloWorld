@@ -2,8 +2,8 @@
 #define TEXT_BLOCK_H
 
 #include "engine/text/text.h"
-#include "engine/text/text_rich.h"
-#include "engine/text/text_rich_layout.h"
+#include "game/text/text_rich.h"
+#include "game/text/text_rich_layout.h"
 
 #ifdef __cplusplus
 extern "C" {

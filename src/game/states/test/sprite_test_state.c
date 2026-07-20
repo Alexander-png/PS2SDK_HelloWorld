@@ -1,11 +1,12 @@
-#include "game/states/test/debug_menu_state.h"
-
 #include "engine/logging/log.h"
 #include "engine/gfx/gfx2d.h"
 #include "engine/streaming/texture_assets.h"
 #include "engine/input/input.h"
 #include "engine/memory/memory_arena.h"
-#include "engine/debug/debug_overlay.h"
+
+#include "game/states/test/debug_menu_state.h"
+#include "game/states/test/sprite_test_state.h"
+#include "game/debug/debug_overlay.h"
 
 #include <math.h>
 
