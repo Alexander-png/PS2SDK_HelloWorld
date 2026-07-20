@@ -1,6 +1,6 @@
-#include "audio.h"
-#include "audio_driver.h"
-#include "audio_mixer.h"
+#include "engine/audio/audio.h"
+#include "engine/audio/audio_driver.h"
+#include "engine/audio/audio_mixer.h"
 #include "engine/logging/log.h"
 
 #include <string.h>

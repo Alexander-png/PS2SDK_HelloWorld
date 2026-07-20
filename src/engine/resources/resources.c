@@ -1,4 +1,4 @@
-#include "resources.h"
+#include "engine/resources/resources.h"
 #include "engine/logging/log.h"
 #include "engine/memory/memory.h"
 

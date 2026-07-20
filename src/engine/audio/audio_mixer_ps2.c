@@ -1,5 +1,5 @@
-#include "audio_mixer.h"
-#include "audio_driver.h"
+#include "engine/audio/audio_mixer.h"
+#include "engine/audio/audio_driver.h"
 #include "engine/platform/platform.h"
 #include "engine/memory/memory.h"
 #include "engine/logging/log.h"

@@ -1,4 +1,4 @@
-#include "texture_assets.h"
+#include "engine/streaming/texture_assets.h"
 #include "engine/logging/log.h"
 
 #include <string.h>

@@ -1,6 +1,6 @@
 #include "engine/logging/log.h"
 #include "engine/memory/memory.h"
-#include "gfx2d.h"
+#include "engine/gfx/gfx2d.h"
 
 #include <gsKit.h>
 #include <dmaKit.h>
