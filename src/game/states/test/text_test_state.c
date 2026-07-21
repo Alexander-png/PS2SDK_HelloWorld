@@ -3,7 +3,7 @@
 #include "engine/input/input.h"
 #include "engine/memory/memory_arena.h"
 #include "engine/text/text.h"
-#include "engine/text/text_font_resource.h"
+#include "engine/resources/text_font_resource.h"
 
 #include "game/states/test/text_test_state.h"
 #include "game/states/test/debug_menu_state.h"

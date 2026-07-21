@@ -5,7 +5,7 @@
 #include "engine/audio/audio.h"
 #include "engine/input/input.h"
 #include "engine/streaming/streaming.h"
-#include "engine/streaming/texture_assets.h"
+#include "engine/resources/texture_assets.h"
 #include "engine/resources/resources.h"
 #include "engine/gfx/gfx2d.h"
 

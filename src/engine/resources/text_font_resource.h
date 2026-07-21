@@ -3,7 +3,7 @@
 
 #include "game_app.h"
 #include "engine/resources/resources.h"
-#include "engine/streaming/texture_assets.h"
+#include "engine/resources/texture_assets.h"
 #include "engine/text/text.h"
 
 #ifdef __cplusplus

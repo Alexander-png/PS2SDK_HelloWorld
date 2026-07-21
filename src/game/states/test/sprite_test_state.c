@@ -1,6 +1,6 @@
 #include "engine/logging/log.h"
 #include "engine/gfx/gfx2d.h"
-#include "engine/streaming/texture_assets.h"
+#include "engine/resources/texture_assets.h"
 #include "engine/input/input.h"
 #include "engine/memory/memory_arena.h"
 

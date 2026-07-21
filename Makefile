@@ -50,12 +50,12 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/memory/memory_arena.c \
                  $(SRC_DIR)/engine/memory/ring_buffer.c \
                  $(SRC_DIR)/engine/streaming/streaming_ps2.c \
-                 $(SRC_DIR)/engine/streaming/texture_assets.c \
                  $(SRC_DIR)/engine/resources/resources.c \
+                 $(SRC_DIR)/engine/resources/texture_assets.c \
+                 $(SRC_DIR)/engine/resources/text_font_resource.c \
                  $(SRC_DIR)/engine/gfx/gfx2d_ps2.c \
                  $(SRC_DIR)/engine/text/text.c \
                  $(SRC_DIR)/engine/text/text_bmfont.c \
-                 $(SRC_DIR)/engine/text/text_font_resource.c \
                  $(SRC_DIR)/engine/debug/screen_console_ps2.c \
                  $(SRC_DIR)/game/text/text_block.c \
                  $(SRC_DIR)/game/text/text_rich.c \

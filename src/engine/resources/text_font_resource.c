@@ -1,4 +1,4 @@
-#include "engine/text/text_font_resource.h"
+#include "engine/resources/text_font_resource.h"
 #include "engine/text/text_bmfont.h"
 #include "engine/logging/log.h"
 
