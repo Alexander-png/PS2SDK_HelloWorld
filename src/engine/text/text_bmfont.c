@@ -467,6 +467,12 @@ int text_bmfont_load_from_memory(mem_arena_t *arena,
         return -1;
     }
 
+    if (!gfx_texture_is_valid(desc->texture)) {
+        LOGLNC(LOGCAT_TEXT, "[bmfont] %s: invalid atlas texture handle",
+              desc->debug_name ? desc->debug_name : "<unknown>");
+        return -1;
+    }
+
     memset(&ctx, 0, sizeof(ctx));
     ctx.text = desc->fnt_text;
     ctx.size = desc->fnt_size;
@@ -477,7 +483,7 @@ int text_bmfont_load_from_memory(mem_arena_t *arena,
 
     text_font_init(font);
     font->name = desc->debug_name;
-    font->tex_id = desc->tex_id;
+    font->texture = desc->texture;
     font->atlas_width = ctx.scale_w;
     font->atlas_height = ctx.scale_h;
     font->line_height = ctx.line_height;

@@ -7,7 +7,8 @@
 #include "engine/streaming/streaming.h"
 #include "engine/resources/texture_assets.h"
 #include "engine/resources/resources.h"
-#include "engine/gfx/gfx2d.h"
+//#include "engine/gfx/gfx2d.h"
+#include "engine/gfx/renderer.h"
 
 #include <string.h>
 
@@ -72,7 +73,7 @@ int boot_init(boot_context_t *boot)
      * filesystem_init();
      * streaming_init();
      * resource_manager_init();
-     * gfx2d_init();
+     * rendererinit();
      */
 
     if (input_init() < 0) {
@@ -101,13 +102,13 @@ int boot_init(boot_context_t *boot)
         return -7;
     }
 
-    if (gfx2d_init() < 0) {
-        LOGLNC(LOGCAT_APP, "[boot] gfx2d init failed");
+    if (renderer_init() < 0) {
+        LOGLNC(LOGCAT_APP, "[boot] render init failed");
         return -8;
     } else {
         // LOGLN uses scr_printf() that uses PS2SDK’s debug screen drawing path, 
         // and that path is not meant to coexist cleanly with gsKit, which
-        // gfx2d uses. So disable debug scrren if gfx2d initialized
+        // render uses. So disable debug scrren if render initialized
         log_enable_screen(0);
     }
 
@@ -147,15 +148,15 @@ void boot_shutdown(boot_context_t *boot)
     /*
      * Future shutdown order:
      *
-     * gfx2d_shutdown();
+     * renderer_shutdown();
      * resource_manager_shutdown();
      * streaming_shutdown();
      * filesystem_shutdown();
      * memory_shutdown();
      */
 
-    LOGLNC(LOGCAT_APP, "[boot] gfx2d");
-    gfx2d_shutdown();
+    LOGLNC(LOGCAT_APP, "[boot] renderer");
+    renderer_shutdown();
 
     LOGLNC(LOGCAT_APP, "[boot] audio");
     audio_shutdown();

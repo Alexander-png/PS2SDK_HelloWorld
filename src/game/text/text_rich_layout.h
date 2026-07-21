@@ -2,6 +2,7 @@
 #define TEXT_RICH_LAYOUT_H
 
 #include "engine/text/text.h"
+#include "engine/gfx/texture.h"
 #include "game/text/text_rich.h"
 
 #ifdef __cplusplus
@@ -19,7 +20,7 @@ typedef struct text_layout_item {
     const text_glyph_t *glyph;
     text_codepoint_t codepoint;
 
-    int sprite_tex_id;
+    gfx_texture_handle_t sprite_texture;
     unsigned short sprite_u;
     unsigned short sprite_v;
     unsigned short sprite_w;
@@ -75,22 +76,22 @@ void text_rich_layout_init(text_rich_layout_t *layout,
                            text_layout_line_t *line_buffer,
                            unsigned short line_capacity);
 
-void text_rich_draw_params_init(text_rich_draw_params_t *params);                           
+void text_rich_draw_params_init(text_rich_draw_params_t *params);
 
 void text_rich_layout_reset(text_rich_layout_t *layout);
 
 int text_rich_layout_build(text_rich_layout_t *layout,
-                                 const text_font_t *font,
-                                 const text_rich_run_t *runs,
-                                 unsigned short run_count,
-                                 const text_layout_params_t *params,
-                                 text_reveal_mode_t reveal_mode);
+                           const text_font_t *font,
+                           const text_rich_run_t *runs,
+                           unsigned short run_count,
+                           const text_layout_params_t *params,
+                           text_reveal_mode_t reveal_mode);
 
 void text_rich_draw_layout_ex(const text_font_t *font,
                               const text_rich_layout_t *layout,
                               const text_reveal_state_t *reveal,
                               float time_seconds,
-                              const text_rich_draw_params_t *draw_params);                           
+                              const text_rich_draw_params_t *draw_params);
 
 #ifdef __cplusplus
 }

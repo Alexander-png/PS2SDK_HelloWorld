@@ -1,5 +1,5 @@
 #include "engine/logging/log.h"
-#include "engine/gfx/gfx2d.h"
+#include "engine/gfx/draw2d.h"
 #include "engine/input/input.h"
 #include "engine/memory/memory_arena.h"
 #include "engine/text/text.h"
@@ -718,7 +718,7 @@ static void text_test_draw(game_app_t *app, float alpha)
     if (!data)
         return;
 
-    gfx2d_draw();
+    //gfx_sprite_draw_all();
     text_block_draw(&data->block);
 }
 

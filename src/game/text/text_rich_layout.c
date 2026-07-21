@@ -1,5 +1,5 @@
 #include "game/text/text_rich_layout.h"
-#include "engine/gfx/gfx2d.h"
+#include "engine/gfx/draw2d.h"
 #include "engine/logging/log.h"
 
 #include <math.h>
@@ -647,7 +647,7 @@ int text_rich_layout_build(text_rich_layout_t *layout,
                 item->glyph_index = item_index;
                 item->kind = TEXT_LAYOUT_ITEM_GLYPH;
 
-                item->sprite_tex_id = -1;
+                item->sprite_texture = gfx_texture_invalid();
                 item->sprite_u = 0;
                 item->sprite_v = 0;
                 item->sprite_w = 0;
@@ -699,7 +699,7 @@ void text_rich_draw_layout_ex(const text_font_t *font,
     if (!font || !layout)
         return;
 
-    if (font->tex_id < 0)
+    if (!gfx_texture_is_valid(font->texture))
         return;
 
     if (!layout->items)
@@ -718,7 +718,8 @@ void text_rich_draw_layout_ex(const text_font_t *font,
 
     for (i = 0; i < layout->item_count; ++i) {
         const text_layout_item_t *item = &layout->items[i];
-        gfx2d_draw_params_t params;
+        gfx_draw_params_t params;
+        gfx_rect_t src_rect;
         text_rich_resolved_draw_state_t ds;
         float draw_x;
         float draw_y;
@@ -737,58 +738,60 @@ void text_rich_draw_layout_ex(const text_font_t *font,
             if (!glyph)
                 continue;
 
-            params = gfx2d_sprite_params(draw_x,
-                                         draw_y,
-                                         (float)glyph->atlas_w * scale,
-                                         (float)glyph->atlas_h * scale);
+            params = gfx_draw_params_default(draw_x,
+                                             draw_y,
+                                             (float)glyph->atlas_w * scale,
+                                             (float)glyph->atlas_h * scale);
 
             params.layer = item->layer;
-            params.anchor_h = GFX2D_HALIGN_LEFT;
-            params.anchor_v = GFX2D_VALIGN_TOP;
-            params.origin_h = GFX2D_HALIGN_LEFT;
-            params.origin_v = GFX2D_VALIGN_TOP;
-            params.skew_origin_h = GFX2D_HALIGN_LEFT;
-            params.skew_origin_v = GFX2D_VALIGN_TOP;
+            params.anchor_h = GFX_HALIGN_LEFT;
+            params.anchor_v = GFX_VALIGN_TOP;
+            params.origin_h = GFX_HALIGN_LEFT;
+            params.origin_v = GFX_VALIGN_TOP;
+            params.skew_origin_h = GFX_HALIGN_LEFT;
+            params.skew_origin_v = GFX_VALIGN_TOP;
 
             params.color.r = ds.color.r;
             params.color.g = ds.color.g;
             params.color.b = ds.color.b;
             params.color.a = ds.color.a;
 
-            gfx2d_draw_texture_region(font->tex_id,
-                                      &params,
-                                      (float)glyph->atlas_x,
-                                      (float)glyph->atlas_y,
-                                      (float)glyph->atlas_w,
-                                      (float)glyph->atlas_h);
+            src_rect.x = (float)glyph->atlas_x;
+            src_rect.y = (float)glyph->atlas_y;
+            src_rect.w = (float)glyph->atlas_w;
+            src_rect.h = (float)glyph->atlas_h;
+
+            gfx_draw_texture_region(font->texture, &params, &src_rect);
         } else if (item->kind == TEXT_LAYOUT_ITEM_SPRITE) {
-            if (item->sprite_tex_id < 0)
+            float scale = text_rich_resolve_scale(item->scale);
+
+            if (!gfx_texture_is_valid(item->sprite_texture))
                 continue;
 
-            params = gfx2d_sprite_params(draw_x,
-                                         draw_y,
-                                         (float)item->sprite_w * text_rich_resolve_scale(item->scale),
-                                         (float)item->sprite_h * text_rich_resolve_scale(item->scale));
+            params = gfx_draw_params_default(draw_x,
+                                             draw_y,
+                                             (float)item->sprite_w * scale,
+                                             (float)item->sprite_h * scale);
 
             params.layer = item->layer;
-            params.anchor_h = GFX2D_HALIGN_LEFT;
-            params.anchor_v = GFX2D_VALIGN_TOP;
-            params.origin_h = GFX2D_HALIGN_LEFT;
-            params.origin_v = GFX2D_VALIGN_TOP;
-            params.skew_origin_h = GFX2D_HALIGN_LEFT;
-            params.skew_origin_v = GFX2D_VALIGN_TOP;
+            params.anchor_h = GFX_HALIGN_LEFT;
+            params.anchor_v = GFX_VALIGN_TOP;
+            params.origin_h = GFX_HALIGN_LEFT;
+            params.origin_v = GFX_VALIGN_TOP;
+            params.skew_origin_h = GFX_HALIGN_LEFT;
+            params.skew_origin_v = GFX_VALIGN_TOP;
 
             params.color.r = ds.color.r;
             params.color.g = ds.color.g;
             params.color.b = ds.color.b;
             params.color.a = ds.color.a;
 
-            gfx2d_draw_texture_region(item->sprite_tex_id,
-                                      &params,
-                                      (float)item->sprite_u,
-                                      (float)item->sprite_v,
-                                      (float)item->sprite_w,
-                                      (float)item->sprite_h);
+            src_rect.x = (float)item->sprite_u;
+            src_rect.y = (float)item->sprite_v;
+            src_rect.w = (float)item->sprite_w;
+            src_rect.h = (float)item->sprite_h;
+
+            gfx_draw_texture_region(item->sprite_texture, &params, &src_rect);
         }
     }
 }

@@ -1,6 +1,6 @@
 #include "engine/debug/screen_console.h"
 
-#include "engine/gfx/gfx2d.h"
+#include "engine/gfx/renderer.h"
 #include "engine/logging/log.h"
 
 #include <debug.h>
@@ -8,7 +8,7 @@
 
 int screen_console_enter(void)
 {
-    gfx2d_shutdown();
+    renderer_shutdown();
     log_enable_screen(1);
     init_scr();
     scr_clear();
@@ -20,10 +20,10 @@ void screen_console_exit(void)
     scr_clear();
     log_enable_screen(0);
 
-    if (gfx2d_init() < 0)
-        LOGLN("[screen_console] gfx2d reinit failed");
+    if (renderer_init() < 0)
+        LOGLN("[screen_console] renderer reinit failed");
     else
-        LOGLN("[screen_console] gfx2d reinit ok");
+        LOGLN("[screen_console] renderer reinit ok");
 }
 
 void screen_console_clear(void)

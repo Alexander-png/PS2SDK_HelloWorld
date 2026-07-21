@@ -7,7 +7,7 @@
 #include "engine/resources/texture_assets.h"
 #include "engine/memory/memory_arena.h"
 #include "engine/resources/resources.h"
-#include "engine/gfx/gfx2d.h"
+#include "engine/gfx/renderer.h"
 #include "game/states/test/debug_menu_state.h"
 
 #include <string.h>
@@ -292,19 +292,21 @@ void game_app_tick(void)
     if (should_render) {
         float alpha = 0.0f;
 
-        gfx2d_begin_frame();
+        renderer_begin_frame();
 
         if (g_app.state && g_app.state->draw) {
             if (g_app.fixed_dt > 0.0f)
                 alpha = g_app.accumulator / g_app.fixed_dt;
 
-            if (alpha < 0.0f) alpha = 0.0f;
-            if (alpha > 1.0f) alpha = 1.0f;
+            if (alpha < 0.0f)
+                alpha = 0.0f;
+            if (alpha > 1.0f)
+                alpha = 1.0f;
 
             g_app.state->draw(&g_app, alpha);
         }
 
-        gfx2d_end_frame();
+        renderer_end_frame();
         g_app.frame_index++;
     } else {
         platform_delay_us(GAME_APP_IDLE_SLEEP_US);

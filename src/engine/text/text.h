@@ -1,6 +1,8 @@
 #ifndef TEXT_H
 #define TEXT_H
 
+#include "engine/gfx/texture.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -44,7 +46,7 @@ typedef struct text_font {
     unsigned short line_height;
     short base;
 
-    int tex_id;
+    gfx_texture_handle_t texture;
 
     text_glyph_t *glyphs;
     unsigned int glyph_count;

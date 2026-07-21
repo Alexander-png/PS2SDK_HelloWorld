@@ -1,5 +1,4 @@
 #include "engine/audio/audio.h"
-#include "engine/gfx/gfx2d.h"
 #include "engine/input/input.h"
 #include "engine/logging/log.h"
 #include "engine/memory/memory_arena.h"
@@ -902,8 +901,6 @@ static void audio_mix_test_draw(game_app_t *app, float alpha)
 
     (void)app;
     (void)alpha;
-
-    gfx2d_draw();
 
     if (s)
         debug_overlay_draw(&s->overlay);

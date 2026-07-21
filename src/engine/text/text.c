@@ -1,5 +1,4 @@
 #include "engine/text/text.h"
-#include "engine/gfx/gfx2d.h"
 #include "engine/logging/log.h"
 
 #include <string.h>
@@ -19,7 +18,7 @@ void text_font_init(text_font_t *font)
         return;
 
     memset(font, 0, sizeof(*font));
-    font->tex_id = -1;
+    font->texture = gfx_texture_invalid();
     font->fallback_codepoint = '?';
 }
 

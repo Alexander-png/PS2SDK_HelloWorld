@@ -1,5 +1,6 @@
 #include "engine/logging/log.h"
-#include "engine/gfx/gfx2d.h"
+#include "engine/gfx/draw2d.h"
+#include "engine/gfx/sprite.h"
 #include "engine/resources/texture_assets.h"
 #include "engine/input/input.h"
 #include "engine/memory/memory_arena.h"
@@ -28,11 +29,11 @@
 
 typedef struct sprite_test_data {
     texture_handle_t texture;
-    int tex_id;
-    int sprite_id;
+    gfx_texture_handle_t gfx_texture;
+    gfx_sprite_id_t sprite_id;
     int sprite_created;
     int prewarmed;
-    gfx2d_draw_params_t draw_params;
+    gfx_draw_params_t draw_params;
     float speed;
 } sprite_test_data_t;
 
@@ -55,12 +56,17 @@ static texture_handle_t sprite_test_invalid_texture(void)
 static const char *sprite_test_texture_status_name(texture_status_t st)
 {
     switch (st) {
-        case TEXTURE_STATUS_UNUSED: return "UNUSED";
+        case TEXTURE_STATUS_UNUSED:  return "UNUSED";
         case TEXTURE_STATUS_LOADING: return "LOADING";
         case TEXTURE_STATUS_READY:   return "READY";
         case TEXTURE_STATUS_FAILED:  return "FAILED";
         default:                     return "?";
     }
+}
+
+static sprite_test_state_data_t *sprite_test_data(game_app_t *app)
+{
+    return GAME_APP_STATE_DATA_AS(app, sprite_test_state_data_t);
 }
 
 static void sprite_test_rebuild_overlay(sprite_test_state_data_t *data)
@@ -100,18 +106,13 @@ static void sprite_test_rebuild_overlay(sprite_test_state_data_t *data)
     );
 }
 
-static sprite_test_state_data_t *sprite_test_data(game_app_t *app)
-{
-    return GAME_APP_STATE_DATA_AS(app, sprite_test_state_data_t);
-}
-
 static void sprite_test_reset_sprite(sprite_test_data_t *s)
 {
     if (!s)
         return;
 
     s->texture = sprite_test_invalid_texture();
-    s->tex_id = -1;
+    s->gfx_texture = gfx_texture_invalid();
     s->sprite_id = -1;
     s->sprite_created = 0;
     s->prewarmed = 0;
@@ -139,32 +140,29 @@ static int sprite_test_try_create(sprite_test_data_t *s, const char *tag)
     if (st != TEXTURE_STATUS_READY)
         return 1;
 
-    s->tex_id = texture_tex_id(s->texture);
-    if (s->tex_id < 0) {
-        LOGLNC(LOGCAT_RESOURCES, "[state:sprite_test] ready but no tex_id tag=%s", tag ? tag : "?");
+    if (texture_get_gfx_handle(s->texture, &s->gfx_texture) < 0) {
+        LOGLNC(LOGCAT_RESOURCES, "[state:sprite_test] ready but no gfx texture tag=%s",
+              tag ? tag : "?");
         return -1;
     }
 
     if (!s->prewarmed) {
-        int warm = texture_prewarm(s->texture);
-        LOGLNC(LOGCAT_RESOURCES, "[state:sprite_test] prewarm tag=%s tex_id=%d result=%d",
+        int warm = texture_touch(s->texture);
+        LOGLNC(LOGCAT_RESOURCES, "[state:sprite_test] touch tag=%s result=%d",
               tag ? tag : "?",
-              s->tex_id,
               warm);
         s->prewarmed = 1;
     }
 
-    if (gfx2d_add_sprite(s->tex_id, &s->draw_params, &s->sprite_id) < 0) {
-        LOGLNC(LOGCAT_GFX, "[state:sprite_test] failed to add sprite tag=%s tex_id=%d",
-              tag ? tag : "?",
-              s->tex_id);
+    if (gfx_sprite_create(s->gfx_texture, &s->draw_params, &s->sprite_id) < 0) {
+        LOGLNC(LOGCAT_GFX, "[state:sprite_test] failed to create sprite tag=%s",
+              tag ? tag : "?");
         return -1;
     }
 
     s->sprite_created = 1;
-    LOGLNC(LOGCAT_GFX, "[state:sprite_test] sprite ready tag=%s tex_id=%d sprite_id=%d",
+    LOGLNC(LOGCAT_GFX, "[state:sprite_test] sprite ready tag=%s sprite_id=%d",
           tag ? tag : "?",
-          s->tex_id,
           s->sprite_id);
     return 0;
 }
@@ -172,6 +170,7 @@ static int sprite_test_try_create(sprite_test_data_t *s, const char *tag)
 static int sprite_test_enter(game_app_t *app, void *userdata)
 {
     sprite_test_state_data_t *data;
+    debug_overlay_desc_t overlay_desc;
 
     (void)userdata;
 
@@ -193,18 +192,14 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
     sprite_test_reset_sprite(&data->sprite2);
     data->t = 0.0f;
 
-    data->sprite.draw_params = gfx2d_sprite_params(226.0f, 140.0f, 16.0f, 16.0f);
+    data->sprite.draw_params = gfx_draw_params_default(226.0f, 140.0f, 16.0f, 16.0f);
     data->sprite.draw_params.layer = 5;
     data->sprite.speed = 240.0f;
 
-    data->sprite1.draw_params = gfx2d_sprite_params(306.0f, 168.0f, 206.0f, 168.0f);
+    data->sprite1.draw_params = gfx_draw_params_default(306.0f, 168.0f, 206.0f, 168.0f);
     data->sprite1.draw_params.layer = 10;
-    // data->sprite1.draw_params.color.r = 0xFF;
-    // data->sprite1.draw_params.color.g = 0xFF;
-    // data->sprite1.draw_params.color.b = 0xFF;
-    // data->sprite1.draw_params.color.a = 0xFF;
 
-    data->sprite2.draw_params = gfx2d_sprite_params(100.0f, 50.0f, 110.0f, 84.0f);
+    data->sprite2.draw_params = gfx_draw_params_default(100.0f, 50.0f, 110.0f, 84.0f);
     data->sprite2.draw_params.layer = 0;
 
     data->sprite.texture  = texture_load_png(TEST_SPRITE_PATH,  STREAM_PRIORITY_NORMAL);
@@ -218,7 +213,6 @@ static int sprite_test_enter(game_app_t *app, void *userdata)
         return -1;
     }
 
-    debug_overlay_desc_t overlay_desc;
     debug_overlay_desc_init(&overlay_desc);
     overlay_desc.x = 16;
     overlay_desc.y = 16;
@@ -244,6 +238,13 @@ static void sprite_test_exit(game_app_t *app)
         LOGLNC(LOGCAT_STATE, "[state:sprite_test] exit");
         return;
     }
+
+    if (data->sprite.sprite_created)
+        gfx_sprite_remove(data->sprite.sprite_id);
+    if (data->sprite1.sprite_created)
+        gfx_sprite_remove(data->sprite1.sprite_id);
+    if (data->sprite2.sprite_created)
+        gfx_sprite_remove(data->sprite2.sprite_id);
 
     if (texture_is_valid(data->sprite.texture))
         texture_release(data->sprite.texture);
@@ -296,11 +297,13 @@ static void sprite_test_update(game_app_t *app, float dt)
     if (data->sprite2.sprite_created) {
         data->sprite2.draw_params.skew_x_rad = cosf(data->t) * 0.7f;
         data->sprite2.draw_params.skew_y_rad = cosf(data->t * 2.0f) * 0.4f;
-        gfx2d_update_sprite(data->sprite2.sprite_id, &data->sprite2.draw_params);
+        gfx_sprite_update(data->sprite2.sprite_id, &data->sprite2.draw_params);
     }
 
-    if (!data->sprite.sprite_created)
+    if (!data->sprite.sprite_created) {
+        sprite_test_rebuild_overlay(data);
         return;
+    }
 
     move = data->sprite.speed * dt;
 
@@ -313,7 +316,7 @@ static void sprite_test_update(game_app_t *app, float dt)
     if (input_button_down(INPUT_BUTTON_DOWN))
         data->sprite.draw_params.y += move;
 
-    gfx2d_update_sprite(data->sprite.sprite_id, &data->sprite.draw_params);
+    gfx_sprite_update(data->sprite.sprite_id, &data->sprite.draw_params);
     sprite_test_rebuild_overlay(data);
 }
 
@@ -324,7 +327,7 @@ static void sprite_test_draw(game_app_t *app, float alpha)
     (void)app;
     (void)alpha;
 
-    gfx2d_draw();
+    gfx_sprite_draw_all();
 
     if (data)
         debug_overlay_draw(&data->overlay);

@@ -2,7 +2,8 @@
 #include "engine/logging/log.h"
 #include "engine/memory/memory.h"
 #include "engine/memory/memory_arena.h"
-#include "engine/gfx/gfx2d.h"
+#include "engine/gfx/sprite.h"
+#include "engine/gfx/texture.h"
 #include "engine/platform/platform.h"
 
 #include "game/debug/debug_overlay.h"
@@ -77,7 +78,7 @@ static int debug_menu_rebuild_overlay(game_app_t *app, debug_menu_state_data_t *
         mem_stats_t stats;
         mem_arena_t *state_arena;
         platform_memory_info_t pmem;
-        gfx2d_vram_stats_t vram;
+        gfx_texture_stats_t vram;
         int have_pmem;
         int have_vram;
 
@@ -88,7 +89,7 @@ static int debug_menu_rebuild_overlay(game_app_t *app, debug_menu_state_data_t *
         mem_get_stats(&stats);
 
         have_pmem = (platform_get_memory_info(&pmem) == 0);
-        have_vram = (gfx2d_get_vram_stats(&vram) == 0);
+        have_vram = (gfx_texture_get_stats(&vram) == 0);
 
         state_arena = game_app_state_arena(app);
         arena_used = mem_arena_used(state_arena);
@@ -308,7 +309,7 @@ static void debug_menu_draw(game_app_t *app, float alpha)
     if (!data)
         return;
 
-    gfx2d_draw();
+    gfx_sprite_draw_all();
     debug_overlay_draw(&data->overlay);
 }
 

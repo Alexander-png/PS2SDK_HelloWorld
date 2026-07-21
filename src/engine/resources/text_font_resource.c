@@ -28,7 +28,7 @@ void text_font_resource_init(text_font_resource_t *res)
     memset(res, 0, sizeof(*res));
     res->desc_res = text_font_resource_invalid_resource();
     res->atlas_tex = text_font_resource_invalid_texture();
-    res->tex_id = -1;
+    res->atlas_gfx = gfx_texture_invalid();
     res->status = TEXT_FONT_RESOURCE_STATUS_IDLE;
     text_font_init(&res->font);
 }
@@ -129,21 +129,21 @@ void text_font_resource_update(game_app_t *app,
         return;
     }
 
-    res->tex_id = texture_tex_id(res->atlas_tex);
-    if (res->tex_id < 0) {
-        res->status = TEXT_FONT_RESOURCE_STATUS_LOADING;
-        return;
+    if (!gfx_texture_is_valid(res->atlas_gfx)) {
+        if (texture_get_gfx_handle(res->atlas_tex, &res->atlas_gfx) != 0) {
+            res->status = TEXT_FONT_RESOURCE_STATUS_LOADING;
+            return;
+        }
     }
 
     if (!res->prewarmed) {
-        int warm = texture_prewarm(res->atlas_tex);
-        LOGLNC(LOGCAT_RESOURCES, "[text_font] prewarm tex_id=%d result=%d", res->tex_id, warm);
+        int warm = texture_touch(res->atlas_tex);
+        LOGLNC(LOGCAT_RESOURCES, "[text_font] touch result=%d", warm);
         res->prewarmed = 1;
     }
 
-    if (res->build_attempted) {
+    if (res->build_attempted)
         return;
-    }
 
     desc_data = resource_data(res->desc_res);
     desc_size = resource_size(res->desc_res);
@@ -158,7 +158,7 @@ void text_font_resource_update(game_app_t *app,
     load_desc.fnt_text = (const char *)desc_data;
     load_desc.fnt_size = (unsigned int)desc_size;
     load_desc.debug_name = resource_path(res->desc_res);
-    load_desc.tex_id = res->tex_id;
+    load_desc.texture = res->atlas_gfx;
 
     res->build_attempted = 1;
 

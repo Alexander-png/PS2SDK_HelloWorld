@@ -6,14 +6,14 @@
 typedef struct texture_item {
     int used;
     u16 generation;
+    u16 ref_count;
 
     char path[128];
 
     resource_handle_t resource;
     texture_status_t  status;
 
-    int tex_id;
-    int prewarmed;
+    gfx_texture_handle_t gfx_texture;
 } texture_item_t;
 
 typedef struct texture_system {
@@ -21,7 +21,13 @@ typedef struct texture_system {
     texture_item_t items[TEXTURE_MAX_ITEMS];
 } texture_system_t;
 
+typedef struct texture_load_ctx {
+    u16 index;
+    u16 generation;
+} texture_load_ctx_t;
+
 static texture_system_t g_texturesys;
+static texture_load_ctx_t g_load_ctx[TEXTURE_MAX_ITEMS];
 
 static texture_handle_t texture_invalid_handle(void)
 {
@@ -49,21 +55,71 @@ static int texture_handle_to_index(texture_handle_t handle)
     return (int)handle.index;
 }
 
+static int texture_find_by_path(const char *path)
+{
+    int i;
+
+    if (!path || !path[0])
+        return -1;
+
+    for (i = 0; i < TEXTURE_MAX_ITEMS; ++i) {
+        texture_item_t *t = &g_texturesys.items[i];
+        if (!t->used)
+            continue;
+
+        if (strcmp(t->path, path) == 0)
+            return i;
+    }
+
+    return -1;
+}
+
+static void texture_reset_item(texture_item_t *t, int preserve_generation)
+{
+    u16 generation = 0;
+
+    if (!t)
+        return;
+
+    if (preserve_generation)
+        generation = t->generation;
+
+    memset(t, 0, sizeof(*t));
+
+    if (preserve_generation)
+        t->generation = generation;
+}
+
 static void texture_resource_cb(resource_handle_t rhandle,
                                 resource_status_t rstatus,
                                 void *data,
                                 u32 size,
                                 void *userdata)
 {
-    texture_handle_t th = *(texture_handle_t *)userdata;
-    int index = texture_handle_to_index(th);
+    texture_load_ctx_t ctx;
+    int index;
     texture_item_t *t;
-    int tex_id;
+    gfx_texture_desc_t desc;
 
-    if (index < 0)
+    (void)rhandle;
+
+    if (!userdata)
         return;
 
-    t = &g_texturesys.items[index];
+    ctx = *(texture_load_ctx_t *)userdata;
+
+    if (ctx.index >= TEXTURE_MAX_ITEMS)
+        return;
+
+    t = &g_texturesys.items[ctx.index];
+
+    if (!t->used)
+        return;
+
+    if (t->generation != ctx.generation)
+        return;
+
+    index = (int)ctx.index;
 
     if (rstatus != RESOURCE_STATUS_READY) {
         t->status = TEXTURE_STATUS_FAILED;
@@ -76,28 +132,37 @@ static void texture_resource_cb(resource_handle_t rhandle,
 
     if (!data || size == 0) {
         t->status = TEXTURE_STATUS_FAILED;
-        LOGLNC(LOGCAT_RESOURCES, "[tex] resource ready but empty index=%d path=%s", index, t->path);
+        LOGLNC(LOGCAT_RESOURCES, "[tex] resource ready but empty index=%d path=%s",
+              index,
+              t->path);
         return;
     }
 
-    if (gfx2d_create_texture_from_png_data(data, size, &tex_id) < 0) {
+    memset(&desc, 0, sizeof(desc));
+    desc.flags = GFX_TEXTURE_FLAG_KEEP_CPU_COPY;
+
+    if (gfx_texture_create_from_png_data(data, size, &desc, &t->gfx_texture) < 0) {
         t->status = TEXTURE_STATUS_FAILED;
-        LOGLNC(LOGCAT_RESOURCES, "[tex] gfx2d_create_texture_from_png_data failed index=%d path=%s", index, t->path);
+        LOGLNC(LOGCAT_RESOURCES, "[tex] gfx_texture_create_from_png_data failed index=%d path=%s",
+              index,
+              t->path);
         return;
     }
 
-    t->tex_id  = tex_id;
-    t->status  = TEXTURE_STATUS_READY;
-    t->prewarmed = 0;
+    t->status = TEXTURE_STATUS_READY;
 
-    LOGLNC(LOGCAT_RESOURCES, "[tex] ready index=%d path=%s tex_id=%d size=%u",
-          index, t->path, t->tex_id, size);
+    LOGLNC(LOGCAT_RESOURCES, "[tex] ready index=%d path=%s size=%u",
+          index,
+          t->path,
+          size);
 }
 
 int texture_assets_init(void)
 {
     memset(&g_texturesys, 0, sizeof(g_texturesys));
+    memset(g_load_ctx, 0, sizeof(g_load_ctx));
     g_texturesys.initialized = 1;
+
     LOGLNC(LOGCAT_RESOURCES, "[tex] init max_items=%d", TEXTURE_MAX_ITEMS);
     return 0;
 }
@@ -121,23 +186,44 @@ void texture_assets_shutdown(void)
     }
 
     memset(&g_texturesys, 0, sizeof(g_texturesys));
+    memset(g_load_ctx, 0, sizeof(g_load_ctx));
 }
 
 void texture_assets_update(void)
 {
-
 }
 
 texture_handle_t texture_load_png(const char *path, stream_priority_t prio)
 {
     int i;
+    int existing;
     texture_item_t *t;
     texture_handle_t th;
     resource_load_desc_t desc;
     resource_handle_t rh;
 
-    if (!g_texturesys.initialized || !path)
+    if (!g_texturesys.initialized || !path || !path[0])
         return texture_invalid_handle();
+
+    existing = texture_find_by_path(path);
+    if (existing >= 0) {
+        texture_item_t *it = &g_texturesys.items[existing];
+        texture_handle_t h;
+
+        if (it->ref_count != 0xffffu)
+            ++it->ref_count;
+
+        h.index = (u16)existing;
+        h.generation = it->generation;
+
+        LOGLNC(LOGCAT_RESOURCES, "[tex] reuse index=%d gen=%u refs=%u path=%s",
+              existing,
+              (unsigned int)h.generation,
+              (unsigned int)it->ref_count,
+              it->path);
+
+        return h;
+    }
 
     for (i = 0; i < TEXTURE_MAX_ITEMS; ++i) {
         if (!g_texturesys.items[i].used)
@@ -145,55 +231,57 @@ texture_handle_t texture_load_png(const char *path, stream_priority_t prio)
     }
 
     if (i >= TEXTURE_MAX_ITEMS) {
-        LOGLNC(LOGCAT_RESOURCES, "[tex] no free slots");
+        LOGLNC(LOGCAT_RESOURCES, "[tex] no free slots path=%s", path);
         return texture_invalid_handle();
     }
 
     t = &g_texturesys.items[i];
     {
         u16 generation = t->generation;
-        memset(t, 0, sizeof(*t));
+        texture_reset_item(t, 0);
         t->generation = generation + 1;
         if (t->generation == 0)
             t->generation = 1;
     }
 
     t->used = 1;
+    t->ref_count = 1;
     strncpy(t->path, path, sizeof(t->path) - 1);
     t->path[sizeof(t->path) - 1] = '\0';
     t->status = TEXTURE_STATUS_LOADING;
-    t->tex_id = -1;
-    t->prewarmed = 0;
     t->resource = (resource_handle_t){0xffffu, 0};
+    t->gfx_texture = gfx_texture_invalid();
 
     th.index = (u16)i;
     th.generation = t->generation;
 
     memset(&desc, 0, sizeof(desc));
-    desc.path     = t->path;
-    desc.type     = RESOURCE_TYPE_TEXTURE_PAGE;
+    desc.path = t->path;
+    desc.type = RESOURCE_TYPE_TEXTURE_PAGE;
     desc.priority = prio;
 
-    {
-        static texture_handle_t cb_handles[TEXTURE_MAX_ITEMS];
-        cb_handles[i] = th;
-        desc.callback = texture_resource_cb;
-        desc.userdata = &cb_handles[i];
-    }
+    g_load_ctx[i].index = (u16)i;
+    g_load_ctx[i].generation = t->generation;
+
+    desc.callback = texture_resource_cb;
+    desc.userdata = &g_load_ctx[i];
 
     rh = resource_load_file(&desc);
     if (!resource_is_valid(rh)) {
         u16 generation = t->generation;
         LOGLNC(LOGCAT_RESOURCES, "[tex] resource_load_file failed path=%s", t->path);
-        memset(t, 0, sizeof(*t));
+        texture_reset_item(t, 0);
         t->generation = generation;
         return texture_invalid_handle();
     }
 
     t->resource = rh;
 
-    LOGLNC(LOGCAT_RESOURCES, "[tex] load index=%d gen=%u path=%s",
-          i, th.generation, t->path);
+    LOGLNC(LOGCAT_RESOURCES, "[tex] load index=%d gen=%u refs=%u path=%s",
+          i,
+          (unsigned int)th.generation,
+          (unsigned int)t->ref_count,
+          t->path);
 
     return th;
 }
@@ -210,18 +298,27 @@ void texture_release(texture_handle_t handle)
 
     t = &g_texturesys.items[index];
 
+    if (t->ref_count > 1) {
+        --t->ref_count;
+        LOGLNC(LOGCAT_RESOURCES, "[tex] release dec_ref index=%d refs=%u path=%s",
+              index,
+              (unsigned int)t->ref_count,
+              t->path);
+        return;
+    }
+
     if (resource_is_valid(t->resource)) {
         resource_release(t->resource);
         t->resource = (resource_handle_t){0xffffu, 0};
     }
 
-    if (t->tex_id >= 0) {
-        gfx2d_free_texture(t->tex_id);
-        t->tex_id = -1;
+    if (gfx_texture_is_valid(t->gfx_texture)) {
+        gfx_texture_release(t->gfx_texture);
+        t->gfx_texture = gfx_texture_invalid();
     }
 
     generation = t->generation;
-    memset(t, 0, sizeof(*t));
+    texture_reset_item(t, 0);
     t->generation = generation;
 
     LOGLNC(LOGCAT_RESOURCES, "[tex] released index=%d", index);
@@ -240,14 +337,6 @@ texture_status_t texture_status(texture_handle_t handle)
     return g_texturesys.items[index].status;
 }
 
-int texture_tex_id(texture_handle_t handle)
-{
-    int index = texture_handle_to_index(handle);
-    if (index < 0)
-        return -1;
-    return g_texturesys.items[index].tex_id;
-}
-
 const char *texture_path(texture_handle_t handle)
 {
     int index = texture_handle_to_index(handle);
@@ -256,23 +345,47 @@ const char *texture_path(texture_handle_t handle)
     return g_texturesys.items[index].path;
 }
 
-int texture_prewarm(texture_handle_t handle)
+int texture_get_gfx_handle(texture_handle_t handle, gfx_texture_handle_t *out_handle)
 {
     int index = texture_handle_to_index(handle);
-    texture_item_t *t;
-    int mask;
+
+    if (!out_handle)
+        return -1;
+
+    *out_handle = gfx_texture_invalid();
 
     if (index < 0)
         return -1;
 
-    t = &g_texturesys.items[index];
-
-    if (t->status != TEXTURE_STATUS_READY || t->tex_id < 0)
+    if (g_texturesys.items[index].status != TEXTURE_STATUS_READY)
         return -1;
 
-    mask = gfx2d_touch_texture(t->tex_id);
-    if (mask >= 0)
-        t->prewarmed = 1;
+    *out_handle = g_texturesys.items[index].gfx_texture;
+    return 0;
+}
 
-    return mask;
+int texture_touch(texture_handle_t handle)
+{
+    int index = texture_handle_to_index(handle);
+
+    if (index < 0)
+        return -1;
+
+    if (g_texturesys.items[index].status != TEXTURE_STATUS_READY)
+        return -1;
+
+    return gfx_texture_touch(g_texturesys.items[index].gfx_texture);
+}
+
+int texture_size(texture_handle_t handle, int *out_w, int *out_h)
+{
+    int index = texture_handle_to_index(handle);
+
+    if (index < 0)
+        return -1;
+
+    if (g_texturesys.items[index].status != TEXTURE_STATUS_READY)
+        return -1;
+
+    return gfx_texture_get_size(g_texturesys.items[index].gfx_texture, out_w, out_h);
 }

@@ -5,6 +5,7 @@
 #include "engine/resources/resources.h"
 #include "engine/resources/texture_assets.h"
 #include "engine/text/text.h"
+#include "engine/gfx/texture.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,10 +26,9 @@ typedef struct text_font_resource_desc {
 typedef struct text_font_resource {
     resource_handle_t desc_res;
     texture_handle_t atlas_tex;
+    gfx_texture_handle_t atlas_gfx;
 
     text_font_t font;
-
-    int tex_id;
 
     unsigned char prewarmed;
     unsigned char build_attempted;
