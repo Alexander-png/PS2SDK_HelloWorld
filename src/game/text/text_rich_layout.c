@@ -37,13 +37,15 @@ static int text_rich_utf8_decode_bounded(const char **p,
         *p += 1;
         return 1;
     }
-
+    
+    /* Reject stray continuation bytes, overlong 2-byte leads, and invalid lead bytes. */
     if (s[0] < 0xC2) {
         *out_codepoint = 0xFFFDu;
         *p += 1;
         return 1;
     }
 
+    /* 2-byte sequence: C2..DF 80..BF */
     if (s[0] <= 0xDF) {
         if (remaining < 2 || (s[1] & 0xC0) != 0x80) {
             *out_codepoint = 0xFFFDu;
@@ -59,6 +61,7 @@ static int text_rich_utf8_decode_bounded(const char **p,
         return 1;
     }
 
+    /* 3-byte sequence: E0..EF with overlong/surrogate checks */
     if (s[0] <= 0xEF) {
         if (remaining < 3 ||
             (s[1] & 0xC0) != 0x80 ||
@@ -68,12 +71,14 @@ static int text_rich_utf8_decode_bounded(const char **p,
             return 1;
         }
 
+        /* Overlong: E0 80..9F */
         if (s[0] == 0xE0 && s[1] < 0xA0) {
             *out_codepoint = 0xFFFDu;
             *p += 1;
             return 1;
         }
 
+        /* Surrogates: ED A0..BF */
         if (s[0] == 0xED && s[1] >= 0xA0) {
             *out_codepoint = 0xFFFDu;
             *p += 1;
@@ -89,6 +94,7 @@ static int text_rich_utf8_decode_bounded(const char **p,
         return 1;
     }
 
+    /* 4-byte sequence: F0..F4 with overlong/out-of-range checks */
     if (s[0] <= 0xF4) {
         if (remaining < 4 ||
             (s[1] & 0xC0) != 0x80 ||
@@ -99,12 +105,14 @@ static int text_rich_utf8_decode_bounded(const char **p,
             return 1;
         }
 
+        /* Overlong: F0 80..8F */
         if (s[0] == 0xF0 && s[1] < 0x90) {
             *out_codepoint = 0xFFFDu;
             *p += 1;
             return 1;
         }
 
+        /* > U+10FFFF: F4 90..BF */
         if (s[0] == 0xF4 && s[1] > 0x8F) {
             *out_codepoint = 0xFFFDu;
             *p += 1;
@@ -602,6 +610,8 @@ int text_rich_layout_build(text_rich_layout_t *layout,
                 }
             }
 
+            /* In TEXT_REVEAL_WORD mode, whitespace items are emitted using the current
+               group so that spacing appears together with the preceding revealed word. */
             if (reveal_mode == TEXT_REVEAL_NONE) {
                 current_group = 0;
             } else if (reveal_mode == TEXT_REVEAL_GLYPH) {
@@ -664,13 +674,14 @@ int text_rich_layout_build(text_rich_layout_t *layout,
 
     layout->height = (short)(layout->line_count * line_height);
 
-    LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: ok items=%u lines=%u groups=%u width=%d height=%d scale=%.3f",
-          (unsigned int)layout->item_count,
-          (unsigned int)layout->line_count,
-          (unsigned int)layout->reveal_group_count,
-          (int)layout->width,
-          (int)layout->height,
-          global_scale);
+    // Commented due noisy
+    // LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: ok items=%u lines=%u groups=%u width=%d height=%d scale=%.3f",
+    //       (unsigned int)layout->item_count,
+    //       (unsigned int)layout->line_count,
+    //       (unsigned int)layout->reveal_group_count,
+    //       (int)layout->width,
+    //       (int)layout->height,
+    //       global_scale);
 
     return 0;
 }
