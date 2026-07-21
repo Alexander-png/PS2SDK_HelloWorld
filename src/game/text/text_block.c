@@ -206,12 +206,37 @@ void text_block_set_style(text_block_t *blk, const text_style_t *style)
     blk->base_style = *style;
 }
 
+void text_block_set_text_scale(text_block_t *blk, float scale)
+{
+    if (!blk)
+        return;
+
+    if (scale <= 0.0f)
+        scale = 1.0f;
+
+    blk->base_style.scale = scale;
+}
+
 void text_block_set_wrap_mode(text_block_t *blk, text_wrap_mode_t wrap_mode)
 {
     if (!blk)
         return;
 
     blk->wrap_mode = wrap_mode;
+}
+
+void text_block_reset_draw_params(text_block_t *blk)
+{
+    if (!blk)
+        return;
+
+    blk->shake_amp_scale_x = 1.0f;
+    blk->shake_amp_scale_y = 1.0f;
+    blk->shake_speed_scale = 1.0f;
+
+    blk->wave_amp_scale_x = 1.0f;
+    blk->wave_amp_scale_y = 1.0f;
+    blk->wave_speed_scale = 1.0f;
 }
 
 void text_block_set_shake_scale(text_block_t *blk, float amp_scale)
@@ -238,20 +263,6 @@ void text_block_set_shake_speed_scale(text_block_t *blk, float speed_scale)
         return;
 
     blk->shake_speed_scale = speed_scale;
-}
-
-void text_block_reset_rich_draw_params(text_block_t *blk)
-{
-    if (!blk)
-        return;
-
-    blk->shake_amp_scale_x = 1.0f;
-    blk->shake_amp_scale_y = 1.0f;
-    blk->shake_speed_scale = 1.0f;
-
-    blk->wave_amp_scale_x = 1.0f;
-    blk->wave_amp_scale_y = 1.0f;
-    blk->wave_speed_scale = 1.0f;
 }
 
 void text_block_set_wave_scale(text_block_t *blk, float amp_scale)
@@ -320,6 +331,7 @@ int text_block_refresh(text_block_t *blk)
     text_rich_style_t rich_base_style;
     text_rich_style_init(&rich_base_style);
     rich_base_style.color = blk->base_style.color;
+    rich_base_style.scale = blk->base_style.scale;
 
     if (!blk->text_utf8) {
         LOGLNC(LOGCAT_TEXT, "[text_block] refresh failed: text_utf8=NULL");

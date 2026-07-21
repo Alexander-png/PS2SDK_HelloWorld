@@ -34,6 +34,7 @@ typedef struct text_rich_effect_params {
 
 typedef struct text_rich_style {
     text_color_t color;
+    float scale;
     text_rich_effect_params_t effects;
 } text_rich_style_t;
 

@@ -35,6 +35,8 @@ typedef struct text_layout_item {
     int layer;
     unsigned char visible;
 
+    float scale;
+
     unsigned short reveal_group;
     unsigned int glyph_index;
 

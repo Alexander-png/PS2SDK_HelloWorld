@@ -212,6 +212,7 @@ void text_rich_style_init(text_rich_style_t *style)
         return;
 
     style->color = text_color_default();
+    style->scale = 1.0f;
     text_rich_effect_params_init(&style->effects);
 }
 

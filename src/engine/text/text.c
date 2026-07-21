@@ -101,6 +101,7 @@ void text_style_init(text_style_t *style)
     style->color = text_color_default();
     style->tracking = 0;
     style->layer = 100;
+    style->scale = 1.0f;
 }
 
 void text_reveal_state_init(text_reveal_state_t *state, float seconds_per_unit)

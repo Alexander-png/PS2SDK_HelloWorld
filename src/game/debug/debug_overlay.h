@@ -29,6 +29,7 @@ typedef struct debug_overlay_desc {
     text_color_t color;
     short tracking;
     int layer;
+    float scale;
 } debug_overlay_desc_t;
 
 typedef struct debug_overlay {

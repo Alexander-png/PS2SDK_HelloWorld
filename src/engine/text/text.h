@@ -59,6 +59,7 @@ typedef struct text_style {
     text_color_t color;
     short tracking;
     int layer;
+    float scale;
 } text_style_t;
 
 typedef struct text_layout_line {

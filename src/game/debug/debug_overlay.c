@@ -54,6 +54,7 @@ static void debug_overlay_apply_style(debug_overlay_t *ovl,
     style.color = desc->color;
     style.tracking = desc->tracking;
     style.layer = desc->layer;
+    style.scale = (desc->scale > 0.0f) ? desc->scale : 1.0f;
 
     text_block_set_style(&ovl->block, &style);
 }
@@ -95,6 +96,7 @@ void debug_overlay_desc_init(debug_overlay_desc_t *desc)
     desc->color = text_color_default();
     desc->tracking = 0;
     desc->layer = DEBUG_OVERLAY_DEFAULT_LAYER;
+    desc->scale = 0.5f;
 }
 
 int debug_overlay_init(game_app_t *app,

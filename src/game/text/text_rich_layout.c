@@ -12,6 +12,7 @@ typedef struct text_rich_resolved_draw_state {
     text_color_t color;
 } text_rich_resolved_draw_state_t;
 
+
 static int text_rich_utf8_decode_bounded(const char **p,
                                          const char *end,
                                          text_codepoint_t *out_codepoint)
@@ -37,14 +38,12 @@ static int text_rich_utf8_decode_bounded(const char **p,
         return 1;
     }
 
-    /* Reject stray continuation bytes, overlong 2-byte leads, and invalid lead bytes. */
     if (s[0] < 0xC2) {
         *out_codepoint = 0xFFFDu;
         *p += 1;
         return 1;
     }
 
-    /* 2-byte sequence: C2..DF 80..BF */
     if (s[0] <= 0xDF) {
         if (remaining < 2 || (s[1] & 0xC0) != 0x80) {
             *out_codepoint = 0xFFFDu;
@@ -60,7 +59,6 @@ static int text_rich_utf8_decode_bounded(const char **p,
         return 1;
     }
 
-    /* 3-byte sequence: E0..EF with overlong/surrogate checks */
     if (s[0] <= 0xEF) {
         if (remaining < 3 ||
             (s[1] & 0xC0) != 0x80 ||
@@ -70,14 +68,12 @@ static int text_rich_utf8_decode_bounded(const char **p,
             return 1;
         }
 
-        /* Overlong: E0 80..9F */
         if (s[0] == 0xE0 && s[1] < 0xA0) {
             *out_codepoint = 0xFFFDu;
             *p += 1;
             return 1;
         }
 
-        /* Surrogates: ED A0..BF */
         if (s[0] == 0xED && s[1] >= 0xA0) {
             *out_codepoint = 0xFFFDu;
             *p += 1;
@@ -93,7 +89,6 @@ static int text_rich_utf8_decode_bounded(const char **p,
         return 1;
     }
 
-    /* 4-byte sequence: F0..F4 with overlong/out-of-range checks */
     if (s[0] <= 0xF4) {
         if (remaining < 4 ||
             (s[1] & 0xC0) != 0x80 ||
@@ -104,14 +99,12 @@ static int text_rich_utf8_decode_bounded(const char **p,
             return 1;
         }
 
-        /* Overlong: F0 80..8F */
         if (s[0] == 0xF0 && s[1] < 0x90) {
             *out_codepoint = 0xFFFDu;
             *p += 1;
             return 1;
         }
 
-        /* > U+10FFFF: F4 90..BF */
         if (s[0] == 0xF4 && s[1] > 0x8F) {
             *out_codepoint = 0xFFFDu;
             *p += 1;
@@ -133,13 +126,29 @@ static int text_rich_utf8_decode_bounded(const char **p,
     return 1;
 }
 
+
 static int text_rich_is_space_cp(text_codepoint_t cp)
 {
     return (cp == ' ' || cp == '\t');
 }
 
+
+static float text_rich_resolve_scale(float scale)
+{
+    return (scale > 0.0f) ? scale : 1.0f;
+}
+
+
+static short text_rich_round_to_short(float v)
+{
+    if (v >= 0.0f)
+        return (short)(v + 0.5f);
+    return (short)(v - 0.5f);
+}
+
+
 static int text_rich_layout_newline(text_rich_layout_t *layout,
-                                    const text_font_t *font,
+                                    short line_height,
                                     short origin_x,
                                     short *pen_x,
                                     short *pen_y,
@@ -147,7 +156,7 @@ static int text_rich_layout_newline(text_rich_layout_t *layout,
                                     text_codepoint_t *prev_codepoint,
                                     int *in_word)
 {
-    if (!layout || !font || !pen_x || !pen_y || !line_width || !prev_codepoint || !in_word)
+    if (!layout || !pen_x || !pen_y || !line_width || !prev_codepoint || !in_word)
         return -1;
 
     if (*line_width > layout->width)
@@ -162,7 +171,7 @@ static int text_rich_layout_newline(text_rich_layout_t *layout,
         return -1;
 
     *pen_x = origin_x;
-    *pen_y = (short)(*pen_y + font->line_height);
+    *pen_y = (short)(*pen_y + line_height);
     *line_width = 0;
     *prev_codepoint = 0;
     *in_word = 0;
@@ -175,8 +184,9 @@ static int text_rich_layout_newline(text_rich_layout_t *layout,
     return 0;
 }
 
+
 static int text_rich_layout_move_word_to_newline(text_rich_layout_t *layout,
-                                                 const text_font_t *font,
+                                                 short line_height,
                                                  const text_layout_params_t *params,
                                                  short line_origin_x,
                                                  unsigned short word_start_item,
@@ -198,7 +208,7 @@ static int text_rich_layout_move_word_to_newline(text_rich_layout_t *layout,
     short dx;
     short dy;
 
-    if (!layout || !font || !params || !pen_x || !pen_y || !line_width || !prev_codepoint || !in_word)
+    if (!layout || !params || !pen_x || !pen_y || !line_width || !prev_codepoint || !in_word)
         return -1;
 
     if (word_start_item >= layout->item_count)
@@ -222,7 +232,7 @@ static int text_rich_layout_move_word_to_newline(text_rich_layout_t *layout,
     *prev_codepoint = word_start_prev_codepoint;
 
     if (text_rich_layout_newline(layout,
-                                 font,
+                                 line_height,
                                  line_origin_x,
                                  pen_x,
                                  pen_y,
@@ -234,7 +244,7 @@ static int text_rich_layout_move_word_to_newline(text_rich_layout_t *layout,
 
     new_line_index = (unsigned short)(layout->line_count - 1);
     dx = (short)(line_origin_x - word_start_pen_x);
-    dy = font->line_height;
+    dy = line_height;
 
     for (i = 0; i < moved_count; ++i) {
         text_layout_item_t item = layout->items[move_begin + i];
@@ -246,7 +256,16 @@ static int text_rich_layout_move_word_to_newline(text_rich_layout_t *layout,
 
     if (layout->item_count > layout->lines[new_line_index].first_item) {
         text_layout_item_t *last = &layout->items[layout->item_count - 1];
-        *line_width = (short)((last->x + last->glyph->xadvance + params->style.tracking) - line_origin_x);
+        short advance = 0;
+
+        if (last->kind == TEXT_LAYOUT_ITEM_GLYPH && last->glyph) {
+            float tracking = (float)params->style.tracking * text_rich_resolve_scale(last->scale);
+            advance = text_rich_round_to_short((float)last->glyph->xadvance * last->scale + tracking);
+        } else if (last->kind == TEXT_LAYOUT_ITEM_SPRITE) {
+            advance = last->sprite_xadvance;
+        }
+
+        *line_width = (short)((last->x + advance) - line_origin_x);
     } else {
         *line_width = 0;
     }
@@ -257,11 +276,13 @@ static int text_rich_layout_move_word_to_newline(text_rich_layout_t *layout,
     return 0;
 }
 
+
 static float text_rich_noise_01(int seed, float t)
 {
     float v = sinf((float)seed * 12.9898f + t * 78.233f) * 43758.5453f;
     return v - floorf(v);
 }
+
 
 static void text_rich_resolve_draw_state(
     const text_layout_item_t *item,
@@ -326,6 +347,7 @@ static void text_rich_resolve_draw_state(
     out_state->color = color;
 }
 
+
 static int text_rich_item_is_revealed(const text_rich_layout_t *layout,
                                       const text_layout_item_t *item,
                                       unsigned short visible_groups)
@@ -341,6 +363,7 @@ static int text_rich_item_is_revealed(const text_rich_layout_t *layout,
 
     return 1;
 }
+
 
 void text_rich_layout_init(text_rich_layout_t *layout,
                            text_layout_item_t *item_buffer,
@@ -358,6 +381,7 @@ void text_rich_layout_init(text_rich_layout_t *layout,
     layout->line_capacity = line_capacity;
 }
 
+
 void text_rich_draw_params_init(text_rich_draw_params_t *params)
 {
     if (!params)
@@ -372,6 +396,7 @@ void text_rich_draw_params_init(text_rich_draw_params_t *params)
     params->wave_speed_scale = 1.0f;
 }
 
+
 void text_rich_layout_reset(text_rich_layout_t *layout)
 {
     if (!layout)
@@ -383,6 +408,7 @@ void text_rich_layout_reset(text_rich_layout_t *layout)
     layout->width = 0;
     layout->height = 0;
 }
+
 
 int text_rich_layout_build(text_rich_layout_t *layout,
                            const text_font_t *font,
@@ -396,6 +422,7 @@ int text_rich_layout_build(text_rich_layout_t *layout,
     short pen_y;
     short line_origin_x;
     short line_width;
+    short line_height;
     text_codepoint_t prev_codepoint;
     int in_word;
     unsigned short current_group;
@@ -406,6 +433,8 @@ int text_rich_layout_build(text_rich_layout_t *layout,
     short word_start_line_width;
     text_codepoint_t word_start_prev_codepoint;
     int word_active;
+
+    float global_scale;
 
     if (!layout || !font || !runs || !params) {
         LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: invalid args");
@@ -424,6 +453,12 @@ int text_rich_layout_build(text_rich_layout_t *layout,
 
     text_rich_layout_reset(layout);
 
+    global_scale = text_rich_resolve_scale(params->style.scale);
+    line_height = text_rich_round_to_short((float)font->line_height * global_scale);
+
+    if (line_height <= 0)
+        line_height = font->line_height > 0 ? font->line_height : 1;
+
     pen_x = params->origin_x;
     pen_y = params->origin_y;
     line_origin_x = params->origin_x;
@@ -439,8 +474,6 @@ int text_rich_layout_build(text_rich_layout_t *layout,
     word_start_prev_codepoint = 0;
     word_active = 0;
 
-    wrap_mode = params->wrap_mode;
-
     layout->line_count = 1;
     layout->lines[0].first_item = 0;
     layout->lines[0].item_count = 0;
@@ -449,11 +482,12 @@ int text_rich_layout_build(text_rich_layout_t *layout,
     for (run_index = 0; run_index < run_count; ++run_index) {
         const text_rich_run_t *run = &runs[run_index];
         const char *p = run->text_start;
+        float run_scale = text_rich_resolve_scale(run->style.scale);
 
         if (!run->text_start || !run->text_end || run->text_start > run->text_end) {
             LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: invalid run bounds index=%u",
                 (unsigned int)run_index);
-                return -1;
+            return -1;
         }
 
         if (run->text_start == run->text_end)
@@ -463,6 +497,7 @@ int text_rich_layout_build(text_rich_layout_t *layout,
             text_codepoint_t cp;
             const text_glyph_t *glyph;
             text_layout_item_t *item;
+            short scaled_tracking;
 
             if (!text_rich_utf8_decode_bounded(&p, run->text_end, &cp)) {
                 LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: utf8 decode failed");
@@ -474,7 +509,7 @@ int text_rich_layout_build(text_rich_layout_t *layout,
 
             if (cp == '\n') {
                 if (text_rich_layout_newline(layout,
-                                             font,
+                                             line_height,
                                              line_origin_x,
                                              &pen_x,
                                              &pen_y,
@@ -484,6 +519,8 @@ int text_rich_layout_build(text_rich_layout_t *layout,
                     LOGLNC(LOGCAT_TEXT, "[text_rich] build: line capacity exceeded");
                     return -1;
                 }
+
+                word_active = 0;
                 continue;
             }
 
@@ -508,11 +545,14 @@ int text_rich_layout_build(text_rich_layout_t *layout,
                 return -1;
             }
 
-            pen_x += text_font_get_kerning(font, prev_codepoint, cp);
-            
+            pen_x = (short)(pen_x +
+                text_rich_round_to_short((float)text_font_get_kerning(font, prev_codepoint, cp) * run_scale));
+
+            scaled_tracking = text_rich_round_to_short((float)params->style.tracking * run_scale);
+
             if (wrap_mode != TEXT_WRAP_NONE && params->max_width > 0) {
-                int glyph_left = pen_x + glyph->xoffset;
-                int glyph_right = glyph_left + glyph->atlas_w;
+                int glyph_left = pen_x + text_rich_round_to_short((float)glyph->xoffset * run_scale);
+                int glyph_right = glyph_left + text_rich_round_to_short((float)glyph->atlas_w * run_scale);
                 int max_right = params->origin_x + params->max_width;
 
                 if (pen_x > line_origin_x && glyph_right > max_right) {
@@ -523,7 +563,7 @@ int text_rich_layout_build(text_rich_layout_t *layout,
                         word_start_item < layout->item_count &&
                         word_start_pen_x > line_origin_x) {
                         if (text_rich_layout_move_word_to_newline(layout,
-                                                                  font,
+                                                                  line_height,
                                                                   params,
                                                                   line_origin_x,
                                                                   word_start_item,
@@ -548,7 +588,7 @@ int text_rich_layout_build(text_rich_layout_t *layout,
 
                     if (!moved_word) {
                         if (text_rich_layout_newline(layout,
-                                                     font,
+                                                     line_height,
                                                      line_origin_x,
                                                      &pen_x,
                                                      &pen_y,
@@ -562,13 +602,11 @@ int text_rich_layout_build(text_rich_layout_t *layout,
                 }
             }
 
-            /* In TEXT_REVEAL_WORD mode, whitespace items are emitted using the current
-               group so that spacing appears together with the preceding revealed word. */
             if (reveal_mode == TEXT_REVEAL_NONE) {
                 current_group = 0;
             } else if (reveal_mode == TEXT_REVEAL_GLYPH) {
                 current_group = layout->reveal_group_count++;
-            } else { /* TEXT_REVEAL_WORD */
+            } else {
                 if (text_rich_is_space_cp(cp)) {
                     in_word = 0;
                 } else if (!in_word) {
@@ -577,34 +615,41 @@ int text_rich_layout_build(text_rich_layout_t *layout,
                 }
             }
 
-            unsigned int item_index = layout->item_count;
-            item = &layout->items[layout->item_count++];
-            item->glyph = glyph;
-            item->codepoint = cp;
-            item->x = (short)(pen_x + glyph->xoffset);
-            item->y = (short)(pen_y + glyph->yoffset);
-            item->color = run->style.color;
-            item->layer = params->style.layer;
-            item->visible = 1;
-            item->reveal_group = current_group;
-            item->effects = run->style.effects;
-            text_rich_effect_params_apply_defaults(&item->effects);
-            item->effect_seed = item_index + 1;
-            item->glyph_index = item_index;
-            item->kind = TEXT_LAYOUT_ITEM_GLYPH;
+            {
+                unsigned int item_index = layout->item_count;
+                short scaled_xoffset = text_rich_round_to_short((float)glyph->xoffset * run_scale);
+                short scaled_yoffset = text_rich_round_to_short((float)glyph->yoffset * run_scale);
+                short scaled_xadvance = text_rich_round_to_short((float)glyph->xadvance * run_scale);
 
-            item->sprite_tex_id = -1;
-            item->sprite_u = 0;
-            item->sprite_v = 0;
-            item->sprite_w = 0;
-            item->sprite_h = 0;
-            item->sprite_xoffset = 0;
-            item->sprite_yoffset = 0;
-            item->sprite_xadvance = 0;
+                item = &layout->items[layout->item_count++];
+                item->glyph = glyph;
+                item->codepoint = cp;
+                item->x = (short)(pen_x + scaled_xoffset);
+                item->y = (short)(pen_y + scaled_yoffset);
+                item->color = run->style.color;
+                item->layer = params->style.layer;
+                item->visible = 1;
+                item->scale = run_scale;
+                item->reveal_group = current_group;
+                item->effects = run->style.effects;
+                text_rich_effect_params_apply_defaults(&item->effects);
+                item->effect_seed = item_index + 1;
+                item->glyph_index = item_index;
+                item->kind = TEXT_LAYOUT_ITEM_GLYPH;
 
-            pen_x += glyph->xadvance + params->style.tracking;
-            line_width = (short)(pen_x - line_origin_x);
-            prev_codepoint = cp;
+                item->sprite_tex_id = -1;
+                item->sprite_u = 0;
+                item->sprite_v = 0;
+                item->sprite_w = 0;
+                item->sprite_h = 0;
+                item->sprite_xoffset = 0;
+                item->sprite_yoffset = 0;
+                item->sprite_xadvance = 0;
+
+                pen_x = (short)(pen_x + scaled_xadvance + scaled_tracking);
+                line_width = (short)(pen_x - line_origin_x);
+                prev_codepoint = cp;
+            }
 
             layout->lines[layout->line_count - 1].item_count++;
             layout->lines[layout->line_count - 1].width = line_width;
@@ -617,17 +662,19 @@ int text_rich_layout_build(text_rich_layout_t *layout,
     if (layout->line_count > 0)
         layout->lines[layout->line_count - 1].width = line_width;
 
-    layout->height = (short)(layout->line_count * font->line_height);
+    layout->height = (short)(layout->line_count * line_height);
 
-    LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: ok items=%u lines=%u groups=%u width=%d height=%d",
+    LOGLNC(LOGCAT_TEXT, "[text_rich] build_plain: ok items=%u lines=%u groups=%u width=%d height=%d scale=%.3f",
           (unsigned int)layout->item_count,
           (unsigned int)layout->line_count,
           (unsigned int)layout->reveal_group_count,
           (int)layout->width,
-          (int)layout->height);
+          (int)layout->height,
+          global_scale);
 
     return 0;
 }
+
 
 void text_rich_draw_layout_ex(const text_font_t *font,
                               const text_rich_layout_t *layout,
@@ -671,17 +718,18 @@ void text_rich_draw_layout_ex(const text_font_t *font,
         text_rich_resolve_draw_state(item, time_seconds, draw_params, &ds);
         draw_x = ds.x;
         draw_y = ds.y;
-        
+
         if (item->kind == TEXT_LAYOUT_ITEM_GLYPH) {
             const text_glyph_t *glyph = item->glyph;
+            float scale = text_rich_resolve_scale(item->scale);
 
             if (!glyph)
                 continue;
 
             params = gfx2d_sprite_params(draw_x,
                                          draw_y,
-                                         (float)glyph->atlas_w,
-                                         (float)glyph->atlas_h);
+                                         (float)glyph->atlas_w * scale,
+                                         (float)glyph->atlas_h * scale);
 
             params.layer = item->layer;
             params.anchor_h = GFX2D_HALIGN_LEFT;
@@ -708,8 +756,8 @@ void text_rich_draw_layout_ex(const text_font_t *font,
 
             params = gfx2d_sprite_params(draw_x,
                                          draw_y,
-                                         (float)item->sprite_w,
-                                         (float)item->sprite_h);
+                                         (float)item->sprite_w * text_rich_resolve_scale(item->scale),
+                                         (float)item->sprite_h * text_rich_resolve_scale(item->scale));
 
             params.layer = item->layer;
             params.anchor_h = GFX2D_HALIGN_LEFT;

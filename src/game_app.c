@@ -37,7 +37,7 @@
 #endif
 
 #ifndef GAME_APP_STATE_ARENA_SIZE
-#define GAME_APP_STATE_ARENA_SIZE (64 * 1024)
+#define GAME_APP_STATE_ARENA_SIZE (96 * 1024)
 #endif
 
 struct game_app {
