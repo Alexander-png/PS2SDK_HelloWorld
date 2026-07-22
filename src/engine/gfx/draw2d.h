@@ -79,4 +79,4 @@ int gfx_draw_texture_region(gfx_texture_handle_t texture,
 }
 #endif
 
-#endif
+#endif /* DRAW2D_H */

@@ -55,4 +55,4 @@ int  gfx_texture_get_stats(gfx_texture_stats_t *out);
 }
 #endif
 
-#endif
+#endif /* GFX_TEXTURE_H */

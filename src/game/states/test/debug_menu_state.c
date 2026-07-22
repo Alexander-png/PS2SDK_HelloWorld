@@ -2,7 +2,6 @@
 #include "engine/logging/log.h"
 #include "engine/memory/memory.h"
 #include "engine/memory/memory_arena.h"
-#include "engine/gfx/sprite.h"
 #include "engine/gfx/texture.h"
 #include "engine/platform/platform.h"
 
@@ -309,7 +308,6 @@ static void debug_menu_draw(game_app_t *app, float alpha)
     if (!data)
         return;
 
-    gfx_sprite_draw_all();
     debug_overlay_draw(&data->overlay);
 }
 
