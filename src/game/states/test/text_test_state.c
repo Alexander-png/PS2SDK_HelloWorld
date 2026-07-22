@@ -718,7 +718,6 @@ static void text_test_draw(game_app_t *app, float alpha)
     if (!data)
         return;
 
-    //gfx_sprite_draw_all();
     text_block_draw(&data->block);
 }
 

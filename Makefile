@@ -57,6 +57,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/engine/gfx/texture_ps2.c \
                  $(SRC_DIR)/engine/gfx/draw2d_ps2.c \
                  $(SRC_DIR)/engine/gfx/sprite.c \
+                 $(SRC_DIR)/engine/gfx/sprite_anim.c \
                  $(SRC_DIR)/engine/text/text.c \
                  $(SRC_DIR)/engine/text/text_bmfont.c \
                  $(SRC_DIR)/engine/debug/screen_console_ps2.c \
@@ -66,6 +67,7 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/game/debug/debug_overlay.c \
                  $(SRC_DIR)/game/states/test/debug_menu_state.c \
                  $(SRC_DIR)/game/states/test/sprite_test_state.c \
+                 $(SRC_DIR)/game/states/test/sprite_animation_test_state.c \
                  $(SRC_DIR)/game/states/test/audio_test_state.c \
                  $(SRC_DIR)/game/states/test/resource_test_state.c \
                  $(SRC_DIR)/game/states/test/memory_test_state.c \

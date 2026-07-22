@@ -10,6 +10,7 @@
 #include "game/states/test/audio_test_state.h"
 #include "game/states/test/resource_test_state.h"
 #include "game/states/test/sprite_test_state.h"
+#include "game/states/test/sprite_animation_test_state.h"
 #include "game/states/test/memory_test_state.h"
 #include "game/states/test/memory_arena_test_state.h"
 #include "game/states/test/audio_mix_test_state.h"
@@ -23,13 +24,14 @@ typedef struct debug_menu_entry {
 } debug_menu_entry_t;
 
 static const debug_menu_entry_t g_menu[] = {
-    { "Sprite Test",       sprite_test_state_desc },
-    { "Audio Test",        audio_test_state_desc },
-    { "Resource Test",     resource_test_state_desc },
-    { "Memory Test",       memory_test_state_desc },
-    { "Memory Arena Test", memory_arena_test_state_desc },
-    { "Audio Mix Test",    audio_mix_test_state_desc },
-    { "Text Test",         text_test_state_desc },
+    { "Sprite Test",           sprite_test_state_desc },
+    { "Sprite Animation Test", sprite_animation_test_state_desc },
+    { "Audio Test",            audio_test_state_desc },
+    { "Resource Test",         resource_test_state_desc },
+    { "Memory Test",           memory_test_state_desc },
+    { "Memory Arena Test",     memory_arena_test_state_desc },
+    { "Audio Mix Test",        audio_mix_test_state_desc },
+    { "Text Test",             text_test_state_desc },
 };
 
 #define DEBUG_MENU_COUNT ((int)(sizeof(g_menu) / sizeof(g_menu[0])))
