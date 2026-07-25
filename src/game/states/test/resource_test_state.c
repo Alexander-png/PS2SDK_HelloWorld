@@ -13,7 +13,7 @@
 #include <stdio.h>
 
 #ifndef TEST_RESOURCE_PATH
-#define TEST_RESOURCE_PATH "assets/test/test.bin"
+#define TEST_RESOURCE_PATH "assets/test/videos/test.bin"
 #endif
 
 #ifndef RESOURCE_TEST_TIMEOUT_SEC

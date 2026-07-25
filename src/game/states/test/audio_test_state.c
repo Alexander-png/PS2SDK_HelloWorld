@@ -8,7 +8,7 @@
 #include "game/debug/debug_overlay.h"
 
 #ifndef AUDIO_TEST_WAV_PATH
-#define AUDIO_TEST_WAV_PATH "test.wav"
+#define AUDIO_TEST_WAV_PATH "assets/test/mus/test.wav"
 #endif
 
 #ifndef AUDIO_TEST_IO_BUFFER_BYTES

@@ -10,7 +10,7 @@
 #include "game/debug/debug_overlay.h"
 
 #ifndef SPRITE_ANIMATION_PATH
-#define SPRITE_ANIMATION_PATH "tv_jumpscare.png"
+#define SPRITE_ANIMATION_PATH "assets/test/textures/tv_jumpscare.png"
 #endif
 
 #ifndef SPRITE_ANIMATION_FRAME_COUNT

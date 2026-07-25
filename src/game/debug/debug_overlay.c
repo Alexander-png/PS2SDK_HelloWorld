@@ -7,11 +7,11 @@
 #include <string.h>
 
 #ifndef DEBUG_OVERLAY_DEFAULT_FONT_DESC
-#define DEBUG_OVERLAY_DEFAULT_FONT_DESC "8bitoperator_32.fnt"
+#define DEBUG_OVERLAY_DEFAULT_FONT_DESC "assets/test/fonts/8bitoperator_32.fnt"
 #endif
 
 #ifndef DEBUG_OVERLAY_DEFAULT_FONT_ATLAS
-#define DEBUG_OVERLAY_DEFAULT_FONT_ATLAS "8bitoperator_32.png"
+#define DEBUG_OVERLAY_DEFAULT_FONT_ATLAS "assets/test/textures/8bitoperator_32.png"
 #endif
 
 #ifndef DEBUG_OVERLAY_DEFAULT_X

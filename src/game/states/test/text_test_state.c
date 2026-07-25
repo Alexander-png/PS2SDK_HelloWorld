@@ -10,11 +10,11 @@
 #include "game/text/text_block.h"
 
 #ifndef TEST_FONT_DESC_PATH
-#define TEST_FONT_DESC_PATH "8bitoperator_32.fnt"
+#define TEST_FONT_DESC_PATH "assets/test/fonts/8bitoperator_32.fnt"
 #endif
 
 #ifndef TEST_FONT_ATLAS_PATH
-#define TEST_FONT_ATLAS_PATH "8bitoperator_32.png"
+#define TEST_FONT_ATLAS_PATH "assets/test/textures/8bitoperator_32.png"
 #endif
 
 #ifndef TEXT_TEST_GLYPH_CAPACITY

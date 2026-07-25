@@ -12,15 +12,15 @@
 #include <math.h>
 
 #ifndef TEST_SPRITE_PATH
-#define TEST_SPRITE_PATH "yellow.png"
+#define TEST_SPRITE_PATH "assets/test/textures/yellow.png"
 #endif
 
 #ifndef TEST_SPRITE_PATH1
-#define TEST_SPRITE_PATH1 "scaryguy.png"
+#define TEST_SPRITE_PATH1 "assets/test/textures/scaryguy.png"
 #endif
 
 #ifndef TEST_SPRITE_PATH2
-#define TEST_SPRITE_PATH2 "cryingguy0.png"
+#define TEST_SPRITE_PATH2 "assets/test/textures/cryingguy0.png"
 #endif
 
 #ifndef SPRITE_TEST_ANIM_SPEED

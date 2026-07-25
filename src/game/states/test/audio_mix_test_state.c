@@ -10,7 +10,7 @@
 #include <stdio.h>
 
 #ifndef AUDIO_MIX_TEST_MUSIC_WAV_PATH
-#define AUDIO_MIX_TEST_MUSIC_WAV_PATH "scary_music.wav"
+#define AUDIO_MIX_TEST_MUSIC_WAV_PATH "assets/test/mus/scary_music.wav"
 #endif
 
 #ifndef AUDIO_MIX_TEST_MUSIC_IO_BUFFER_BYTES
@@ -18,15 +18,15 @@
 #endif
 
 #ifndef AUDIO_MIX_TEST_SFX1_WAV_PATH
-#define AUDIO_MIX_TEST_SFX1_WAV_PATH "scary_yelling.wav"
+#define AUDIO_MIX_TEST_SFX1_WAV_PATH "assets/test/sounds/scary_yelling.wav"
 #endif
 
 #ifndef AUDIO_MIX_TEST_SFX2_WAV_PATH
-#define AUDIO_MIX_TEST_SFX2_WAV_PATH "scary_long.wav"
+#define AUDIO_MIX_TEST_SFX2_WAV_PATH "assets/test/sounds/scary_long.wav"
 #endif
 
 #ifndef AUDIO_MIX_TEST_SFX3_WAV_PATH
-#define AUDIO_MIX_TEST_SFX3_WAV_PATH "scary_laugh.wav"
+#define AUDIO_MIX_TEST_SFX3_WAV_PATH "assets/test/sounds/scary_laugh.wav"
 #endif
 
 #ifndef AUDIO_MIX_TEST_LOG_INTERVAL_SEC
