@@ -73,7 +73,9 @@ EE_STATIC_SRCS = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/game/states/test/memory_test_state.c \
                  $(SRC_DIR)/game/states/test/memory_arena_test_state.c \
                  $(SRC_DIR)/game/states/test/audio_mix_test_state.c \
-                 $(SRC_DIR)/game/states/test/text_test_state.c
+                 $(SRC_DIR)/game/states/test/text_test_state.c \
+                 $(SRC_DIR)/game/states/test/intro_test_state.c
+
                  
 
 

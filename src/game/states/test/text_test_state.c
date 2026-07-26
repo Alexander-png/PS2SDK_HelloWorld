@@ -103,7 +103,6 @@ typedef struct text_test_state_data {
 
     text_layout_item_t *rich_items;
     text_layout_line_t *lines;
-    text_rich_draw_params_t rich_draw_params;
     text_rich_run_t rich_runs[TEXT_TEST_RICH_RUN_CAPACITY];
 
     int use_yellow;
@@ -260,12 +259,12 @@ static const char *text_test_align_v_name(text_align_v_t align_v)
     }
 }
 
-text_color_t text_color_white(void)
+static text_color_t text_color_white(void)
 {
     return text_color_rgba(0xFF, 0xFF, 0xFF, 0xFF);
 }
 
-text_color_t text_color_yellow(void)
+static text_color_t text_color_yellow(void)
 {
     return text_color_rgba(0xFF, 0xFF, 0x00, 0xFF);
 }
@@ -398,8 +397,6 @@ static int text_test_enter(game_app_t *app, void *userdata)
         LOGLNC(LOGCAT_STATE, "[state:text_test] enter failed: no state arena memory");
         return -1;
     }
-
-    text_rich_draw_params_init(&data->rich_draw_params);
     
     game_app_set_state_userdata(app, data);
 
