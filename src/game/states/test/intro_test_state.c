@@ -1121,7 +1121,7 @@ static void init_text_block_intro(text_block_t *block, int screen_width, int scr
     style.layer = 100;
     style.color = text_color_white();
 
-    text_block_set_box(block, (screen_width - 400) * 0.5f, (screen_height - 120) * 0.5f + 120, 400, 120);
+    text_block_set_box(block, (screen_width - 410) * 0.5f, (screen_height - 120) * 0.5f + 120, 410, 120);
     text_block_set_align_h(block, TEXT_ALIGN_LEFT);
     text_block_set_align_v(block, TEXT_ALIGN_TOP);
 
