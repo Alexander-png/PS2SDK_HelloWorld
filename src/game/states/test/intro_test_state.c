@@ -88,6 +88,25 @@
 
 typedef struct intro_test_state_data intro_test_state_data_t;
 
+static unsigned char intro_test_alpha_to_u8(float alpha)
+{
+    int a;
+
+    if (alpha <= 0.0f)
+        return 0x00;
+    if (alpha >= 1.0f)
+        return 0xFF;
+
+    a = (int)(alpha * 255.0f + 0.5f);
+
+    if (a < 0)
+        a = 0;
+    else if (a > 255)
+        a = 255;
+
+    return (unsigned char)a;
+}
+
 static text_color_t text_color_white(void)
 {
     return text_color_rgba(0xFF, 0xFF, 0xFF, 0xFF);
@@ -103,13 +122,6 @@ typedef enum state_stage {
     LOGO,
     INTRO
 } state_stage_t;
-
-typedef enum intro_phase {
-    INTRO_PHASE_SHOW = 0,
-    INTRO_PHASE_FADE_TO_BLACK,
-    INTRO_PHASE_BLACK,
-    INTRO_PHASE_FADE_FROM_BLACK
-} intro_phase_t;
 
 typedef enum intro_action_result {
     INTRO_ACTION_CONTINUE = 0,
@@ -192,7 +204,7 @@ typedef struct intro_test_state_data {
     float fade_alpha;
 } intro_test_state_data_t;
 
-static const intro_slide_t *intro_test_current_slide_desc(const intro_test_state_data_t *data)
+static const intro_slide_t *intro_test_slide_desc(const intro_test_state_data_t *data)
 {
     if (!data || !data->slides || data->slide_count <= 0)
         return NULL;
@@ -203,7 +215,7 @@ static const intro_slide_t *intro_test_current_slide_desc(const intro_test_state
     return &data->slides[data->current_slide];
 }
 
-static void intro_test_set_current_text(intro_test_state_data_t *data, const char *text)
+static void intro_test_set_text(intro_test_state_data_t *data, const char *text)
 {
     if (!data)
         return;
@@ -212,19 +224,19 @@ static void intro_test_set_current_text(intro_test_state_data_t *data, const cha
     text_block_refresh(&data->block);
 }
 
-static void intro_test_set_current_text_line(intro_test_state_data_t *data, int line_index)
+static void intro_test_set_text_line(intro_test_state_data_t *data, int line_index)
 {
     const intro_slide_t *slide;
 
     if (!data)
         return;
 
-    slide = intro_test_current_slide_desc(data);
+    slide = intro_test_slide_desc(data);
     if (!slide || !slide->strings || line_index < 0 || line_index >= slide->string_count)
         return;
 
     data->current_text_line = line_index;
-    intro_test_set_current_text(data, slide->strings[line_index]);
+    intro_test_set_text(data, slide->strings[line_index]);
 }
 
 static intro_action_result_t intro_slide1_action(game_app_t *app,
@@ -238,17 +250,19 @@ static intro_action_result_t intro_slide1_action(game_app_t *app,
 
     t = data->slide_time;
 
-    if (data->intro_slots[0].requested)
-        data->intro_slots[0].alpha = 1.0f;
+    if (data->intro_slots[0].requested) {
+        if (t < 0.4f)
+            data->intro_slots[0].alpha = t / 0.4f;
+        else
+            data->intro_slots[0].alpha = 1.0f;
+    }
 
     if (t < 0.4f) {
-        data->intro_slots[0].alpha = t / 0.4f;
         data->fade_alpha = 0.0f;
         return INTRO_ACTION_CONTINUE;
     }
 
     if (t < 2.5f) {
-        data->intro_slots[0].alpha = 1.0f;
         data->fade_alpha = 0.0f;
         return INTRO_ACTION_CONTINUE;
     }
@@ -714,8 +728,6 @@ static int intro_test_build_scene_for_slide(intro_test_state_data_t *data,
                                             int slide_index)
 {
     const intro_slide_t *slide;
-    const char *path;
-    int slide_count;
 
     if (!data)
         return -1;
@@ -727,13 +739,12 @@ static int intro_test_build_scene_for_slide(intro_test_state_data_t *data,
         return -1;
 
     slide = &data->slides[slide_index];
-    slide_count = slide->slide_count;
 
     intro_test_release_intro_slots(data);
     intro_test_clear_intro_slots(data);
 
-    if (slide_index == 3)
-        slide_count--;
+    if (!slide->slides || slide->slide_count <= 0)
+        return 0;
 
     if (intro_test_request_slot_visual(&data->intro_slots[0],
                                        intro_test_slide_subslide_path(slide, 0),
@@ -743,6 +754,7 @@ static int intro_test_build_scene_for_slide(intro_test_state_data_t *data,
                                        INTRO_SLIDE_H,
                                        10) != 0)
         return -1;
+
     return 0;
 }
 
@@ -794,7 +806,6 @@ static void intro_test_start_slide(game_app_t *app,
                                    int slide_index)
 {
     const intro_slide_t *slide;
-    const char *text;
 
     (void)app;
 
@@ -804,10 +815,10 @@ static void intro_test_start_slide(game_app_t *app,
     if (slide_index < 0 || slide_index >= data->slide_count)
         return;
 
-    slide = &data->slides[slide_index];
-
     if (intro_test_build_scene_for_slide(data, slide_index) != 0)
         return;
+
+    slide = &data->slides[slide_index];
 
     data->stage = INTRO;
     data->stage_time = 0.0f;
@@ -817,9 +828,10 @@ static void intro_test_start_slide(game_app_t *app,
     data->current_text_line = 0;
     data->fade_alpha = 0.0f;
 
-    text = (slide->string_count > 0 && slide->strings) ? slide->strings[0] : "";
-    text_block_set_text(&data->block, text);
-    text_block_refresh(&data->block);
+    if (slide->string_count > 0 && slide->strings)
+        intro_test_set_text(data, slide->strings[0]);
+    else
+        intro_test_set_text(data, "");
 
     LOGLNC(LOGCAT_STATE, "[state:intro_test] start slide=%d name=%s",
            slide_index,
@@ -1098,25 +1110,6 @@ static void intro_test_update_logo(game_app_t *app, intro_test_state_data_t *dat
     }
 }
 
-static unsigned char intro_test_alpha_to_u8(float alpha)
-{
-    int a;
-
-    if (alpha <= 0.0f)
-        return 0x00;
-    if (alpha >= 1.0f)
-        return 0xFF;
-
-    a = (int)(alpha * 255.0f + 0.5f);
-
-    if (a < 0)
-        a = 0;
-    else if (a > 255)
-        a = 255;
-
-    return (unsigned char)a;
-}
-
 static void intro_test_apply_visual_alpha(intro_visual_t *v)
 {
     if (!v || !v->sprite_created)
@@ -1155,7 +1148,7 @@ static intro_action_result_t intro_test_default_slide_action(game_app_t *app,
     (void)app;
     (void)dt;
 
-    slide = intro_test_current_slide_desc(data);
+    slide = intro_test_slide_desc(data);
     if (!slide)
         return INTRO_ACTION_EXIT_INTRO;
 
@@ -1184,16 +1177,16 @@ static void intro_test_update_intro(game_app_t *app,
     data->stage_time += dt;
     data->slide_time += dt;
 
-    slide = intro_test_current_slide_desc(data);
+    slide = intro_test_slide_desc(data);
     if (!slide)
         return;
-
-    intro_test_update_slot_group(data->intro_slots, INTRO_MAX_SLOTS, "intro");
 
     if (slide->action)
         action_rc = slide->action(app, data, dt);
     else
         action_rc = intro_test_default_slide_action(app, data, dt);
+
+    intro_test_update_slot_group(data->intro_slots, INTRO_MAX_SLOTS, "intro");
 
     switch (action_rc) {
         case INTRO_ACTION_CONTINUE:
