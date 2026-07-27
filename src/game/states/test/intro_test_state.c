@@ -135,7 +135,7 @@ typedef struct intro_slide {
     int slide_count;
     const char **strings;
     int string_count;
-    float showing_time_ms;
+    float showing_time_sec;
     intro_action_result_t (*action)(game_app_t *app,
                                     intro_test_state_data_t *data,
                                     float dt);
@@ -159,6 +159,11 @@ typedef struct intro_visual {
     float alpha;
     float pan_x;
     float pan_y;
+    int use_region;
+    gfx_rect_t src_rect;
+
+    int tex_w;
+    int tex_h;
 } intro_visual_t;
 
 typedef struct intro_test_state_data {
@@ -258,12 +263,53 @@ static void intro_test_set_text_line(intro_test_state_data_t *data, int line_ind
     if (!data)
         return;
 
+    if (data->current_text_line == line_index)
+        return;
+
     slide = intro_test_slide_desc(data);
     if (!slide || !slide->strings || line_index < 0 || line_index >= slide->string_count)
         return;
 
     data->current_text_line = line_index;
     intro_test_set_text(data, slide->strings[line_index]);
+}
+
+static void intro_test_apply_visual_region(intro_visual_t *v)
+{
+    if (!v || !v->sprite_created)
+        return;
+
+    if (v->use_region)
+        gfx_sprite_set_region(v->sprite_id, &v->src_rect);
+    else
+        gfx_sprite_clear_region(v->sprite_id);
+}
+
+static void intro_slot_set_region(intro_visual_t *v,
+                                  float x, float y,
+                                  float w, float h)
+{
+    if (!v || !v->requested)
+        return;
+
+    if (w < 1.0f)
+        w = 1.0f;
+    if (h < 1.0f)
+        h = 1.0f;
+
+    v->use_region = 1;
+    v->src_rect.x = x;
+    v->src_rect.y = y;
+    v->src_rect.w = w;
+    v->src_rect.h = h;
+}
+
+static void intro_slot_clear_region(intro_visual_t *v)
+{
+    if (!v)
+        return;
+
+    v->use_region = 0;
 }
 
 static intro_action_result_t intro_slide1_action(game_app_t *app,
@@ -326,6 +372,322 @@ static intro_action_result_t intro_slide1_action(game_app_t *app,
     return INTRO_ACTION_NEXT_SLIDE;
 }
 
+static intro_action_result_t intro_slide2_action(game_app_t *app,
+                                                 intro_test_state_data_t *data,
+                                                 float dt)
+{
+    intro_visual_t *v;
+    float t;
+    float fade_in_k;
+    float pan_k;
+    float fade_out_k;
+    float alpha;
+    float region_w;
+    float region_h;
+    float max_x;
+    float src_x;
+
+    (void)app;
+    (void)dt;
+
+    t = data->slide_time;
+    data->fade_alpha = 0.0f;
+
+    v = &data->intro_slots[0];
+    if (!v->requested)
+        return INTRO_ACTION_CONTINUE;
+
+    fade_in_k = intro_lerp01(0.0f, 0.8f, t);
+    pan_k = intro_lerp01(0.3f, 2.8f, t);
+    fade_out_k = intro_lerp01(3.2f, 3.8f, t);
+
+    alpha = fade_in_k * (1.0f - fade_out_k);
+    intro_slot_set_alpha(v, alpha);
+
+    if (v->tex_w > 0 && v->tex_h > 0) {
+        region_w = (float)v->tex_w * 0.5f;
+        region_h = (float)v->tex_h;
+
+        if (region_w < 1.0f)
+            region_w = 1.0f;
+        if (region_h < 1.0f)
+            region_h = 1.0f;
+
+        if (region_w > (float)v->tex_w)
+            region_w = (float)v->tex_w;
+        if (region_h > (float)v->tex_h)
+            region_h = (float)v->tex_h;
+
+        max_x = (float)v->tex_w - region_w;
+        if (max_x < 0.0f)
+            max_x = 0.0f;
+
+        src_x = max_x * pan_k;
+
+        intro_slot_set_region(v,
+                              src_x,
+                              0.0f,
+                              region_w,
+                              region_h);
+    }
+
+    if (t < 4.0f)
+        return INTRO_ACTION_CONTINUE;
+
+    return INTRO_ACTION_NEXT_SLIDE;
+}
+
+static intro_action_result_t intro_slide3_action(game_app_t *app,
+                                                 intro_test_state_data_t *data,
+                                                 float dt)
+{
+    intro_visual_t *v;
+    float t;
+    float alpha;
+
+    (void)app;
+    (void)dt;
+
+    t = data->slide_time;
+    data->fade_alpha = 0.0f;
+
+    v = &data->intro_slots[0];
+    if (!v->requested)
+        return INTRO_ACTION_CONTINUE;
+
+    if (t < 0.4f) {
+        alpha = intro_lerp01(0.0f, 0.4f, t);
+    } else if (t < 2.0f) {
+        alpha = 1.0f;
+    } else if (t < 2.4f) {
+        alpha = 1.0f - intro_lerp01(2.0f, 2.4f, t);
+    } else {
+        alpha = 0.0f;
+    }
+
+    intro_slot_set_alpha(v, alpha);
+    intro_slot_clear_region(v);
+
+    if (t < 2.7f)
+        return INTRO_ACTION_CONTINUE;
+
+    return INTRO_ACTION_NEXT_SLIDE;
+}
+
+static intro_action_result_t intro_slide4_action(game_app_t *app,
+                                                 intro_test_state_data_t *data,
+                                                 float dt)
+{
+    float t;
+    float k;
+
+    (void)app;
+    (void)dt;
+
+    t = data->slide_time;
+    data->fade_alpha = 0.0f;
+
+    intro_slot_set_alpha(&data->intro_slots[0], 0.0f);
+    intro_slot_set_alpha(&data->intro_slots[1], 0.0f);
+    intro_slot_set_alpha(&data->intro_slots[2], 0.0f);
+    intro_slot_set_alpha(&data->intro_slots[3], 0.0f);
+
+    intro_slot_clear_region(&data->intro_slots[0]);
+    intro_slot_clear_region(&data->intro_slots[1]);
+    intro_slot_clear_region(&data->intro_slots[2]);
+    intro_slot_clear_region(&data->intro_slots[3]);
+
+    if (t < 0.4f) {
+        k = intro_lerp01(0.0f, 0.4f, t);
+        intro_slot_set_alpha(&data->intro_slots[0], k);
+        intro_slot_set_alpha(&data->intro_slots[1], k);
+        intro_slot_set_alpha(&data->intro_slots[2], k);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 0.8f) {
+        intro_slot_set_alpha(&data->intro_slots[0], 1.0f);
+        intro_slot_set_alpha(&data->intro_slots[1], 1.0f);
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 1.2f) {
+        k = intro_lerp01(0.8f, 1.2f, t);
+        intro_slot_set_alpha(&data->intro_slots[0], 1.0f - k);
+        intro_slot_set_alpha(&data->intro_slots[1], 1.0f - k);
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 1.6f) {
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 2.0f) {
+        k = intro_lerp01(1.6f, 2.0f, t);
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
+        intro_slot_set_alpha(&data->intro_slots[3], k);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 2.4f) {
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
+        intro_slot_set_alpha(&data->intro_slots[3], 1.0f);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 2.5f) {
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
+        intro_slot_set_alpha(&data->intro_slots[3], 1.0f);
+        intro_test_set_text_line(data, 1);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 3.0f) {
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
+        intro_slot_set_alpha(&data->intro_slots[3], 1.0f);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 3.4f) {
+        k = intro_lerp01(3.0f, 3.4f, t);
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f - k);
+        intro_slot_set_alpha(&data->intro_slots[3], 1.0f - k);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 3.7f)
+        return INTRO_ACTION_CONTINUE;
+
+    return INTRO_ACTION_NEXT_SLIDE;
+}
+
+static intro_action_result_t intro_slide5_action(game_app_t *app,
+                                                 intro_test_state_data_t *data,
+                                                 float dt)
+{
+    intro_visual_t *v;
+    float t;
+    float alpha;
+
+    (void)app;
+    (void)dt;
+
+    t = data->slide_time;
+    data->fade_alpha = 0.0f;
+
+    v = &data->intro_slots[0];
+    if (!v->requested)
+        return INTRO_ACTION_CONTINUE;
+
+    intro_slot_clear_region(v);
+
+    if (t >= 1.4f)
+        intro_test_set_text_line(data, 1);
+
+    if (t < 0.4f) {
+        alpha = intro_lerp01(0.0f, 0.4f, t);
+    } else if (t < 2.5f) {
+        alpha = 1.0f;
+    } else if (t < 2.9f) {
+        alpha = intro_invlerp01(2.5f, 2.9f, t);
+    } else {
+        alpha = 0.0f;
+    }
+
+    intro_slot_set_alpha(v, alpha);
+
+    if (t < 3.2f)
+        return INTRO_ACTION_CONTINUE;
+
+    return INTRO_ACTION_NEXT_SLIDE;
+}
+
+static intro_action_result_t intro_slide10_action(game_app_t *app,
+                                                  intro_test_state_data_t *data,
+                                                  float dt)
+{
+    intro_visual_t *fg;
+    intro_visual_t *bg;
+    float t;
+    float fade_k;
+    float move_k;
+    float out_k;
+    float src_y;
+
+    (void)app;
+    (void)dt;
+
+    t = data->slide_time;
+    data->fade_alpha = 0.0f;
+
+    fg = &data->intro_slots[0];
+    bg = &data->intro_slots[1];
+
+    if (!fg->requested || !bg->requested)
+        return INTRO_ACTION_CONTINUE;
+
+    intro_slot_set_alpha(fg, 0.0f);
+    intro_slot_set_alpha(bg, 0.0f);
+
+    intro_slot_set_region(fg, 0.0f, 0.0f, 200.0f, 110.0f);
+    intro_slot_clear_region(bg);
+    bg->pan_y = 0.0f;
+
+    if (t < 0.5f) {
+        fade_k = intro_lerp01(0.0f, 0.5f, t);
+        intro_slot_set_alpha(fg, fade_k);
+        intro_slot_set_alpha(bg, fade_k);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 1.0f) {
+        intro_slot_set_alpha(fg, 1.0f);
+        intro_slot_set_alpha(bg, 1.0f);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 3.5f) {
+        move_k = intro_lerp01(1.0f, 3.5f, t);
+
+        src_y = 60.0f * move_k;
+        intro_slot_set_region(fg, 0.0f, src_y, 200.0f, 110.0f);
+
+        bg->pan_y = -12.0f * move_k;
+
+        intro_slot_set_alpha(fg, 1.0f);
+        intro_slot_set_alpha(bg, 1.0f);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 4.0f) {
+        intro_slot_set_region(fg, 0.0f, 60.0f, 200.0f, 110.0f);
+        bg->pan_y = -12.0f;
+
+        intro_slot_set_alpha(fg, 1.0f);
+        intro_slot_set_alpha(bg, 1.0f);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 4.4f) {
+        out_k = intro_lerp01(4.0f, 4.4f, t);
+
+        intro_slot_set_region(fg, 0.0f, 60.0f, 200.0f, 110.0f);
+        bg->pan_y = -12.0f;
+
+        intro_slot_set_alpha(fg, 1.0f - out_k);
+        intro_slot_set_alpha(bg, 1.0f - out_k);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 4.7f)
+        return INTRO_ACTION_CONTINUE;
+
+    return INTRO_ACTION_NEXT_SLIDE;
+}
+
 static const intro_slide_t slides[] = {
     {
         "intro_slide_1",
@@ -333,8 +695,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro1_slides),
         intro1_text,
         ARRAY_COUNT(intro1_text),
-        3.0f,
-        intro_slide1_action,
+        0.0f,
+        intro_slide1_action
     },
     {
         "intro_slide_2",
@@ -342,8 +704,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro2_slides),
         intro2_text,
         ARRAY_COUNT(intro2_text),
-        3.0f,
-        NULL
+        0.0f,
+        intro_slide2_action
     },
     {
         "intro_slide_3",
@@ -351,8 +713,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro3_slides),
         intro3_text,
         ARRAY_COUNT(intro3_text),
-        3.0f,
-        NULL
+        0.0f,
+        intro_slide3_action
     },
     {
         "intro_slide_4",
@@ -360,8 +722,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro4_slides),
         intro4_text,
         ARRAY_COUNT(intro4_text),
-        3.0f,
-        NULL
+        0.0f,
+        intro_slide4_action
     },
     {
         "intro_slide_5",
@@ -369,8 +731,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro5_slides),
         intro5_text,
         ARRAY_COUNT(intro5_text),
-        3.0f,
-        NULL
+        0.0f,
+        intro_slide5_action
     },
     {
         "intro_slide_6",
@@ -378,8 +740,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro6_slides),
         intro6_text,
         ARRAY_COUNT(intro6_text),
-        3.0f,
-        NULL
+        0.0f,
+        intro_slide3_action
     },
     {
         "intro_slide_7",
@@ -387,8 +749,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro7_slides),
         NULL,
         0,
-        3.0f,
-        NULL
+        0.0f,
+        intro_slide3_action
     },
     {
         "intro_slide_8",
@@ -396,8 +758,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro8_slides),
         NULL,
         0,
-        3.0f,
-        NULL
+        0.0f,
+        intro_slide3_action
     },
     {
         "intro_slide_9",
@@ -405,8 +767,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro9_slides),
         NULL,
         0,
-        3.0f,
-        NULL
+        0.0f,
+        intro_slide3_action
     },
     {
         "intro_slide_10",
@@ -414,8 +776,8 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro10_slides),
         NULL,
         0,
-        3.0f,
-        NULL
+        0.0f,
+        intro_slide10_action
     },
 };
 
@@ -427,7 +789,7 @@ static const intro_slide_t slides_ru[] = {
         intro1_text_ru,
         ARRAY_COUNT(intro1_text_ru),
         0.0f,
-        NULL,
+        intro_slide1_action
     },
     {
         "intro_slide_2",
@@ -436,7 +798,7 @@ static const intro_slide_t slides_ru[] = {
         intro2_text_ru,
         ARRAY_COUNT(intro2_text_ru),
         0.0f,
-        NULL
+        intro_slide2_action
     },
     {
         "intro_slide_3",
@@ -445,7 +807,7 @@ static const intro_slide_t slides_ru[] = {
         intro3_text_ru,
         ARRAY_COUNT(intro3_text_ru),
         0.0f,
-        NULL
+        intro_slide3_action
     },
     {
         "intro_slide_4",
@@ -454,7 +816,7 @@ static const intro_slide_t slides_ru[] = {
         intro4_text_ru,
         ARRAY_COUNT(intro4_text_ru),
         0.0f,
-        NULL
+        intro_slide4_action
     },
     {
         "intro_slide_5",
@@ -463,7 +825,7 @@ static const intro_slide_t slides_ru[] = {
         intro5_text_ru,
         ARRAY_COUNT(intro5_text_ru),
         0.0f,
-        NULL
+        intro_slide5_action
     },
     {
         "intro_slide_6",
@@ -472,7 +834,7 @@ static const intro_slide_t slides_ru[] = {
         intro6_text_ru,
         ARRAY_COUNT(intro6_text_ru),
         0.0f,
-        NULL
+        intro_slide3_action
     },
     {
         "intro_slide_7",
@@ -481,7 +843,7 @@ static const intro_slide_t slides_ru[] = {
         NULL,
         0,
         0.0f,
-        NULL
+        intro_slide3_action
     },
     {
         "intro_slide_8",
@@ -490,7 +852,7 @@ static const intro_slide_t slides_ru[] = {
         NULL,
         0,
         0.0f,
-        NULL
+        intro_slide3_action
     },
     {
         "intro_slide_9",
@@ -499,7 +861,7 @@ static const intro_slide_t slides_ru[] = {
         NULL,
         0,
         0.0f,
-        NULL
+        intro_slide3_action
     },
     {
         "intro_slide_10",
@@ -508,7 +870,7 @@ static const intro_slide_t slides_ru[] = {
         NULL,
         0,
         0.0f,
-        NULL
+        intro_slide10_action
     },
 };
 
@@ -573,6 +935,13 @@ static void reset_visual(intro_visual_t *v)
     v->alpha = 1.0f;
     v->pan_x = 0.0f;
     v->pan_y = 0.0f;
+    v->use_region = 0;
+    v->src_rect.x = 0.0f;
+    v->src_rect.y = 0.0f;
+    v->src_rect.w = 0.0f;
+    v->src_rect.h = 0.0f;
+    v->tex_w = 0;
+    v->tex_h = 0;
 }
 
 static void intro_test_clear_intro_slots(intro_test_state_data_t *data)
@@ -685,6 +1054,14 @@ static int try_create_visual(intro_visual_t *v, const char *tag)
               "[state:intro_test] ready but no gfx texture tag=%s",
               tag ? tag : "?");
         return -1;
+    }
+
+    if (gfx_texture_get_size(v->gfx_texture, &v->tex_w, &v->tex_h) < 0) {
+        LOGLNC(LOGCAT_RESOURCES,
+            "[state:intro_test] failed to get texture size tag=%s",
+            tag ? tag : "?");
+        v->tex_w = 0;
+        v->tex_h = 0;
     }
 
     if (!v->prewarmed) {
@@ -972,7 +1349,7 @@ static int intro_test_reset(game_app_t *app, intro_test_state_data_t *data)
     data->option = EN;
     data->current_slide = 0;
     data->current_subslide = 0;
-    data->current_text_line = 0;
+    data->current_text_line = -1;
     data->visual_dirty = 0;
     data->text_dirty = 0;
 
@@ -1192,6 +1569,7 @@ static void intro_test_update_slot_group(intro_visual_t *slots, int count, const
         if (slots[i].sprite_created) {
             intro_test_apply_visual_alpha(&slots[i]);
             gfx_sprite_update(slots[i].sprite_id, &slots[i].draw_params);
+            intro_test_apply_visual_region(&slots[i]);
         }
     }
 }
@@ -1210,7 +1588,7 @@ static intro_action_result_t intro_test_default_slide_action(game_app_t *app,
     if (!slide)
         return INTRO_ACTION_EXIT_INTRO;
 
-    duration = slide->showing_time_ms;
+    duration = slide->showing_time_sec;
     if (duration <= 0.0f)
         duration = INTRO_SLIDE_DEFAULT_SECONDS;
 
