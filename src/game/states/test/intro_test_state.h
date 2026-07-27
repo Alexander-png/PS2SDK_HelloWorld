@@ -7,6 +7,24 @@
 extern "C" {
 #endif
 
+typedef enum state_option {
+    EN = 0,
+    RU,
+    EXIT
+} state_option_t;
+
+typedef struct intro_state_menu_option {
+    const char *name;
+    const char *text_utf8;
+    state_option_t option_tag;
+} intro_state_menu_option_t;
+
+static const intro_state_menu_option_t menu_options[] = {
+    { "en",   "English", EN },
+    { "ru",   "Русский", RU },
+    { "exit", "Exit",    EXIT }
+};
+
 static const char snd_confirm[] = "assets/undertale_yellow/sounds/snd_confirm.wav";
 static const char snd_mainmenu_select[] = "assets/undertale_yellow/sounds/snd_mainmenu_select.wav";
 static const char sndfnt_default2[] = "assets/undertale_yellow/sounds/sndfnt_default2.wav";

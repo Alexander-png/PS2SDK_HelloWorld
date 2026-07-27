@@ -163,3 +163,14 @@ int renderer_get_stats(gfx_renderer_stats_t *out)
     out->height = g_gs->Height;
     return 0;
 }
+
+int renderer_get_screen_width() {
+    if (!g_gs)
+        return 0;
+    return g_gs->Width;
+}
+int renderer_get_screen_height(){
+    if (!g_gs)
+        return 0;
+    return g_gs->Height;
+}

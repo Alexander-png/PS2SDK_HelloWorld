@@ -29,6 +29,7 @@ int  texture_assets_init(void);
 void texture_assets_shutdown(void);
 void texture_assets_update(void);
 
+texture_handle_t texture_invalid_handle(void);
 texture_handle_t texture_load_png(const char *path, stream_priority_t prio);
 void             texture_release(texture_handle_t handle);
 

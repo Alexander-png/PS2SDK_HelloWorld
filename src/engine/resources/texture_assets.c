@@ -29,14 +29,6 @@ typedef struct texture_load_ctx {
 static texture_system_t g_texturesys;
 static texture_load_ctx_t g_load_ctx[TEXTURE_MAX_ITEMS];
 
-static texture_handle_t texture_invalid_handle(void)
-{
-    texture_handle_t h;
-    h.index = 0xffffu;
-    h.generation = 0;
-    return h;
-}
-
 static int texture_handle_to_index(texture_handle_t handle)
 {
     texture_item_t *t;
@@ -191,6 +183,14 @@ void texture_assets_shutdown(void)
 
 void texture_assets_update(void)
 {
+}
+
+texture_handle_t texture_invalid_handle(void)
+{
+    texture_handle_t h;
+    h.index = 0xffffu;
+    h.generation = 0;
+    return h;
 }
 
 texture_handle_t texture_load_png(const char *path, stream_priority_t prio)

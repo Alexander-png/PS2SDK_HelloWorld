@@ -1,6 +1,7 @@
 #include "engine/logging/log.h"
 #include "engine/memory/memory_arena.h"
 #include "engine/gfx/draw2d.h"
+#include "engine/gfx/renderer.h"
 #include "engine/gfx/sprite.h"
 #include "engine/resources/texture_assets.h"
 #include "engine/audio/audio.h"
@@ -26,22 +27,6 @@
 #define FONT_ATLAS_PATH "assets/test/textures/8bitoperator_32.png"
 #endif
 
-#ifndef TEXT_BOX_X
-#define TEXT_BOX_X 32
-#endif
-
-#ifndef TEXT_BOX_Y
-#define TEXT_BOX_Y 32
-#endif
-
-#ifndef TEXT_BOX_W
-#define TEXT_BOX_W 400
-#endif
-
-#ifndef TEXT_BOX_H
-#define TEXT_BOX_H 400
-#endif
-
 #ifndef TEXT_RICH_RUN_CAPACITY
 #define TEXT_RICH_RUN_CAPACITY 128
 #endif
@@ -57,14 +42,6 @@
 #ifndef TEXT_REVEAL_SECONDS_PER_GLYPH
 //#define TEXT_REVEAL_SECONDS_PER_GLYPH 0.08f
 #define TEXT_REVEAL_SECONDS_PER_GLYPH 0.03f
-#endif
-
-#ifndef INTRO_SCREEN_W
-#define INTRO_SCREEN_W 640.0f
-#endif
-
-#ifndef INTRO_SCREEN_H
-#define INTRO_SCREEN_H 448.0f
 #endif
 
 #ifndef LOGO_W
@@ -99,13 +76,12 @@
 #define INTRO_SLIDE_H 220.0f
 #endif
 
-#define INTRO_TEXT_BOX_W 400
-#define INTRO_TEXT_BOX_H 120
-#define INTRO_TEXT_BOX_X ((INTRO_SCREEN_W - INTRO_TEXT_BOX_W) / 2)
-#define INTRO_TEXT_BOX_Y ((INTRO_SCREEN_H - INTRO_TEXT_BOX_H) / 2 + 120)
-
 #ifndef INTRO_SLIDE_DEFAULT_SECONDS
 #define INTRO_SLIDE_DEFAULT_SECONDS 3.0f
+#endif
+
+#ifndef INTRO_MAX_SLOTS
+#define INTRO_MAX_SLOTS 3
 #endif
 
 #define ARRAY_COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
@@ -117,29 +93,29 @@ static text_color_t text_color_white(void)
     return text_color_rgba(0xFF, 0xFF, 0xFF, 0xFF);
 }
 
+static int menu_option_count(void)
+{
+    return ARRAY_COUNT(menu_options);
+}
+
 typedef enum state_stage {
     MENU_LANG_SELECT = 0,
     LOGO,
     INTRO
 } state_stage_t;
 
-typedef enum state_option {
-    EN = 0,
-    RU,
-    EXIT
-} state_option_t;
+typedef enum intro_phase {
+    INTRO_PHASE_SHOW = 0,
+    INTRO_PHASE_FADE_TO_BLACK,
+    INTRO_PHASE_BLACK,
+    INTRO_PHASE_FADE_FROM_BLACK
+} intro_phase_t;
 
-typedef struct intro_state_menu_option {
-    const char *name;
-    const char *text_utf8;
-    state_option_t option_tag;
-} intro_state_menu_option_t;
-
-static const intro_state_menu_option_t menu_options[] = {
-    { "en",   "English", EN },
-    { "ru",   "Русский", RU },
-    { "exit", "Exit",    EXIT }
-};
+typedef enum intro_action_result {
+    INTRO_ACTION_CONTINUE = 0,
+    INTRO_ACTION_NEXT_SLIDE,
+    INTRO_ACTION_EXIT_INTRO
+} intro_action_result_t;
 
 typedef struct intro_slide {
     const char *name;
@@ -148,8 +124,143 @@ typedef struct intro_slide {
     const char **strings;
     int string_count;
     float showing_time_ms;
-    void (*action)(game_app_t *app, intro_test_state_data_t *data, float dt);
+    intro_action_result_t (*action)(game_app_t *app,
+                                    intro_test_state_data_t *data,
+                                    float dt);
 } intro_slide_t;
+
+typedef struct audio_descriptor {
+    int asset;
+    int ok;
+} audio_descriptor_t;
+
+typedef struct intro_visual {
+    const char *path;
+    texture_handle_t texture;
+    gfx_texture_handle_t gfx_texture;
+    gfx_sprite_id_t sprite_id;
+    int requested;
+    int prewarmed;
+    int sprite_created;
+    gfx_draw_params_t draw_params;
+
+    float alpha;
+    float pan_x;
+    float pan_y;
+} intro_visual_t;
+
+typedef struct intro_test_state_data {
+    int screen_width;
+    int screen_height;
+
+    state_stage_t stage;
+    state_option_t option;
+    int current_slide;
+    int current_subslide;
+    int current_text_line;
+    int visual_dirty;
+    int text_dirty;
+
+    float stage_time;
+    float logo_time;
+    float slide_time;
+
+    const intro_slide_t *slides;
+    int slide_count;
+
+    text_font_resource_t font_res;
+
+    text_layout_item_t *rich_items;
+    text_layout_line_t *lines;
+    text_block_t block;
+    text_rich_run_t rich_runs[TEXT_RICH_RUN_CAPACITY];
+
+    int mus_intro_voice;
+    audio_descriptor_t mus_intro;
+    audio_descriptor_t mus_intronoise;
+    audio_descriptor_t snd_confirm;
+    audio_descriptor_t snd_menu_select;
+    audio_descriptor_t sndfnt;
+
+    char menu_markup[256];
+
+    intro_visual_t logo_main;
+    intro_visual_t logo_sub;
+
+    intro_visual_t intro_slots[INTRO_MAX_SLOTS];
+
+    float fade_alpha;
+} intro_test_state_data_t;
+
+static const intro_slide_t *intro_test_current_slide_desc(const intro_test_state_data_t *data)
+{
+    if (!data || !data->slides || data->slide_count <= 0)
+        return NULL;
+
+    if (data->current_slide < 0 || data->current_slide >= data->slide_count)
+        return NULL;
+
+    return &data->slides[data->current_slide];
+}
+
+static void intro_test_set_current_text(intro_test_state_data_t *data, const char *text)
+{
+    if (!data)
+        return;
+
+    text_block_set_text(&data->block, text ? text : "");
+    text_block_refresh(&data->block);
+}
+
+static void intro_test_set_current_text_line(intro_test_state_data_t *data, int line_index)
+{
+    const intro_slide_t *slide;
+
+    if (!data)
+        return;
+
+    slide = intro_test_current_slide_desc(data);
+    if (!slide || !slide->strings || line_index < 0 || line_index >= slide->string_count)
+        return;
+
+    data->current_text_line = line_index;
+    intro_test_set_current_text(data, slide->strings[line_index]);
+}
+
+static intro_action_result_t intro_slide1_action(game_app_t *app,
+                                                 intro_test_state_data_t *data,
+                                                 float dt)
+{
+    float t;
+
+    (void)app;
+    (void)dt;
+
+    t = data->slide_time;
+
+    if (data->intro_slots[0].requested)
+        data->intro_slots[0].alpha = 1.0f;
+
+    if (t < 0.4f) {
+        data->intro_slots[0].alpha = t / 0.4f;
+        data->fade_alpha = 0.0f;
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 2.5f) {
+        data->intro_slots[0].alpha = 1.0f;
+        data->fade_alpha = 0.0f;
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 2.8f) {
+        data->fade_alpha = (t - 2.5f) / 0.3f;
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    data->fade_alpha = 1.0f;
+    return INTRO_ACTION_NEXT_SLIDE;
+}
 
 static const intro_slide_t slides[] = {
     {
@@ -159,7 +270,7 @@ static const intro_slide_t slides[] = {
         intro1_text,
         ARRAY_COUNT(intro1_text),
         3.0f,
-        NULL,
+        intro_slide1_action,
     },
     {
         "intro_slide_2",
@@ -337,112 +448,78 @@ static const intro_slide_t slides_ru[] = {
     },
 };
 
-typedef struct audio_descriptor {
-    int asset;
-    int ok;
-} audio_descriptor_t;
-
-static texture_handle_t intro_test_invalid_texture(void)
-{
-    texture_handle_t h;
-    h.index = 0xffffu;
-    h.generation = 0;
-    return h;
-}
-
-typedef struct intro_visual {
-    const char *path;
-    texture_handle_t texture;
-    gfx_texture_handle_t gfx_texture;
-    gfx_sprite_id_t sprite_id;
-    int requested;
-    int prewarmed;
-    int sprite_created;
-    gfx_draw_params_t draw_params;
-} intro_visual_t;
-
-typedef struct intro_test_state_data {
-    state_stage_t stage;
-    state_option_t option;
-    int current_slide;
-    int current_subslide;
-    int current_text_line;
-    int visual_dirty;
-    int text_dirty;
-
-    const intro_slide_t *slides;
-    int slide_count;
-
-    text_font_resource_t font_res;
-
-    text_layout_item_t *rich_items;
-    text_layout_line_t *lines;
-    text_block_t block;
-    text_rich_run_t rich_runs[TEXT_RICH_RUN_CAPACITY];
-
-    int mus_intro_voice;
-    audio_descriptor_t mus_intro;
-    audio_descriptor_t mus_intronoise;
-    audio_descriptor_t snd_confirm;
-    audio_descriptor_t snd_menu_select;
-    audio_descriptor_t sndfnt;
-
-    int font_bound_logged;
-    char menu_markup[256];
-
-    intro_visual_t logo_main;
-    intro_visual_t logo_sub;
-    intro_visual_t intro_current;
-    float stage_timer;
-} intro_test_state_data_t;
-
 static intro_test_state_data_t *intro_test_data(game_app_t *app)
 {
     return GAME_APP_STATE_DATA_AS(app, intro_test_state_data_t);
 }
 
-static int intro_test_menu_option_count(void)
+static int open_music(audio_descriptor_t *descriptor, const char *path)
 {
-    return ARRAY_COUNT(menu_options);
+    descriptor->asset = audio_asset_load_stream(path, AUDIO_BUFFER_SIZE);
+
+    if (descriptor->asset < 0) {
+        LOGLNC(LOGCAT_AUDIO, "[state:intro_test] audio_asset_load_stream failed: %d",
+              descriptor->asset);
+        descriptor->asset = -1;
+        return -1;
+    }
+
+    descriptor->ok = 1;
+
+    if (audio_asset_preload(descriptor->asset) < 0) {
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] audio_asset_preload failed: %d",
+              descriptor->asset);
+        audio_asset_unload(descriptor->asset);
+        descriptor->asset = -1;
+        descriptor->ok = 0;
+        return -1;
+    }
+    return 0;
 }
 
-static int intro_test_slide_table_count(const intro_test_state_data_t *data)
+static int load_sfx(audio_descriptor_t *descriptor, const char *path)
 {
-    return data ? data->slide_count : 0;
+    descriptor->asset = audio_asset_load_sfx(path);
+    if (descriptor->asset < 0) {
+        descriptor->ok = 0;
+        LOGLNC(LOGCAT_AUDIO, "[state:intro_test] load failed path=%s rc=%d",
+              path, descriptor->asset);
+        return -1;
+    }
+
+    descriptor->ok = 1;
+    LOGLNC(LOGCAT_AUDIO, "[state:intro_test] loaded handle=%d path=%s",
+          descriptor->asset, path);
+    return 0;
 }
 
-static const intro_slide_t *intro_test_current_slide_desc(const intro_test_state_data_t *data)
-{
-    if (!data || !data->slides || data->slide_count <= 0)
-        return NULL;
-
-    if (data->current_slide < 0 || data->current_slide >= data->slide_count)
-        return NULL;
-
-    return &data->slides[data->current_slide];
-}
-
-static const char *intro_test_slide_primary_path(const intro_slide_t *slide)
-{
-    if (!slide || !slide->slides || slide->slide_count <= 0)
-        return NULL;
-
-    return slide->slides[0];
-}
-
-static void intro_test_reset_visual(intro_visual_t *v)
+static void reset_visual(intro_visual_t *v)
 {
     if (!v)
         return;
 
     v->path = NULL;
-    v->texture = intro_test_invalid_texture();
+    v->texture = texture_invalid_handle();
     v->gfx_texture = gfx_texture_invalid();
     v->sprite_id = -1;
     v->requested = 0;
     v->prewarmed = 0;
     v->sprite_created = 0;
     v->draw_params = gfx_draw_params_default(0.0f, 0.0f, 0.0f, 0.0f);
+    v->alpha = 1.0f;
+    v->pan_x = 0.0f;
+    v->pan_y = 0.0f;
+}
+
+static void intro_test_clear_intro_slots(intro_test_state_data_t *data)
+{
+    int i;
+
+    if (!data)
+        return;
+
+    for (i = 0; i < INTRO_MAX_SLOTS; ++i)
+        reset_visual(&data->intro_slots[i]);
 }
 
 static int intro_test_request_visual(intro_visual_t *v,
@@ -471,39 +548,53 @@ static int intro_test_request_visual(intro_visual_t *v,
     return 0;
 }
 
-static int intro_test_request_current_slide_visual(intro_test_state_data_t *data)
+static int intro_test_request_slot_visual(intro_visual_t *v,
+                                          const char *path,
+                                          float x,
+                                          float y,
+                                          float w,
+                                          float h,
+                                          int layer)
 {
-    const intro_slide_t *slide;
-    const char *path;
-    float cx = INTRO_SCREEN_W * 0.5f;
-
-    if (!data)
+    if (!v || !path)
         return -1;
 
-    slide = intro_test_current_slide_desc(data);
-    if (!slide)
-        return -1;
-
-    path = intro_test_slide_primary_path(slide);
-    if (!path)
-        return -1;
-
-    if (!data->intro_current.requested) {
-        data->intro_current.draw_params =
-            gfx_draw_params_default(
-                cx - INTRO_SLIDE_W * 0.5f,
-                36.0f,
-                INTRO_SLIDE_W,
-                INTRO_SLIDE_H);
-        data->intro_current.draw_params.origin_v = GFX_VALIGN_TOP;
-        data->intro_current.draw_params.origin_h = GFX_HALIGN_LEFT;
-        data->intro_current.draw_params.layer = 0;
+    if (!v->requested) {
+        v->draw_params = gfx_draw_params_default(x, y, w, h);
+        v->draw_params.origin_v = GFX_VALIGN_TOP;
+        v->draw_params.origin_h = GFX_HALIGN_LEFT;
+        v->draw_params.layer = layer;
     }
 
-    return intro_test_request_visual(&data->intro_current, path);
+    return intro_test_request_visual(v, path);
 }
 
-static int intro_test_try_create_visual(intro_visual_t *v, const char *tag)
+static void intro_test_release_visual(intro_visual_t *v)
+{
+    if (!v)
+        return;
+
+    if (v->sprite_created)
+        gfx_sprite_remove(v->sprite_id);
+
+    if (texture_is_valid(v->texture))
+        texture_release(v->texture);
+
+    reset_visual(v);
+}
+
+static void intro_test_release_intro_slots(intro_test_state_data_t *data)
+{
+    int i;
+
+    if (!data)
+        return;
+
+    for (i = 0; i < INTRO_MAX_SLOTS; ++i)
+        intro_test_release_visual(&data->intro_slots[i]);
+}
+
+static int try_create_visual(intro_visual_t *v, const char *tag)
 {
     texture_status_t st;
 
@@ -557,41 +648,56 @@ static int intro_test_try_create_visual(intro_visual_t *v, const char *tag)
     return 0;
 }
 
-static void intro_test_release_visual(intro_visual_t *v)
+static const char *intro_test_slide_subslide_path(const intro_slide_t *slide, int subslide_index)
 {
-    if (!v)
-        return;
+    if (!slide || !slide->slides || slide->slide_count <= 0)
+        return NULL;
 
-    if (v->sprite_created)
-        gfx_sprite_remove(v->sprite_id);
+    if (subslide_index < 0 || subslide_index >= slide->slide_count)
+        return NULL;
 
-    if (texture_is_valid(v->texture))
-        texture_release(v->texture);
+    return slide->slides[subslide_index];
+}
 
-    intro_test_reset_visual(v);
+static void init_text_block_menu(text_block_t *block) {
+    text_style_t style;
+    text_style_init(&style);
+    style.layer = 100;
+    style.color = text_color_white();
+
+    text_block_set_box(block, 32, 32, 200, 300);
+    text_block_set_align_h(block, TEXT_ALIGN_LEFT);
+    text_block_set_align_v(block, TEXT_ALIGN_TOP);
+
+    text_block_set_style(block, &style);
+    text_block_set_wrap_mode(block, TEXT_WRAP_WORD);
+    text_block_set_reveal_mode(block, TEXT_REVEAL_NONE);
+}
+
+static void init_text_block_intro(text_block_t *block, int screen_width, int screen_height) {
+    text_style_t style;
+    text_style_init(&style);
+    style.layer = 100;
+    style.color = text_color_white();
+
+    text_block_set_box(block, (screen_width - 400) * 0.5f, (screen_height - 120) * 0.5f + 120, 400, 120);
+    text_block_set_align_h(block, TEXT_ALIGN_LEFT);
+    text_block_set_align_v(block, TEXT_ALIGN_TOP);
+
+    text_block_set_style(block, &style);
+    text_block_set_wrap_mode(block, TEXT_WRAP_WORD);
+    text_block_set_reveal_mode(block, TEXT_REVEAL_GLYPH);
 }
 
 static void intro_test_apply_menu_text(intro_test_state_data_t *data)
 {
-    text_style_t style;
     const char *line0;
     const char *line1;
     const char *line2;
 
-    if (!data)
-        return;
-
-    line0 = (data->option == EN)
-        ? "[color=#FFFF00]English[/color]"
-        : "English";
-
-    line1 = (data->option == RU)
-        ? "[color=#FFFF00]Русский[/color]"
-        : "Русский";
-
-    line2 = (data->option == EXIT)
-        ? "[color=#FFFF00]Exit[/color]"
-        : "Exit";
+    line0 = (data->option == EN) ? "[color=#FFFF00]English[/color]" : "English";
+    line1 = (data->option == RU) ? "[color=#FFFF00]Русский[/color]" : "Русский";
+    line2 = (data->option == EXIT) ? "[color=#FFFF00]Exit[/color]" : "Exit";
 
     snprintf(data->menu_markup,
              sizeof(data->menu_markup),
@@ -600,105 +706,60 @@ static void intro_test_apply_menu_text(intro_test_state_data_t *data)
              line1,
              line2);
 
-    text_style_init(&style);
-    style.layer = 100;
-    style.color = text_color_white();
-
-    text_block_set_style(&data->block, &style);
-    text_block_set_wrap_mode(&data->block, TEXT_WRAP_WORD);
-    text_block_set_reveal_mode(&data->block, TEXT_REVEAL_NONE);
     text_block_set_text(&data->block, data->menu_markup);
     text_block_refresh(&data->block);
 }
 
-static int open_music(audio_descriptor_t *descriptor, const char *path)
+static int intro_test_build_scene_for_slide(intro_test_state_data_t *data,
+                                            int slide_index)
 {
-    if (!descriptor)
-        return -1;
-
-    descriptor->asset = audio_asset_load_stream(
-        path,
-        AUDIO_BUFFER_SIZE
-    );
-
-    if (descriptor->asset < 0) {
-        LOGLNC(LOGCAT_AUDIO, "[state:intro_test] audio_asset_load_stream failed: %d",
-              descriptor->asset);
-        descriptor->asset = -1;
-        return -1;
-    }
-
-    descriptor->ok = 1;
-
-    if (audio_asset_preload(descriptor->asset) < 0) {
-        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] audio_asset_preload failed: %d",
-              descriptor->asset);
-        audio_asset_unload(descriptor->asset);
-        descriptor->asset = -1;
-        descriptor->ok = 0;
-        return -1;
-    }
-    return 0;
-}
-
-static int load_sfx(audio_descriptor_t *descriptor, const char *path)
-{
-    descriptor->asset = audio_asset_load_sfx(path);
-    if (descriptor->asset < 0) {
-        descriptor->ok = 0;
-        LOGLNC(LOGCAT_AUDIO, "[state:intro_test] load failed path=%s rc=%d",
-              path, descriptor->asset);
-        return -1;
-    }
-
-    descriptor->ok = 1;
-    LOGLNC(LOGCAT_AUDIO, "[state:intro_test] loaded handle=%d path=%s",
-          descriptor->asset, path);
-    return 0;
-}
-
-static int intro_test_trigger_sfx(const audio_descriptor_t *descriptor)
-{
-    int voice;
-
-    if (!descriptor || !descriptor->ok || descriptor->asset < 0) {
-        LOGLNC(LOGCAT_AUDIO, "[state:intro_test] unavailable");
-        return -1;
-    }
-
-    voice = audio_play_ex(descriptor->asset,
-                          100,
-                          1.0f,
-                          0,
-                          NULL,
-                          NULL,
-                          NULL);
-
-    if (voice < 0) {
-        LOGLNC(LOGCAT_AUDIO, "[state:intro_test] play failed rc=%d", voice);
-        return -1;
-    }
-
-    LOGLNC(LOGCAT_AUDIO, "[state:intro_test] voice=%d", voice);
-    return voice;
-}
-
-static void intro_test_begin_logo(game_app_t *app, intro_test_state_data_t *data)
-{
-    float cx = INTRO_SCREEN_W * 0.5f;
-    float cy = INTRO_SCREEN_H * 0.5f;
-
-    (void)app;
+    const intro_slide_t *slide;
+    const char *path;
+    int slide_count;
 
     if (!data)
-        return;
+        return -1;
+
+    if (!data->slides || data->slide_count <= 0)
+        return -1;
+
+    if (slide_index < 0 || slide_index >= data->slide_count)
+        return -1;
+
+    slide = &data->slides[slide_index];
+    slide_count = slide->slide_count;
+
+    intro_test_release_intro_slots(data);
+    intro_test_clear_intro_slots(data);
+
+    if (slide_index == 3)
+        slide_count--;
+
+    if (intro_test_request_slot_visual(&data->intro_slots[0],
+                                       intro_test_slide_subslide_path(slide, 0),
+                                       (data->screen_width - INTRO_SLIDE_W) * 0.5f,
+                                       36.0f,
+                                       INTRO_SLIDE_W,
+                                       INTRO_SLIDE_H,
+                                       10) != 0)
+        return -1;
+    return 0;
+}
+
+static void intro_test_begin_logo(intro_test_state_data_t *data)
+{
+    float cx = data->screen_width * 0.5f;
+    float cy = data->screen_height * 0.5f;
 
     data->stage = LOGO;
-    data->stage_timer = 0.0f;
+    data->stage_time = 0.0f;
+    data->logo_time = 0.0f;
+    data->slide_time = 0.0f;
 
-    intro_test_reset_visual(&data->logo_main);
-    intro_test_reset_visual(&data->logo_sub);
-    intro_test_reset_visual(&data->intro_current);
+    reset_visual(&data->logo_main);
+    reset_visual(&data->logo_sub);
+    intro_test_release_intro_slots(data);
+    intro_test_clear_intro_slots(data);
 
     data->logo_main.draw_params =
         gfx_draw_params_default(
@@ -718,163 +779,113 @@ static void intro_test_begin_logo(game_app_t *app, intro_test_state_data_t *data
             LOGO_YELLOW_W,
             LOGO_YELLOW_H
         );
-    data->logo_sub.draw_params.layer = 19;
+    data->logo_sub.draw_params.layer = 20;
     data->logo_sub.draw_params.origin_v = GFX_VALIGN_TOP;
     data->logo_sub.draw_params.origin_h = GFX_HALIGN_LEFT;
 
     intro_test_request_visual(&data->logo_main, logo);
     intro_test_request_visual(&data->logo_sub, logo_yellow);
-    intro_test_reset_visual(&data->intro_current);
-    intro_test_request_current_slide_visual(data);
-    data->stage_timer = 0.0f;
 
     LOGLNC(LOGCAT_STATE, "[state:intro_test] begin logo");
 }
 
-static int intro_test_visual_texture_ready(const intro_visual_t *v)
-{
-    if (!v)
-        return 0;
-
-    if (!v->requested || !texture_is_valid(v->texture))
-        return 0;
-
-    return texture_status(v->texture) == TEXTURE_STATUS_READY;
-}
-
-static int intro_test_activate_current_slide(intro_test_state_data_t *data)
-{
-    if (!data)
-        return -1;
-
-    if (!intro_test_visual_texture_ready(&data->intro_current))
-        return -1;
-
-    if (data->intro_current.sprite_created)
-        return 0;
-
-    return intro_test_try_create_visual(&data->intro_current, "intro_current");
-}
-
-static float intro_test_current_slide_duration(const intro_test_state_data_t *data)
-{
-    const intro_slide_t *slide = intro_test_current_slide_desc(data);
-
-    if (!slide)
-        return INTRO_SLIDE_DEFAULT_SECONDS;
-
-    if (slide->showing_time_ms > 0.0f)
-        return slide->showing_time_ms;
-
-    return INTRO_SLIDE_DEFAULT_SECONDS;
-}
-
-static const char *intro_test_current_slide_text_line(const intro_test_state_data_t *data)
+static void intro_test_start_slide(game_app_t *app,
+                                   intro_test_state_data_t *data,
+                                   int slide_index)
 {
     const intro_slide_t *slide;
+    const char *text;
 
-    if (!data)
-        return NULL;
-
-    slide = intro_test_current_slide_desc(data);
-    if (!slide || !slide->strings || slide->string_count <= 0)
-        return NULL;
-
-    if (data->current_text_line < 0 || data->current_text_line >= slide->string_count)
-        return NULL;
-
-    return slide->strings[data->current_text_line];
-}
-
-static void intro_test_apply_slide_text(intro_test_state_data_t *data)
-{
-    text_style_t style;
-    const char *line;
+    (void)app;
 
     if (!data)
         return;
 
-    line = intro_test_current_slide_text_line(data);
-    if (!line)
-        line = "";
-
-    text_style_init(&style);
-    style.layer = 100;
-    style.color = text_color_white();
-
-    text_block_set_style(&data->block, &style);
-    text_block_set_wrap_mode(&data->block, TEXT_WRAP_WORD);
-    text_block_set_reveal_mode(&data->block, TEXT_REVEAL_GLYPH);
-    text_block_set_text(&data->block, line);
-    text_block_refresh(&data->block);
-}
-
-static void intro_test_skip_all(game_app_t *app)
-{
-    LOGLNC(LOGCAT_STATE, "[state:intro_test] skip whole intro");
-    game_app_request_state_change(debug_menu_state_desc(), NULL);
-}
-
-static int intro_test_request_next_slide_visual(intro_test_state_data_t *data)
-{
-    const intro_slide_t *slide;
-    const char *path;
-
-    if (!data)
-        return -1;
-
-    if (data->current_slide + 1 >= data->slide_count)
-        return 0;
-
-    slide = &data->slides[data->current_slide + 1];
-    path = intro_test_slide_primary_path(slide);
-
-    if (!path)
-        return -1;
-
-    return texture_load_png(path, STREAM_PRIORITY_NORMAL).index != 0xffffu ? 0 : -1;
-}
-
-static void intro_test_advance_slide(game_app_t *app, intro_test_state_data_t *data)
-{
-    if (!data)
+    if (slide_index < 0 || slide_index >= data->slide_count)
         return;
 
-    data->current_slide++;
+    slide = &data->slides[slide_index];
+
+    if (intro_test_build_scene_for_slide(data, slide_index) != 0)
+        return;
+
+    data->stage = INTRO;
+    data->stage_time = 0.0f;
+    data->slide_time = 0.0f;
+    data->current_slide = slide_index;
     data->current_subslide = 0;
     data->current_text_line = 0;
+    data->fade_alpha = 0.0f;
 
-    if (data->current_slide >= data->slide_count) {
-        LOGLNC(LOGCAT_STATE, "[state:intro_test] intro sequence finished");
-        game_app_request_state_change(debug_menu_state_desc(), NULL);
+    text = (slide->string_count > 0 && slide->strings) ? slide->strings[0] : "";
+    text_block_set_text(&data->block, text);
+    text_block_refresh(&data->block);
+
+    LOGLNC(LOGCAT_STATE, "[state:intro_test] start slide=%d name=%s",
+           slide_index,
+           slide->name ? slide->name : "?");
+}
+
+static void intro_test_begin_intro(game_app_t *app, intro_test_state_data_t *data)
+{
+    if (!data)
         return;
+
+    init_text_block_intro(&data->block, data->screen_width, data->screen_height);
+    text_block_set_text(&data->block, "");
+    text_block_refresh(&data->block);
+    
+    switch (data->option) {
+        case EN:
+            data->slides = slides;
+            data->slide_count = ARRAY_COUNT(slides);
+            LOGLNC(LOGCAT_STATE, "[state:intro_test] language selected: EN slides=%d",
+                data->slide_count);
+            break;
+        case RU:
+            data->slides = slides_ru;
+            data->slide_count = ARRAY_COUNT(slides_ru);
+            LOGLNC(LOGCAT_STATE, "[state:intro_test] language selected: RU slides=%d",
+                data->slide_count);
+            break;
+        default:
+            return;
     }
+    data->current_slide = 0;
+    intro_test_begin_logo(data);
+}
 
-    intro_test_release_visual(&data->intro_current);
-    intro_test_reset_visual(&data->intro_current);
+static void intro_test_update_menu(game_app_t *app, intro_test_state_data_t *data)
+{
+    int count;
 
-    if (intro_test_request_current_slide_visual(data) != 0) {
-        LOGLNC(LOGCAT_STATE,
-              "[state:intro_test] failed to request next slide visual slide=%d",
-              data->current_slide);
-        game_app_request_state_change(debug_menu_state_desc(), NULL);
+    if (!data)
         return;
+
+    count = menu_option_count();
+
+    if (input_button_pressed(INPUT_BUTTON_UP)) {
+        data->option = (state_option_t)((data->option + count - 1) % count);
+        audio_play_ex(data->snd_menu_select.asset, 100, 1.0f, 0, NULL, NULL, NULL);
+        input_consume();
+    } else if (input_button_pressed(INPUT_BUTTON_DOWN)) {
+        data->option = (state_option_t)((data->option + 1) % count);
+        audio_play_ex(data->snd_menu_select.asset, 100, 1.0f, 0, NULL, NULL, NULL);
+        input_consume();
+    } else if (input_button_pressed(INPUT_BUTTON_CROSS)) {
+        audio_play_ex(data->snd_confirm.asset, 100, 1.0f, 0, NULL, NULL, NULL);
+        if (data->option != EXIT) {
+            intro_test_begin_intro(app, data);
+        } else {
+            LOGLNC(LOGCAT_STATE, "[state:intro_test] language menu exit");
+            game_app_request_state_change(debug_menu_state_desc(), NULL);
+        }
+        input_consume();
     }
 
-    if (intro_test_activate_current_slide(data) != 0) {
-        LOGLNC(LOGCAT_STATE,
-              "[state:intro_test] waiting next slide visual slide=%d",
-              data->current_slide);
+    if (data->stage == MENU_LANG_SELECT){
+        intro_test_apply_menu_text(data);
     }
-
-    intro_test_apply_slide_text(data);
-    intro_test_request_next_slide_visual(data);
-    data->stage_timer = 0.0f;
-
-    LOGLNC(LOGCAT_STATE,
-          "[state:intro_test] advanced to slide=%d duration=%.2f",
-          data->current_slide,
-          intro_test_current_slide_duration(data));
 }
 
 static int intro_test_reset(game_app_t *app, intro_test_state_data_t *data)
@@ -884,6 +895,9 @@ static int intro_test_reset(game_app_t *app, intro_test_state_data_t *data)
     if (!data)
         return -1;
 
+    data->screen_width = renderer_get_screen_width();
+    data->screen_height = renderer_get_screen_height();
+
     data->stage = MENU_LANG_SELECT;
     data->option = EN;
     data->current_slide = 0;
@@ -892,9 +906,13 @@ static int intro_test_reset(game_app_t *app, intro_test_state_data_t *data)
     data->visual_dirty = 0;
     data->text_dirty = 0;
 
+    data->stage_time = 0.0f;
+    data->logo_time = 0.0f;
+    data->slide_time = 0.0f;
+
     data->slides = slides;
     data->slide_count = ARRAY_COUNT(slides);
-    data->font_bound_logged = 0;
+
     data->mus_intro_voice = -1;
 
     data->mus_intro.asset = -1;
@@ -951,82 +969,35 @@ static int intro_test_reset(game_app_t *app, intro_test_state_data_t *data)
         TEXT_LINE_CAPACITY,
         TEXT_REVEAL_SECONDS_PER_GLYPH);
 
-    text_block_set_box(&data->block,
-        INTRO_TEXT_BOX_X,
-        INTRO_TEXT_BOX_Y,
-        INTRO_TEXT_BOX_W,
-        INTRO_TEXT_BOX_H);
+    init_text_block_menu(&data->block);
 
-    text_block_set_align_h(&data->block, TEXT_ALIGN_LEFT);
-    text_block_set_align_v(&data->block, TEXT_ALIGN_TOP);
+    reset_visual(&data->logo_main);
+    reset_visual(&data->logo_sub);
+    intro_test_clear_intro_slots(data);
 
-    intro_test_reset_visual(&data->logo_main);
-    intro_test_reset_visual(&data->logo_sub);
-    intro_test_reset_visual(&data->intro_current);
-    data->stage_timer = 0.0f;
+    data->fade_alpha = 0.0f;
 
     if (!audio_is_available()) {
         LOGLNC(LOGCAT_AUDIO, "[state:intro_test] audio unavailable");
         return -1;
     }
     
-    if (open_music(&data->mus_intro, mus_intro) != 0) {
+    if (open_music(&data->mus_intro, mus_intro) != 0)
         return -1;
-    }
 
-    if (load_sfx(&data->mus_intronoise, intronoise) != 0) {
+    if (load_sfx(&data->mus_intronoise, intronoise) != 0)
         return -1;
-    }
 
-    if (load_sfx(&data->snd_confirm, snd_confirm) != 0) {
+    if (load_sfx(&data->snd_confirm, snd_confirm) != 0)
         return -1;
-    }
 
-    if (load_sfx(&data->snd_menu_select, snd_mainmenu_select) != 0) {
+    if (load_sfx(&data->snd_menu_select, snd_mainmenu_select) != 0)
         return -1;
-    }
 
-    if (load_sfx(&data->sndfnt, sndfnt_default2) != 0) {
+    if (load_sfx(&data->sndfnt, sndfnt_default2) != 0)
         return -1;
-    }
 
     return 0;
-}
-
-static void intro_test_select_language(game_app_t *app, intro_test_state_data_t *data)
-{
-    if (!data)
-        return;
-
-    switch (data->option) {
-        case EN:
-            data->slides = slides;
-            data->slide_count = ARRAY_COUNT(slides);
-            data->current_slide = 0;
-            intro_test_begin_logo(app, data);
-            LOGLNC(LOGCAT_STATE, "[state:intro_test] language selected: EN slides=%d",
-                  data->slide_count);
-            break;
-
-        case RU:
-            data->slides = slides_ru;
-            data->slide_count = ARRAY_COUNT(slides_ru);
-            data->current_slide = 0;
-            intro_test_begin_logo(app, data);
-            LOGLNC(LOGCAT_STATE, "[state:intro_test] language selected: RU slides=%d",
-                  data->slide_count);
-            break;
-
-        case EXIT:
-            LOGLNC(LOGCAT_STATE, "[state:intro_test] language menu exit");
-            game_app_request_state_change(debug_menu_state_desc(), NULL);
-            break;
-
-        default:
-            break;
-    }
-
-    (void)app;
 }
 
 static int intro_test_enter(game_app_t *app, void *userdata)
@@ -1041,6 +1012,7 @@ static int intro_test_enter(game_app_t *app, void *userdata)
         sizeof(*data),
         16
     );
+
     if (!data) {
         LOGLNC(LOGCAT_STATE, "[state:intro_test] enter failed: no state arena memory");
         return -1;
@@ -1087,7 +1059,7 @@ static void intro_test_exit(game_app_t *app)
 
     intro_test_release_visual(&data->logo_main);
     intro_test_release_visual(&data->logo_sub);
-    intro_test_release_visual(&data->intro_current);
+    intro_test_release_intro_slots(data);
 
     text_font_resource_shutdown(app, &data->font_res);
     game_app_set_state_userdata(app, NULL);
@@ -1101,45 +1073,15 @@ static void intro_test_fixed_update(game_app_t *app, float dt)
     (void)dt;
 }
 
-static void intro_test_update_menu(game_app_t *app, intro_test_state_data_t *data)
-{
-    int count;
-
-    if (!data)
-        return;
-
-    count = intro_test_menu_option_count();
-
-    if (input_button_pressed(INPUT_BUTTON_UP)) {
-        data->option = (state_option_t)((data->option + count - 1) % count);
-        intro_test_apply_menu_text(data);
-        intro_test_trigger_sfx(&data->snd_menu_select);
-        input_consume();
-    } else if (input_button_pressed(INPUT_BUTTON_DOWN)) {
-        data->option = (state_option_t)((data->option + 1) % count);
-        intro_test_apply_menu_text(data);
-        intro_test_trigger_sfx(&data->snd_menu_select);
-        input_consume();
-    } else if (input_button_pressed(INPUT_BUTTON_CROSS)) {
-        intro_test_trigger_sfx(&data->snd_confirm);
-        intro_test_select_language(app, data);
-        input_consume();
-    }
-}
-
 static void intro_test_update_logo(game_app_t *app, intro_test_state_data_t *data, float dt)
 {
-    int intro_ready;
+    int logo_ready;
 
-    (void)app;
+    data->stage_time += dt;
+    data->logo_time += dt;
 
-    if (!data)
-        return;
-
-    data->stage_timer += dt;
-
-    intro_test_try_create_visual(&data->logo_main, "logo");
-    intro_test_try_create_visual(&data->logo_sub, "logo_yellow");
+    try_create_visual(&data->logo_main, "logo");
+    try_create_visual(&data->logo_sub, "logo_yellow");
 
     if (data->logo_main.sprite_created)
         gfx_sprite_update(data->logo_main.sprite_id, &data->logo_main.draw_params);
@@ -1147,67 +1089,129 @@ static void intro_test_update_logo(game_app_t *app, intro_test_state_data_t *dat
     if (data->logo_sub.sprite_created)
         gfx_sprite_update(data->logo_sub.sprite_id, &data->logo_sub.draw_params);
 
-    intro_ready = intro_test_visual_texture_ready(&data->intro_current);
+    logo_ready = data->logo_main.sprite_created && data->logo_sub.sprite_created;
 
-    if (intro_ready && data->stage_timer >= INTRO_LOGO_MIN_SECONDS) {
+    if (logo_ready && data->logo_time >= INTRO_LOGO_MIN_SECONDS) {
         intro_test_release_visual(&data->logo_main);
         intro_test_release_visual(&data->logo_sub);
-
-        if (intro_test_activate_current_slide(data) == 0) {
-            data->stage = INTRO;
-            data->stage_timer = 0.0f;
-            intro_test_apply_slide_text(data);
-            intro_test_request_next_slide_visual(data);
-            LOGLNC(LOGCAT_STATE,
-                "[state:intro_test] logo done -> intro slide=%d",
-                data->current_slide);
-        }
-        return;
-    }
-
-    // TODO: remove after logic stabilization
-    if (input_button_pressed(INPUT_BUTTON_CROSS) &&
-        data->stage_timer >= 0.2f) {
-        input_consume();
-        intro_test_skip_all(app);
-        return;
+        intro_test_start_slide(app, data, 0);
     }
 }
 
-static void intro_test_update_intro(game_app_t *app, intro_test_state_data_t *data, float dt)
+static unsigned char intro_test_alpha_to_u8(float alpha)
+{
+    int a;
+
+    if (alpha <= 0.0f)
+        return 0x00;
+    if (alpha >= 1.0f)
+        return 0xFF;
+
+    a = (int)(alpha * 255.0f + 0.5f);
+
+    if (a < 0)
+        a = 0;
+    else if (a > 255)
+        a = 255;
+
+    return (unsigned char)a;
+}
+
+static void intro_test_apply_visual_alpha(intro_visual_t *v)
+{
+    if (!v || !v->sprite_created)
+        return;
+
+    v->draw_params.color.r = 0xFF;
+    v->draw_params.color.g = 0xFF;
+    v->draw_params.color.b = 0xFF;
+    v->draw_params.color.a = intro_test_alpha_to_u8(v->alpha);
+}
+
+static void intro_test_update_slot_group(intro_visual_t *slots, int count, const char *tag)
+{
+    int i;
+
+    for (i = 0; i < count; ++i) {
+        if (!slots[i].requested)
+            continue;
+
+        try_create_visual(&slots[i], tag);
+
+        if (slots[i].sprite_created) {
+            intro_test_apply_visual_alpha(&slots[i]);
+            gfx_sprite_update(slots[i].sprite_id, &slots[i].draw_params);
+        }
+    }
+}
+
+static intro_action_result_t intro_test_default_slide_action(game_app_t *app,
+                                                             intro_test_state_data_t *data,
+                                                             float dt)
 {
     const intro_slide_t *slide;
     float duration;
 
+    (void)app;
+    (void)dt;
+
+    slide = intro_test_current_slide_desc(data);
+    if (!slide)
+        return INTRO_ACTION_EXIT_INTRO;
+
+    duration = slide->showing_time_ms;
+    if (duration <= 0.0f)
+        duration = INTRO_SLIDE_DEFAULT_SECONDS;
+
+    data->fade_alpha = 0.0f;
+
+    if (data->slide_time >= duration)
+        return INTRO_ACTION_NEXT_SLIDE;
+
+    return INTRO_ACTION_CONTINUE;
+}
+
+static void intro_test_update_intro(game_app_t *app,
+                                    intro_test_state_data_t *data,
+                                    float dt)
+{
+    const intro_slide_t *slide;
+    intro_action_result_t action_rc;
+
     if (!data)
         return;
 
-    if (input_button_pressed(INPUT_BUTTON_CROSS)) {
-        input_consume();
-        intro_test_skip_all(app);
-        return;
-    }
+    data->stage_time += dt;
+    data->slide_time += dt;
 
     slide = intro_test_current_slide_desc(data);
     if (!slide)
         return;
 
-    if (!data->intro_current.sprite_created) {
-        if (intro_test_activate_current_slide(data) != 0)
-            return;
-    }
-
-    if (data->intro_current.sprite_created)
-        gfx_sprite_update(data->intro_current.sprite_id, &data->intro_current.draw_params);
+    intro_test_update_slot_group(data->intro_slots, INTRO_MAX_SLOTS, "intro");
 
     if (slide->action)
-        slide->action(app, data, dt);
+        action_rc = slide->action(app, data, dt);
+    else
+        action_rc = intro_test_default_slide_action(app, data, dt);
 
-    data->stage_timer += dt;
-    duration = intro_test_current_slide_duration(data);
+    switch (action_rc) {
+        case INTRO_ACTION_CONTINUE:
+            break;
 
-    if (data->stage_timer >= duration) {
-        intro_test_advance_slide(app, data);
+        case INTRO_ACTION_NEXT_SLIDE:
+            if (data->current_slide + 1 < data->slide_count)
+                intro_test_start_slide(app, data, data->current_slide + 1);
+            else
+                game_app_request_state_change(debug_menu_state_desc(), NULL);
+            break;
+
+        case INTRO_ACTION_EXIT_INTRO:
+            game_app_request_state_change(debug_menu_state_desc(), NULL);
+            break;
+
+        default:
+            break;
     }
 }
 
@@ -1230,26 +1234,12 @@ static void intro_test_update(game_app_t *app, float dt)
     if (!data->block.font &&
         text_font_resource_is_ready(&data->font_res)) {
         const text_font_t *font = text_font_resource_get_font(&data->font_res);
-
         text_block_set_font(&data->block, font);
-
-        if (!data->font_bound_logged) {
-            LOGLNC(LOGCAT_TEXT,
-                  "[state:intro_test] font bound slides=%d current_slide=%d box=(%d,%d,%d,%d)",
-                  intro_test_slide_table_count(data),
-                  data->current_slide,
-                  (int)TEXT_BOX_X,
-                  (int)TEXT_BOX_Y,
-                  (int)TEXT_BOX_W,
-                  (int)TEXT_BOX_H);
-            data->font_bound_logged = 1;
-        }
     }
 
     switch (data->stage) {
         case MENU_LANG_SELECT:
             intro_test_update_menu(app, data);
-            intro_test_apply_menu_text(data);
             break;
 
         case LOGO:
@@ -1267,34 +1257,6 @@ static void intro_test_update(game_app_t *app, float dt)
     text_block_update(&data->block, dt);
 }
 
-static void intro_test_draw_menu(game_app_t *app, intro_test_state_data_t *data)
-{
-    (void)app;
-
-    if (!data)
-        return;
-
-    text_block_draw(&data->block);
-}
-
-static void intro_test_draw_logo(game_app_t *app, intro_test_state_data_t *data, float alpha)
-{
-    (void)app;
-    (void)data;
-    (void)alpha;
-
-    gfx_sprite_draw_all();
-}
-
-static void intro_test_draw_intro(game_app_t *app, intro_test_state_data_t *data, float alpha)
-{
-    (void)app;
-    (void)alpha;
-
-    gfx_sprite_draw_all();
-    text_block_draw(&data->block);
-}
-
 static void intro_test_draw(game_app_t *app, float alpha)
 {
     intro_test_state_data_t *data = intro_test_data(app);
@@ -1304,22 +1266,8 @@ static void intro_test_draw(game_app_t *app, float alpha)
     if (!data)
         return;
 
-    switch (data->stage) {
-        case MENU_LANG_SELECT:
-            intro_test_draw_menu(app, data);
-            break;
-
-        case LOGO:
-            intro_test_draw_logo(app, data, alpha);
-            break;
-
-        case INTRO:
-            intro_test_draw_intro(app, data, alpha);
-            break;
-
-        default:
-            break;
-    }
+    gfx_sprite_draw_all();
+    text_block_draw(&data->block);
 }
 
 static const game_state_desc_t s_intro_test_state = {

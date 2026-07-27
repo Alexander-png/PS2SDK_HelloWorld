@@ -31,6 +31,9 @@ void renderer_set_clear_color_rgba(unsigned char r,
 
 int  renderer_get_stats(gfx_renderer_stats_t *out);
 
+int  renderer_get_screen_width();
+int  renderer_get_screen_height();
+
 #ifdef __cplusplus
 }
 #endif
