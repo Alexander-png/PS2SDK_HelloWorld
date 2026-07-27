@@ -55,6 +55,7 @@
 #endif
 
 #ifndef TEXT_REVEAL_SECONDS_PER_GLYPH
+//#define TEXT_REVEAL_SECONDS_PER_GLYPH 0.08f
 #define TEXT_REVEAL_SECONDS_PER_GLYPH 0.03f
 #endif
 
@@ -96,6 +97,15 @@
 
 #ifndef INTRO_SLIDE_H
 #define INTRO_SLIDE_H 220.0f
+#endif
+
+#define INTRO_TEXT_BOX_W 400
+#define INTRO_TEXT_BOX_H 120
+#define INTRO_TEXT_BOX_X ((INTRO_SCREEN_W - INTRO_TEXT_BOX_W) / 2)
+#define INTRO_TEXT_BOX_Y ((INTRO_SCREEN_H - INTRO_TEXT_BOX_H) / 2 + 120)
+
+#ifndef INTRO_SLIDE_DEFAULT_SECONDS
+#define INTRO_SLIDE_DEFAULT_SECONDS 3.0f
 #endif
 
 #define ARRAY_COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
@@ -148,7 +158,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro1_slides),
         intro1_text,
         ARRAY_COUNT(intro1_text),
-        0.0f,
+        3.0f,
         NULL,
     },
     {
@@ -157,7 +167,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro2_slides),
         intro2_text,
         ARRAY_COUNT(intro2_text),
-        0.0f,
+        3.0f,
         NULL
     },
     {
@@ -166,7 +176,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro3_slides),
         intro3_text,
         ARRAY_COUNT(intro3_text),
-        0.0f,
+        3.0f,
         NULL
     },
     {
@@ -175,7 +185,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro4_slides),
         intro4_text,
         ARRAY_COUNT(intro4_text),
-        0.0f,
+        3.0f,
         NULL
     },
     {
@@ -184,7 +194,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro5_slides),
         intro5_text,
         ARRAY_COUNT(intro5_text),
-        0.0f,
+        3.0f,
         NULL
     },
     {
@@ -193,7 +203,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro6_slides),
         intro6_text,
         ARRAY_COUNT(intro6_text),
-        0.0f,
+        3.0f,
         NULL
     },
     {
@@ -202,7 +212,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro7_slides),
         NULL,
         0,
-        0.0f,
+        3.0f,
         NULL
     },
     {
@@ -211,7 +221,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro8_slides),
         NULL,
         0,
-        0.0f,
+        3.0f,
         NULL
     },
     {
@@ -220,7 +230,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro9_slides),
         NULL,
         0,
-        0.0f,
+        3.0f,
         NULL
     },
     {
@@ -229,7 +239,7 @@ static const intro_slide_t slides[] = {
         ARRAY_COUNT(intro10_slides),
         NULL,
         0,
-        0.0f,
+        3.0f,
         NULL
     },
 };
@@ -355,6 +365,10 @@ typedef struct intro_test_state_data {
     state_stage_t stage;
     state_option_t option;
     int current_slide;
+    int current_subslide;
+    int current_text_line;
+    int visual_dirty;
+    int text_dirty;
 
     const intro_slide_t *slides;
     int slide_count;
@@ -742,6 +756,127 @@ static int intro_test_activate_current_slide(intro_test_state_data_t *data)
     return intro_test_try_create_visual(&data->intro_current, "intro_current");
 }
 
+static float intro_test_current_slide_duration(const intro_test_state_data_t *data)
+{
+    const intro_slide_t *slide = intro_test_current_slide_desc(data);
+
+    if (!slide)
+        return INTRO_SLIDE_DEFAULT_SECONDS;
+
+    if (slide->showing_time_ms > 0.0f)
+        return slide->showing_time_ms;
+
+    return INTRO_SLIDE_DEFAULT_SECONDS;
+}
+
+static const char *intro_test_current_slide_text_line(const intro_test_state_data_t *data)
+{
+    const intro_slide_t *slide;
+
+    if (!data)
+        return NULL;
+
+    slide = intro_test_current_slide_desc(data);
+    if (!slide || !slide->strings || slide->string_count <= 0)
+        return NULL;
+
+    if (data->current_text_line < 0 || data->current_text_line >= slide->string_count)
+        return NULL;
+
+    return slide->strings[data->current_text_line];
+}
+
+static void intro_test_apply_slide_text(intro_test_state_data_t *data)
+{
+    text_style_t style;
+    const char *line;
+
+    if (!data)
+        return;
+
+    line = intro_test_current_slide_text_line(data);
+    if (!line)
+        line = "";
+
+    text_style_init(&style);
+    style.layer = 100;
+    style.color = text_color_white();
+
+    text_block_set_style(&data->block, &style);
+    text_block_set_wrap_mode(&data->block, TEXT_WRAP_WORD);
+    text_block_set_reveal_mode(&data->block, TEXT_REVEAL_GLYPH);
+    text_block_set_text(&data->block, line);
+    text_block_refresh(&data->block);
+}
+
+static void intro_test_skip_all(game_app_t *app)
+{
+    LOGLNC(LOGCAT_STATE, "[state:intro_test] skip whole intro");
+    game_app_request_state_change(debug_menu_state_desc(), NULL);
+}
+
+static int intro_test_request_next_slide_visual(intro_test_state_data_t *data)
+{
+    const intro_slide_t *slide;
+    const char *path;
+
+    if (!data)
+        return -1;
+
+    if (data->current_slide + 1 >= data->slide_count)
+        return 0;
+
+    slide = &data->slides[data->current_slide + 1];
+    path = intro_test_slide_primary_path(slide);
+
+    if (!path)
+        return -1;
+
+    return texture_load_png(path, STREAM_PRIORITY_NORMAL).index != 0xffffu ? 0 : -1;
+}
+
+static void intro_test_advance_slide(game_app_t *app, intro_test_state_data_t *data)
+{
+    if (!data)
+        return;
+
+    data->current_slide++;
+    data->current_subslide = 0;
+    data->current_text_line = 0;
+
+    if (data->current_slide >= data->slide_count) {
+        LOGLNC(LOGCAT_STATE, "[state:intro_test] intro sequence finished");
+        game_app_request_state_change(debug_menu_state_desc(), NULL);
+        return;
+    }
+
+    intro_test_release_visual(&data->intro_current);
+    intro_test_reset_visual(&data->intro_current);
+
+    if (intro_test_request_current_slide_visual(data) != 0) {
+        LOGLNC(LOGCAT_STATE,
+              "[state:intro_test] failed to request next slide visual slide=%d",
+              data->current_slide);
+        game_app_request_state_change(debug_menu_state_desc(), NULL);
+        return;
+    }
+
+    if (intro_test_activate_current_slide(data) != 0) {
+        LOGLNC(LOGCAT_STATE,
+              "[state:intro_test] waiting next slide visual slide=%d",
+              data->current_slide);
+    }
+
+    intro_test_apply_slide_text(data);
+    intro_test_request_next_slide_visual(data);
+    data->stage_timer = 0.0f;
+
+    LOGLNC(LOGCAT_STATE,
+          "[state:intro_test] advanced to slide=%d duration=%.2f",
+          data->current_slide,
+          intro_test_current_slide_duration(data));
+}
+
 static int intro_test_reset(game_app_t *app, intro_test_state_data_t *data)
 {
     text_font_resource_desc_t font_desc;
@@ -752,6 +887,11 @@ static int intro_test_reset(game_app_t *app, intro_test_state_data_t *data)
     data->stage = MENU_LANG_SELECT;
     data->option = EN;
     data->current_slide = 0;
+    data->current_subslide = 0;
+    data->current_text_line = 0;
+    data->visual_dirty = 0;
+    data->text_dirty = 0;
+
     data->slides = slides;
     data->slide_count = ARRAY_COUNT(slides);
     data->font_bound_logged = 0;
@@ -812,10 +952,10 @@ static int intro_test_reset(game_app_t *app, intro_test_state_data_t *data)
         TEXT_REVEAL_SECONDS_PER_GLYPH);
 
     text_block_set_box(&data->block,
-        TEXT_BOX_X,
-        TEXT_BOX_Y,
-        TEXT_BOX_W,
-        TEXT_BOX_H);
+        INTRO_TEXT_BOX_X,
+        INTRO_TEXT_BOX_Y,
+        INTRO_TEXT_BOX_W,
+        INTRO_TEXT_BOX_H);
 
     text_block_set_align_h(&data->block, TEXT_ALIGN_LEFT);
     text_block_set_align_v(&data->block, TEXT_ALIGN_TOP);
@@ -1015,26 +1155,21 @@ static void intro_test_update_logo(game_app_t *app, intro_test_state_data_t *dat
 
         if (intro_test_activate_current_slide(data) == 0) {
             data->stage = INTRO;
+            data->stage_timer = 0.0f;
+            intro_test_apply_slide_text(data);
+            intro_test_request_next_slide_visual(data);
             LOGLNC(LOGCAT_STATE,
-                  "[state:intro_test] logo done -> intro slide=%d",
-                  data->current_slide);
+                "[state:intro_test] logo done -> intro slide=%d",
+                data->current_slide);
         }
         return;
     }
 
+    // TODO: remove after logic stabilization
     if (input_button_pressed(INPUT_BUTTON_CROSS) &&
-        intro_ready &&
         data->stage_timer >= 0.2f) {
-        intro_test_release_visual(&data->logo_main);
-        intro_test_release_visual(&data->logo_sub);
-
-        if (intro_test_activate_current_slide(data) == 0) {
-            data->stage = INTRO;
-            input_consume();
-            LOGLNC(LOGCAT_STATE,
-                  "[state:intro_test] logo skipped -> intro slide=%d",
-                  data->current_slide);
-        }
+        input_consume();
+        intro_test_skip_all(app);
         return;
     }
 }
@@ -1042,20 +1177,38 @@ static void intro_test_update_logo(game_app_t *app, intro_test_state_data_t *dat
 static void intro_test_update_intro(game_app_t *app, intro_test_state_data_t *data, float dt)
 {
     const intro_slide_t *slide;
+    float duration;
 
     if (!data)
         return;
 
-    slide = intro_test_current_slide_desc(data);
+    if (input_button_pressed(INPUT_BUTTON_CROSS)) {
+        input_consume();
+        intro_test_skip_all(app);
+        return;
+    }
 
+    slide = intro_test_current_slide_desc(data);
     if (!slide)
         return;
+
+    if (!data->intro_current.sprite_created) {
+        if (intro_test_activate_current_slide(data) != 0)
+            return;
+    }
 
     if (data->intro_current.sprite_created)
         gfx_sprite_update(data->intro_current.sprite_id, &data->intro_current.draw_params);
 
     if (slide->action)
         slide->action(app, data, dt);
+
+    data->stage_timer += dt;
+    duration = intro_test_current_slide_duration(data);
+
+    if (data->stage_timer >= duration) {
+        intro_test_advance_slide(app, data);
+    }
 }
 
 static void intro_test_update(game_app_t *app, float dt)
@@ -1095,8 +1248,8 @@ static void intro_test_update(game_app_t *app, float dt)
 
     switch (data->stage) {
         case MENU_LANG_SELECT:
-            intro_test_apply_menu_text(data);
             intro_test_update_menu(app, data);
+            intro_test_apply_menu_text(data);
             break;
 
         case LOGO:
