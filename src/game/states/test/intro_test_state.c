@@ -81,7 +81,7 @@
 #endif
 
 #ifndef INTRO_MAX_SLOTS
-#define INTRO_MAX_SLOTS 3
+#define INTRO_MAX_SLOTS 8
 #endif
 
 #define ARRAY_COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
@@ -204,6 +204,33 @@ typedef struct intro_test_state_data {
     float fade_alpha;
 } intro_test_state_data_t;
 
+static float intro_lerp01(float a, float b, float t)
+{
+    if (t <= a)
+        return 0.0f;
+    if (t >= b)
+        return 1.0f;
+    return (t - a) / (b - a);
+}
+
+static float intro_invlerp01(float a, float b, float t)
+{
+    return 1.0f - intro_lerp01(a, b, t);
+}
+
+static void intro_slot_set_alpha(intro_visual_t *v, float alpha)
+{
+    if (!v || !v->requested)
+        return;
+
+    if (alpha < 0.0f)
+        alpha = 0.0f;
+    if (alpha > 1.0f)
+        alpha = 1.0f;
+
+    v->alpha = alpha;
+}
+
 static const intro_slide_t *intro_test_slide_desc(const intro_test_state_data_t *data)
 {
     if (!data || !data->slides || data->slide_count <= 0)
@@ -250,29 +277,52 @@ static intro_action_result_t intro_slide1_action(game_app_t *app,
 
     t = data->slide_time;
 
-    if (data->intro_slots[0].requested) {
-        if (t < 0.4f)
-            data->intro_slots[0].alpha = t / 0.4f;
-        else
-            data->intro_slots[0].alpha = 1.0f;
-    }
+    data->fade_alpha = 0.0f;
+    intro_slot_set_alpha(&data->intro_slots[0], 0.0f);
+    intro_slot_set_alpha(&data->intro_slots[1], 0.0f);
+    intro_slot_set_alpha(&data->intro_slots[2], 0.0f);
 
-    if (t < 0.4f) {
-        data->fade_alpha = 0.0f;
+    if (t < 2.0f) {
+        intro_slot_set_alpha(&data->intro_slots[0], 1.0f);
         return INTRO_ACTION_CONTINUE;
     }
 
-    if (t < 2.5f) {
-        data->fade_alpha = 0.0f;
+    if (t < 2.4f) {
+        float k = intro_lerp01(2.0f, 2.4f, t);
+        intro_slot_set_alpha(&data->intro_slots[0], 1.0f - k);
+        intro_slot_set_alpha(&data->intro_slots[1], k);
+        intro_slot_set_alpha(&data->intro_slots[2], k);
         return INTRO_ACTION_CONTINUE;
     }
 
-    if (t < 2.8f) {
-        data->fade_alpha = (t - 2.5f) / 0.3f;
+    if (t < 4.4f) {
+        intro_slot_set_alpha(&data->intro_slots[1], 1.0f);
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
         return INTRO_ACTION_CONTINUE;
     }
 
-    data->fade_alpha = 1.0f;
+    if (t < 4.8f) {
+        float k = intro_lerp01(4.4f, 4.8f, t);
+        intro_slot_set_alpha(&data->intro_slots[1], 1.0f - k);
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
+
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 6.8f) {
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 7.2f) {
+        float k = intro_lerp01(6.8f, 7.2f, t);
+        intro_slot_set_alpha(&data->intro_slots[2], 1.0f - k);
+        return INTRO_ACTION_CONTINUE;
+    }
+
+    if (t < 7.5f)
+        return INTRO_ACTION_CONTINUE;
+
     return INTRO_ACTION_NEXT_SLIDE;
 }
 
@@ -728,6 +778,8 @@ static int intro_test_build_scene_for_slide(intro_test_state_data_t *data,
                                             int slide_index)
 {
     const intro_slide_t *slide;
+    int i;
+    int count;
 
     if (!data)
         return -1;
@@ -746,14 +798,20 @@ static int intro_test_build_scene_for_slide(intro_test_state_data_t *data,
     if (!slide->slides || slide->slide_count <= 0)
         return 0;
 
-    if (intro_test_request_slot_visual(&data->intro_slots[0],
-                                       intro_test_slide_subslide_path(slide, 0),
-                                       (data->screen_width - INTRO_SLIDE_W) * 0.5f,
-                                       36.0f,
-                                       INTRO_SLIDE_W,
-                                       INTRO_SLIDE_H,
-                                       10) != 0)
-        return -1;
+    count = slide->slide_count;
+    if (count > INTRO_MAX_SLOTS)
+        count = INTRO_MAX_SLOTS;
+
+    for (i = 0; i < count; ++i) {
+        if (intro_test_request_slot_visual(&data->intro_slots[i],
+                                           intro_test_slide_subslide_path(slide, i),
+                                           (data->screen_width - INTRO_SLIDE_W) * 0.5f,
+                                           36.0f,
+                                           INTRO_SLIDE_W,
+                                           INTRO_SLIDE_H,
+                                           10 + i) != 0)
+            return -1;
+    }
 
     return 0;
 }
