@@ -107,16 +107,6 @@ static unsigned char intro_test_alpha_to_u8(float alpha)
     return (unsigned char)a;
 }
 
-static text_color_t text_color_white(void)
-{
-    return text_color_rgba(0xFF, 0xFF, 0xFF, 0xFF);
-}
-
-static int menu_option_count(void)
-{
-    return ARRAY_COUNT(menu_options);
-}
-
 typedef enum state_stage {
     MENU_LANG_SELECT = 0,
     LOGO,
@@ -131,7 +121,7 @@ typedef enum intro_action_result {
 
 typedef struct intro_slide {
     const char *name;
-    const char **slides;
+    const intro_subslide_desc_t *slides;
     int slide_count;
     const char **strings;
     int string_count;
@@ -164,6 +154,13 @@ typedef struct intro_visual {
 
     int tex_w;
     int tex_h;
+
+    float anchor_x;
+    float anchor_y;
+    float box_w;
+    float box_h;
+    subslide_visual_mode_t mode;
+    float scale;
 } intro_visual_t;
 
 typedef struct intro_test_state_data {
@@ -310,6 +307,17 @@ static void intro_slot_clear_region(intro_visual_t *v)
         return;
 
     v->use_region = 0;
+}
+
+static void intro_slot_set_scale(intro_visual_t *v, float scale)
+{
+    if (!v || !v->requested)
+        return;
+
+    if (scale < 0.01f)
+        scale = 0.01f;
+
+    v->scale = scale;
 }
 
 static intro_action_result_t intro_slide1_action(game_app_t *app,
@@ -492,6 +500,10 @@ static intro_action_result_t intro_slide4_action(game_app_t *app,
     intro_slot_set_alpha(&data->intro_slots[2], 0.0f);
     intro_slot_set_alpha(&data->intro_slots[3], 0.0f);
 
+    intro_slot_set_scale(&data->intro_slots[1], 2.0f);
+    intro_slot_set_scale(&data->intro_slots[2], 2.0f);
+    intro_slot_set_scale(&data->intro_slots[3], 2.0f);
+
     intro_slot_clear_region(&data->intro_slots[0]);
     intro_slot_clear_region(&data->intro_slots[1]);
     intro_slot_clear_region(&data->intro_slots[2]);
@@ -609,8 +621,8 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
                                                   intro_test_state_data_t *data,
                                                   float dt)
 {
-    intro_visual_t *fg;
     intro_visual_t *bg;
+    intro_visual_t *fg;
     float t;
     float fade_k;
     float move_k;
@@ -623,8 +635,8 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
     t = data->slide_time;
     data->fade_alpha = 0.0f;
 
-    fg = &data->intro_slots[0];
-    bg = &data->intro_slots[1];
+    bg = &data->intro_slots[0];
+    fg = &data->intro_slots[1];
 
     if (!fg->requested || !bg->requested)
         return INTRO_ACTION_CONTINUE;
@@ -632,9 +644,12 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
     intro_slot_set_alpha(fg, 0.0f);
     intro_slot_set_alpha(bg, 0.0f);
 
-    intro_slot_set_region(fg, 0.0f, 0.0f, 200.0f, 110.0f);
-    intro_slot_clear_region(bg);
-    bg->pan_y = 0.0f;
+    intro_slot_set_scale(fg, 2.0f);
+
+    intro_slot_set_region(bg, 0.0f, 0.0f, 200.0f, 110.0f);
+    intro_slot_clear_region(fg);
+
+    bg->pan_y = 8.0f;
 
     if (t < 0.5f) {
         fade_k = intro_lerp01(0.0f, 0.5f, t);
@@ -653,9 +668,10 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
         move_k = intro_lerp01(1.0f, 3.5f, t);
 
         src_y = 60.0f * move_k;
-        intro_slot_set_region(fg, 0.0f, src_y, 200.0f, 110.0f);
+        intro_slot_set_region(bg, 0.0f, src_y, 200.0f, 110.0f);
 
-        bg->pan_y = -12.0f * move_k;
+        fg->pan_y = 8.0f - 25.0f * move_k;
+        //fg->pan_y = -25.0f;
 
         intro_slot_set_alpha(fg, 1.0f);
         intro_slot_set_alpha(bg, 1.0f);
@@ -663,8 +679,8 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
     }
 
     if (t < 4.0f) {
-        intro_slot_set_region(fg, 0.0f, 60.0f, 200.0f, 110.0f);
-        bg->pan_y = -12.0f;
+        intro_slot_set_region(bg, 0.0f, 60.0f, 200.0f, 110.0f);
+        fg->pan_y = -25.0f;
 
         intro_slot_set_alpha(fg, 1.0f);
         intro_slot_set_alpha(bg, 1.0f);
@@ -674,8 +690,8 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
     if (t < 4.4f) {
         out_k = intro_lerp01(4.0f, 4.4f, t);
 
-        intro_slot_set_region(fg, 0.0f, 60.0f, 200.0f, 110.0f);
-        bg->pan_y = -12.0f;
+        intro_slot_set_region(bg, 0.0f, 60.0f, 200.0f, 110.0f);
+        fg->pan_y = -25.0f;
 
         intro_slot_set_alpha(fg, 1.0f - out_k);
         intro_slot_set_alpha(bg, 1.0f - out_k);
@@ -942,6 +958,12 @@ static void reset_visual(intro_visual_t *v)
     v->src_rect.h = 0.0f;
     v->tex_w = 0;
     v->tex_h = 0;
+    v->anchor_x = 0.0f;
+    v->anchor_y = 0.0f;
+    v->box_w = 0.0f;
+    v->box_h = 0.0f;
+    v->mode = INTRO_VISUAL_STRETCH;
+    v->scale = 1.0f;
 }
 
 static void intro_test_clear_intro_slots(intro_test_state_data_t *data)
@@ -987,12 +1009,19 @@ static int intro_test_request_slot_visual(intro_visual_t *v,
                                           float y,
                                           float w,
                                           float h,
-                                          int layer)
+                                          int layer,
+                                          subslide_visual_mode_t mode)
 {
     if (!v || !path)
         return -1;
 
     if (!v->requested) {
+        v->anchor_x = x;
+        v->anchor_y = y;
+        v->box_w = w;
+        v->box_h = h;
+        v->mode = mode;
+
         v->draw_params = gfx_draw_params_default(x, y, w, h);
         v->draw_params.origin_v = GFX_VALIGN_TOP;
         v->draw_params.origin_h = GFX_HALIGN_LEFT;
@@ -1025,6 +1054,67 @@ static void intro_test_release_intro_slots(intro_test_state_data_t *data)
 
     for (i = 0; i < INTRO_MAX_SLOTS; ++i)
         intro_test_release_visual(&data->intro_slots[i]);
+}
+
+static void intro_test_resolve_visual_rect(intro_visual_t *v)
+{
+    float src_w;
+    float src_h;
+
+    if (!v)
+        return;
+
+    src_w = (v->use_region && v->src_rect.w > 0.0f) ? v->src_rect.w : (float)v->tex_w;
+    src_h = (v->use_region && v->src_rect.h > 0.0f) ? v->src_rect.h : (float)v->tex_h;
+
+    if (src_w <= 0.0f || src_h <= 0.0f)
+        return;
+
+    switch (v->mode) {
+        case INTRO_VISUAL_NATIVE:
+            v->draw_params.w = src_w;
+            v->draw_params.h = src_h;
+            v->draw_params.x = v->anchor_x + v->box_w * 0.5f;
+            v->draw_params.y = v->anchor_y + v->box_h * 0.5f;
+            v->draw_params.anchor_h = GFX_HALIGN_CENTER;
+            v->draw_params.anchor_v = GFX_VALIGN_CENTER;
+            v->draw_params.origin_h = GFX_HALIGN_CENTER;
+            v->draw_params.origin_v = GFX_VALIGN_CENTER;
+            break;
+
+        case INTRO_VISUAL_FIT: {
+            float sx = v->box_w / src_w;
+            float sy = v->box_h / src_h;
+            float s = (sx < sy) ? sx : sy;
+
+            v->draw_params.w = src_w * s;
+            v->draw_params.h = src_h * s;
+            v->draw_params.x = v->anchor_x + v->box_w * 0.5f;
+            v->draw_params.y = v->anchor_y + v->box_h * 0.5f;
+            v->draw_params.anchor_h = GFX_HALIGN_CENTER;
+            v->draw_params.anchor_v = GFX_VALIGN_CENTER;
+            v->draw_params.origin_h = GFX_HALIGN_CENTER;
+            v->draw_params.origin_v = GFX_VALIGN_CENTER;
+            break;
+        }
+
+        case INTRO_VISUAL_STRETCH:
+        default:
+            v->draw_params.w = v->box_w;
+            v->draw_params.h = v->box_h;
+            v->draw_params.x = v->anchor_x;
+            v->draw_params.y = v->anchor_y;
+            v->draw_params.anchor_h = GFX_HALIGN_LEFT;
+            v->draw_params.anchor_v = GFX_VALIGN_TOP;
+            v->draw_params.origin_h = GFX_HALIGN_LEFT;
+            v->draw_params.origin_v = GFX_VALIGN_TOP;
+            break;
+    }
+
+    v->draw_params.scale_x = v->scale;
+    v->draw_params.scale_y = v->scale;
+    v->draw_params.x += v->pan_x;
+    v->draw_params.y += v->pan_y;
 }
 
 static int try_create_visual(intro_visual_t *v, const char *tag)
@@ -1064,6 +1154,8 @@ static int try_create_visual(intro_visual_t *v, const char *tag)
         v->tex_h = 0;
     }
 
+    intro_test_resolve_visual_rect(v);
+
     if (!v->prewarmed) {
         int warm = texture_touch(v->texture);
         LOGLNC(LOGCAT_RESOURCES,
@@ -1089,22 +1181,11 @@ static int try_create_visual(intro_visual_t *v, const char *tag)
     return 0;
 }
 
-static const char *intro_test_slide_subslide_path(const intro_slide_t *slide, int subslide_index)
-{
-    if (!slide || !slide->slides || slide->slide_count <= 0)
-        return NULL;
-
-    if (subslide_index < 0 || subslide_index >= slide->slide_count)
-        return NULL;
-
-    return slide->slides[subslide_index];
-}
-
 static void init_text_block_menu(text_block_t *block) {
     text_style_t style;
     text_style_init(&style);
     style.layer = 100;
-    style.color = text_color_white();
+    style.color = text_color_rgba(0xFF, 0xFF, 0xFF, 0xFF);
 
     text_block_set_box(block, 32, 32, 200, 300);
     text_block_set_align_h(block, TEXT_ALIGN_LEFT);
@@ -1119,7 +1200,7 @@ static void init_text_block_intro(text_block_t *block, int screen_width, int scr
     text_style_t style;
     text_style_init(&style);
     style.layer = 100;
-    style.color = text_color_white();
+    style.color = text_color_rgba(0xFF, 0xFF, 0xFF, 0xFF);
 
     text_block_set_box(block, (screen_width - 410) * 0.5f, (screen_height - 120) * 0.5f + 120, 410, 120);
     text_block_set_align_h(block, TEXT_ALIGN_LEFT);
@@ -1180,13 +1261,16 @@ static int intro_test_build_scene_for_slide(intro_test_state_data_t *data,
         count = INTRO_MAX_SLOTS;
 
     for (i = 0; i < count; ++i) {
+        const intro_subslide_desc_t *sub = &slide->slides[i];
+
         if (intro_test_request_slot_visual(&data->intro_slots[i],
-                                           intro_test_slide_subslide_path(slide, i),
+                                           sub->path,
                                            (data->screen_width - INTRO_SLIDE_W) * 0.5f,
                                            36.0f,
                                            INTRO_SLIDE_W,
                                            INTRO_SLIDE_H,
-                                           10 + i) != 0)
+                                           10 + i,
+                                           sub->mode) != 0)
             return -1;
     }
 
@@ -1197,6 +1281,10 @@ static void intro_test_begin_logo(intro_test_state_data_t *data)
 {
     float cx = data->screen_width * 0.5f;
     float cy = data->screen_height * 0.5f;
+    float main_x = cx - LOGO_W * 0.5f;
+    float main_y = cy - LOGO_H - (LOGO_GAP * 0.5f);
+    float sub_x  = cx - LOGO_YELLOW_W * 0.5f;
+    float sub_y  = cy + (LOGO_GAP * 0.5f);
 
     data->stage = LOGO;
     data->stage_time = 0.0f;
@@ -1204,28 +1292,28 @@ static void intro_test_begin_logo(intro_test_state_data_t *data)
     data->slide_time = 0.0f;
 
     reset_visual(&data->logo_main);
+    data->logo_main.mode = INTRO_VISUAL_NATIVE;
+    data->logo_main.anchor_x = main_x;
+    data->logo_main.anchor_y = main_y;
+    data->logo_main.box_w = LOGO_W;
+    data->logo_main.box_h = LOGO_H;
+
     reset_visual(&data->logo_sub);
+    data->logo_sub.mode = INTRO_VISUAL_NATIVE;
+    data->logo_sub.anchor_x = sub_x;
+    data->logo_sub.anchor_y = sub_y;
+    data->logo_sub.box_w = LOGO_YELLOW_W;
+    data->logo_sub.box_h = LOGO_YELLOW_H;
+
     intro_test_release_intro_slots(data);
     intro_test_clear_intro_slots(data);
 
-    data->logo_main.draw_params =
-        gfx_draw_params_default(
-            cx - LOGO_W * 0.5f,
-            cy - LOGO_H - (LOGO_GAP * 0.5f),
-            LOGO_W,
-            LOGO_H
-        );
+    data->logo_main.draw_params = gfx_draw_params_default(main_x, main_y, LOGO_W, LOGO_H);
     data->logo_main.draw_params.layer = 20;
     data->logo_main.draw_params.origin_v = GFX_VALIGN_TOP;
     data->logo_main.draw_params.origin_h = GFX_HALIGN_LEFT;
 
-    data->logo_sub.draw_params =
-        gfx_draw_params_default(
-            cx - LOGO_YELLOW_W * 0.5f,
-            cy + (LOGO_GAP * 0.5f),
-            LOGO_YELLOW_W,
-            LOGO_YELLOW_H
-        );
+    data->logo_sub.draw_params = gfx_draw_params_default(sub_x, sub_y, LOGO_YELLOW_W, LOGO_YELLOW_H);
     data->logo_sub.draw_params.layer = 20;
     data->logo_sub.draw_params.origin_v = GFX_VALIGN_TOP;
     data->logo_sub.draw_params.origin_h = GFX_HALIGN_LEFT;
@@ -1309,7 +1397,7 @@ static void intro_test_update_menu(game_app_t *app, intro_test_state_data_t *dat
     if (!data)
         return;
 
-    count = menu_option_count();
+    count = ARRAY_COUNT(menu_options);
 
     if (input_button_pressed(INPUT_BUTTON_UP)) {
         data->option = (state_option_t)((data->option + count - 1) % count);
@@ -1567,6 +1655,7 @@ static void intro_test_update_slot_group(intro_visual_t *slots, int count, const
         try_create_visual(&slots[i], tag);
 
         if (slots[i].sprite_created) {
+            intro_test_resolve_visual_rect(&slots[i]);
             intro_test_apply_visual_alpha(&slots[i]);
             gfx_sprite_update(slots[i].sprite_id, &slots[i].draw_params);
             intro_test_apply_visual_region(&slots[i]);
