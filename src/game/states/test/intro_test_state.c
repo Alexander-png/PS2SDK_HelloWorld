@@ -628,6 +628,8 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
     float move_k;
     float out_k;
     float src_y;
+    const float fg_start_y = 8.0f;
+    const float fg_end_y = -25.0f;
 
     (void)app;
     (void)dt;
@@ -650,6 +652,7 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
     intro_slot_clear_region(fg);
 
     bg->pan_y = 8.0f;
+    fg->pan_y = fg_start_y;
 
     if (t < 0.5f) {
         fade_k = intro_lerp01(0.0f, 0.5f, t);
@@ -670,8 +673,7 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
         src_y = 60.0f * move_k;
         intro_slot_set_region(bg, 0.0f, src_y, 200.0f, 110.0f);
 
-        fg->pan_y = 8.0f - 25.0f * move_k;
-        //fg->pan_y = -25.0f;
+        fg->pan_y = fg_start_y + (fg_end_y - fg_start_y) * move_k;
 
         intro_slot_set_alpha(fg, 1.0f);
         intro_slot_set_alpha(bg, 1.0f);
@@ -680,7 +682,7 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
 
     if (t < 4.0f) {
         intro_slot_set_region(bg, 0.0f, 60.0f, 200.0f, 110.0f);
-        fg->pan_y = -25.0f;
+        fg->pan_y = fg_end_y;
 
         intro_slot_set_alpha(fg, 1.0f);
         intro_slot_set_alpha(bg, 1.0f);
@@ -691,7 +693,7 @@ static intro_action_result_t intro_slide10_action(game_app_t *app,
         out_k = intro_lerp01(4.0f, 4.4f, t);
 
         intro_slot_set_region(bg, 0.0f, 60.0f, 200.0f, 110.0f);
-        fg->pan_y = -25.0f;
+        fg->pan_y = fg_end_y;
 
         intro_slot_set_alpha(fg, 1.0f - out_k);
         intro_slot_set_alpha(bg, 1.0f - out_k);
