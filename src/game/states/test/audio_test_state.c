@@ -8,7 +8,7 @@
 #include "game/debug/debug_overlay.h"
 
 #ifndef AUDIO_TEST_WAV_PATH
-#define AUDIO_TEST_WAV_PATH "assets/test/mus/test.wav"
+#define AUDIO_TEST_WAV_PATH "assets/test/mus/the_false_sanctuary_final2.wav"
 #endif
 
 #ifndef AUDIO_TEST_IO_BUFFER_BYTES
@@ -50,7 +50,7 @@ static void audio_test_reset(audio_test_state_data_t *data)
     data->voice = -1;
     data->paused = 0;
     data->volume = 100;
-    data->speed = 0.85f;
+    data->speed = 1.0f;
     data->log_timer = 0.0f;
     data->uptime_sec = 0.0f;
     data->overlay_dirty = 1;
