@@ -34,8 +34,6 @@ typedef struct audio_stream_voice_state {
     u32 underrun_count;
     u32 underrun_count_logged;
 
-    int startup_pending;
-
     int loop_fade_in_remaining;
     int loop_fade_in_total;
 

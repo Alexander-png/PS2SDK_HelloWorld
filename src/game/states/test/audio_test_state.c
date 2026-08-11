@@ -8,7 +8,8 @@
 #include "game/debug/debug_overlay.h"
 
 #ifndef AUDIO_TEST_WAV_PATH
-#define AUDIO_TEST_WAV_PATH "assets/test/mus/the_false_sanctuary_final2.wav"
+//#define AUDIO_TEST_WAV_PATH "assets/test/mus/the_false_sanctuary_final2.wav"
+#define AUDIO_TEST_WAV_PATH "assets/test/mus/tsoi_muzika_voln.wav"
 #endif
 
 #ifndef AUDIO_TEST_IO_BUFFER_BYTES

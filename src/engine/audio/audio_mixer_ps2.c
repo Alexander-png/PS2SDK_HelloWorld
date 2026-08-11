@@ -29,10 +29,6 @@
 #define AUDIO_LOOP_XFADE_FRAMES 32
 #endif
 
-#ifndef AUDIO_START_MIN_READY_BYTES
-#define AUDIO_START_MIN_READY_BYTES (AUDIO_FRAME_BYTES * 8)
-#endif
-
 #ifndef AUDIO_STREAM_RING_BUFFER_BYTES
 #define AUDIO_STREAM_RING_BUFFER_BYTES (64 * 1024)
 #endif
@@ -86,6 +82,17 @@ static int mixer_is_valid_voice(const audio_mixer_t *m, int voice_handle)
     if (!m || voice_handle < 0 || voice_handle >= AUDIO_MIXER_MAX_VOICES)
         return 0;
     return m->voices[voice_handle].used;
+}
+
+static float audio_mixer_clamp_speed(float speed)
+{
+    if (speed < (1.0f / 3.0f))
+        return 1.0f / 3.0f;
+
+    if (speed > 3.0f)
+        return 3.0f;
+
+    return speed;
 }
 
 static void audio_mixer_release_stream_voice_resources(audio_voice_t *v)
@@ -273,244 +280,180 @@ static void audio_stream_voice_refill(audio_mixer_t *m, audio_voice_t *v)
     }
 }
 
-static void audio_mixer_mix_stream_voice(audio_mixer_t *m,
-                                         int voice_handle,
-                                         audio_voice_t *v,
-                                         s32 *accum_l,
-                                         s32 *accum_r,
-                                         int frames)
+static void audio_mixer_advance_voice_cursor(audio_voice_t *v, float step)
 {
-    audio_stream_asset_t *asset;
-    audio_stream_source_t *src;
-    audio_stream_voice_state_t *st;
-    float step;
-    int gain_l, gain_r;
-    int i;
+    v->play_frac += step;
 
-    if (!m || !v || v->kind != AUDIO_VOICE_KIND_STREAM)
-        return;
-    if (!v->used || !v->playing || v->paused)
-        return;
-
-    st = &v->u.stream;
-    if (!mixer_is_valid_stream_asset_index(m, st->asset_index))
-        return;
-
-    asset = &m->stream_assets[st->asset_index];
-    src = &asset->source;
-
-    if (src->total_frames == 0)
-        return;
-
-    step = v->speed * ((float)src->src_rate / (float)AUDIO_OUTPUT_RATE);
-    gain_l = (v->volume * v->volume_l * 256) / (100 * 100);
-    gain_r = (v->volume * v->volume_r * 256) / (100 * 100);
-
-    for (i = 0; i < frames; i++) {
-        u32 rb_frames;
-        u32 local_index;
-        u32 next_index;
-        u32 byte_offset0, byte_offset1;
-        s16 frame0[2];
-        s16 frame1[2];
-        u32 got0, got1;
-        float t;
-        s32 l, r;
-
-        rb_frames = ring_buffer_size(&st->rb) / AUDIO_FRAME_BYTES;
-
-        if (st->startup_pending && ring_buffer_size(&st->rb) >= AUDIO_START_MIN_READY_BYTES)
-            st->startup_pending = 0;
-
-        if (v->play_cursor_frames < st->rb_base_frame) {
-            v->play_cursor_frames = st->rb_base_frame;
-            v->play_frac = 0.0f;
-        }
-
-        local_index = v->play_cursor_frames - st->rb_base_frame;
-
-        if (local_index >= rb_frames) {
-            if (!st->startup_pending)
-                st->underrun_count++;
-
-            if (st->eof_reached && rb_frames == 0 && !v->loop) {
-                audio_mixer_finish_voice(m, voice_handle);
-                return;
-            }
-
-            continue;
-        }
-
-        next_index = local_index + 1;
-        if (next_index >= rb_frames) {
-            if (st->eof_reached && !v->loop) {
-                next_index = local_index;
-            } else {
-                if (!st->startup_pending)
-                    st->underrun_count++;
-                continue;
-            }
-        }
-
-        byte_offset0 = local_index * AUDIO_FRAME_BYTES;
-        byte_offset1 = next_index * AUDIO_FRAME_BYTES;
-
-        got0 = ring_buffer_peek_at(&st->rb, byte_offset0, frame0, AUDIO_FRAME_BYTES);
-        got1 = ring_buffer_peek_at(&st->rb, byte_offset1, frame1, AUDIO_FRAME_BYTES);
-
-        if (got0 < AUDIO_FRAME_BYTES || got1 < AUDIO_FRAME_BYTES) {
-            if (!st->startup_pending)
-                st->underrun_count++;
-            continue;
-        }
-
-        t = v->play_frac;
-        if (t < 0.0f) t = 0.0f;
-        if (t > 1.0f) t = 1.0f;
-
-        l = (s32)((1.0f - t) * (float)frame0[0] + t * (float)frame1[0]);
-        r = (s32)((1.0f - t) * (float)frame0[1] + t * (float)frame1[1]);
-
-        {
-            float env = 1.0f;
-            u32 frames_left_to_end = 0;
-
-            if (v->loop) {
-                if (v->play_cursor_frames < src->total_frames)
-                    frames_left_to_end = src->total_frames - v->play_cursor_frames;
-
-                if (frames_left_to_end <= AUDIO_LOOP_XFADE_FRAMES) {
-                    env = (float)frames_left_to_end / (float)AUDIO_LOOP_XFADE_FRAMES;
-                    if (env < 0.0f) env = 0.0f;
-                    if (env > 1.0f) env = 1.0f;
-                }
-
-                if (st->loop_fade_in_remaining > 0 && st->loop_fade_in_total > 0) {
-                    float in_env = 1.0f - ((float)st->loop_fade_in_remaining /
-                                           (float)st->loop_fade_in_total);
-                    if (in_env < 0.0f) in_env = 0.0f;
-                    if (in_env > 1.0f) in_env = 1.0f;
-                    if (in_env < env)
-                        env = in_env;
-                }
-            }
-
-            l = (s32)((float)l * env);
-            r = (s32)((float)r * env);
-        }
-
-        accum_l[i] += (l * gain_l) >> 8;
-        accum_r[i] += (r * gain_r) >> 8;
-
-        v->play_frac += step;
-        while (v->play_frac >= 1.0f) {
-            v->play_cursor_frames++;
-            v->play_frac -= 1.0f;
-        }
-
-        while (v->play_frac < 0.0f) {
-            if (v->play_cursor_frames > 0)
-                v->play_cursor_frames--;
-            v->play_frac += 1.0f;
-        }
-
-        if (st->loop_fade_in_remaining > 0)
-            st->loop_fade_in_remaining--;
-
-        if (v->play_cursor_frames >= src->total_frames) {
-            if (v->loop) {
-                v->play_cursor_frames = 0;
-                v->play_frac = 0.0f;
-                st->rb_base_frame = 0;
-
-                st->loop_fade_in_total = AUDIO_LOOP_XFADE_FRAMES;
-                st->loop_fade_in_remaining = AUDIO_LOOP_XFADE_FRAMES;
-
-                ring_buffer_reset(&st->rb);
-                st->decode_frame = 0;
-                st->eof_reached = 0;
-                st->startup_pending = 1;
-
-                audio_stream_source_prewarm(src, 0, 2);
-                audio_stream_voice_refill(m, v);
-                audio_stream_voice_refill(m, v);
-            } else if (st->eof_reached) {
-                audio_mixer_finish_voice(m, voice_handle);
-                return;
-            }
-        }
-    }
-
-    if (v->play_cursor_frames > st->rb_base_frame) {
-        u32 consumed_frames = v->play_cursor_frames - st->rb_base_frame;
-
-        if (consumed_frames > TAIL_FRAMES_TO_KEEP) {
-            u32 skip_frames = consumed_frames - TAIL_FRAMES_TO_KEEP;
-            u32 skip_bytes = skip_frames * AUDIO_FRAME_BYTES;
-            u32 skipped = ring_buffer_skip(&st->rb, skip_bytes);
-            st->rb_base_frame += skipped / AUDIO_FRAME_BYTES;
-        }
+    while (v->play_frac >= 1.0f) {
+        v->play_cursor_frames++;
+        v->play_frac -= 1.0f;
     }
 }
 
-static void audio_mixer_mix_sfx_voice(audio_mixer_t *m,
+static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
                                       int voice_handle,
                                       audio_voice_t *v,
                                       s32 *accum_l,
                                       s32 *accum_r,
                                       int frames)
 {
-    audio_sfx_asset_t *a;
     float step;
     int gain_l, gain_r;
+    u32 total_frames;
     int i;
+    int is_stream;
+    audio_stream_voice_state_t *stream_st = NULL;
+    audio_stream_asset_t *stream_asset = NULL;
+    audio_stream_source_t *stream_src = NULL;
+    audio_sfx_asset_t *sfx_asset = NULL;
 
-    if (!m || !v || v->kind != AUDIO_VOICE_KIND_SFX)
+    if (!m || !v)
         return;
+
     if (!v->used || !v->playing || v->paused)
         return;
 
-    if (!mixer_is_valid_sfx_asset_index(m, v->u.sfx.asset_index))
-        return;
+    is_stream = (v->kind == AUDIO_VOICE_KIND_STREAM);
 
-    a = &m->sfx_assets[v->u.sfx.asset_index];
-    if (!a->pcm || a->total_frames == 0)
-        return;
+    if (is_stream) {
+        stream_st = &v->u.stream;
 
-    step = v->speed * ((float)a->src_rate / (float)AUDIO_OUTPUT_RATE);
+        if (!mixer_is_valid_stream_asset_index(m, stream_st->asset_index))
+            return;
+
+        stream_asset = &m->stream_assets[stream_st->asset_index];
+        stream_src = &stream_asset->source;
+
+        if (stream_src->total_frames == 0)
+            return;
+
+        total_frames = stream_src->total_frames;
+        step = v->speed *
+            ((float)stream_src->src_rate / (float)AUDIO_OUTPUT_RATE);
+    } else if (v->kind == AUDIO_VOICE_KIND_SFX) {
+        if (!mixer_is_valid_sfx_asset_index(m, v->u.sfx.asset_index))
+            return;
+
+        sfx_asset = &m->sfx_assets[v->u.sfx.asset_index];
+
+        if (!sfx_asset->pcm || sfx_asset->total_frames == 0)
+            return;
+
+        total_frames = sfx_asset->total_frames;
+        step = v->speed *
+            ((float)sfx_asset->src_rate / (float)AUDIO_OUTPUT_RATE);
+    } else {
+        return;
+    }
+
     gain_l = (v->volume * v->volume_l * 256) / (100 * 100);
     gain_r = (v->volume * v->volume_r * 256) / (100 * 100);
 
     for (i = 0; i < frames; i++) {
-        u32 frame0_index, frame1_index;
         s16 l0, r0, l1, r1;
         float t;
         s32 l, r;
 
-        if (v->play_cursor_frames >= a->total_frames) {
-            if (v->loop) {
+        if (v->play_cursor_frames >= total_frames) {
+            if (!v->loop) {
+                /*
+                 * Для stream конец подтверждается eof_reached:
+                 * последний chunk мог уже быть декодирован, но eof ещё
+                 * не был замечен refill-логикой.
+                 */
+                if (!is_stream || stream_st->eof_reached) {
+                    audio_mixer_finish_voice(m, voice_handle);
+                    return;
+                }
+            } else {
                 v->play_cursor_frames = 0;
                 v->play_frac = 0.0f;
-            } else {
-                audio_mixer_finish_voice(m, voice_handle);
-                return;
+
+                if (is_stream) {
+                    stream_st->rb_base_frame = 0;
+                    stream_st->loop_fade_in_total = AUDIO_LOOP_XFADE_FRAMES;
+                    stream_st->loop_fade_in_remaining = AUDIO_LOOP_XFADE_FRAMES;
+
+                    ring_buffer_reset(&stream_st->rb);
+                    stream_st->decode_frame = 0;
+                    stream_st->eof_reached = 0;
+
+                    audio_stream_source_prewarm(stream_src, 0, 2);
+                    audio_stream_voice_refill(m, v);
+                    audio_stream_voice_refill(m, v);
+                }
             }
         }
 
-        frame0_index = v->play_cursor_frames;
-        frame1_index = frame0_index + 1;
+        /*
+         * Source-specific section:
+         * получает PCM frame0 и frame1, но не выполняет gain,
+         * interpolation или cursor advance.
+         */
+        if (!is_stream) {
+            u32 frame0 = v->play_cursor_frames;
+            u32 frame1 = frame0 + 1;
 
-        if (frame1_index >= a->total_frames) {
-            if (v->loop)
-                frame1_index = 0;
-            else
-                frame1_index = frame0_index;
+            if (frame1 >= sfx_asset->total_frames)
+                frame1 = v->loop ? 0 : frame0;
+
+            l0 = sfx_asset->pcm[frame0 * 2 + 0];
+            r0 = sfx_asset->pcm[frame0 * 2 + 1];
+            l1 = sfx_asset->pcm[frame1 * 2 + 0];
+            r1 = sfx_asset->pcm[frame1 * 2 + 1];
+        } else {
+            u32 rb_frames = ring_buffer_size(&stream_st->rb) / AUDIO_FRAME_BYTES;
+            u32 local_index;
+            u32 next_index;
+            s16 frame0[2];
+            s16 frame1[2];
+
+            if (v->play_cursor_frames < stream_st->rb_base_frame) {
+                v->play_cursor_frames = stream_st->rb_base_frame;
+                v->play_frac = 0.0f;
+            }
+
+            local_index = v->play_cursor_frames - stream_st->rb_base_frame;
+
+            if (local_index >= rb_frames) {
+                stream_st->underrun_count++;
+
+                if (stream_st->eof_reached && rb_frames == 0 && !v->loop) {
+                    audio_mixer_finish_voice(m, voice_handle);
+                    return;
+                }
+
+                continue;
+            }
+
+            next_index = local_index + 1;
+
+            if (next_index >= rb_frames) {
+                if (stream_st->eof_reached && !v->loop) {
+                    next_index = local_index;
+                } else {
+                    stream_st->underrun_count++;
+                    continue;
+                }
+            }
+
+            if (ring_buffer_peek_at(&stream_st->rb,
+                                    local_index * AUDIO_FRAME_BYTES,
+                                    frame0,
+                                    AUDIO_FRAME_BYTES) < AUDIO_FRAME_BYTES ||
+                ring_buffer_peek_at(&stream_st->rb,
+                                    next_index * AUDIO_FRAME_BYTES,
+                                    frame1,
+                                    AUDIO_FRAME_BYTES) < AUDIO_FRAME_BYTES) {
+                stream_st->underrun_count++;
+                continue;
+            }
+
+            l0 = frame0[0];
+            r0 = frame0[1];
+            l1 = frame1[0];
+            r1 = frame1[1];
         }
-
-        l0 = a->pcm[frame0_index * 2 + 0];
-        r0 = a->pcm[frame0_index * 2 + 1];
-        l1 = a->pcm[frame1_index * 2 + 0];
-        r1 = a->pcm[frame1_index * 2 + 1];
 
         t = v->play_frac;
         if (t < 0.0f) t = 0.0f;
@@ -519,19 +462,66 @@ static void audio_mixer_mix_sfx_voice(audio_mixer_t *m,
         l = (s32)((1.0f - t) * (float)l0 + t * (float)l1);
         r = (s32)((1.0f - t) * (float)r0 + t * (float)r1);
 
+        /*
+         * Существующий loop fade пока оставляем только stream-ам.
+         * Он не становится настоящим crossfade, но рефакторинг
+         * не должен менять слышимое поведение.
+         */
+        if (is_stream && v->loop) {
+            float env = 1.0f;
+            u32 left = 0;
+
+            if (v->play_cursor_frames < total_frames)
+                left = total_frames - v->play_cursor_frames;
+
+            if (left <= AUDIO_LOOP_XFADE_FRAMES) {
+                env = (float)left / (float)AUDIO_LOOP_XFADE_FRAMES;
+            }
+
+            if (stream_st->loop_fade_in_remaining > 0 &&
+                stream_st->loop_fade_in_total > 0) {
+                float in_env = 1.0f -
+                    ((float)stream_st->loop_fade_in_remaining /
+                     (float)stream_st->loop_fade_in_total);
+
+                if (in_env < env)
+                    env = in_env;
+            }
+
+            if (env < 0.0f) env = 0.0f;
+            if (env > 1.0f) env = 1.0f;
+
+            l = (s32)((float)l * env);
+            r = (s32)((float)r * env);
+        }
+
         accum_l[i] += (l * gain_l) >> 8;
         accum_r[i] += (r * gain_r) >> 8;
 
-        v->play_frac += step;
-        while (v->play_frac >= 1.0f) {
-            v->play_cursor_frames++;
-            v->play_frac -= 1.0f;
-        }
+        audio_mixer_advance_voice_cursor(v, step);
 
-        while (v->play_frac < 0.0f) {
-            if (v->play_cursor_frames > 0)
-                v->play_cursor_frames--;
-            v->play_frac += 1.0f;
+        if (v->kind == AUDIO_VOICE_KIND_STREAM &&
+            v->u.stream.loop_fade_in_remaining > 0) {
+            v->u.stream.loop_fade_in_remaining--;
+        }
+    }
+
+    /*
+     * Только stream имеет sliding window и должен освобождать
+     * уже не нужные frames в ring buffer.
+     */
+    if (is_stream) {
+        if (v->play_cursor_frames > stream_st->rb_base_frame) {
+            u32 consumed = v->play_cursor_frames - stream_st->rb_base_frame;
+
+            if (consumed > TAIL_FRAMES_TO_KEEP) {
+                u32 skip_frames = consumed - TAIL_FRAMES_TO_KEEP;
+                u32 skipped = ring_buffer_skip(
+                    &stream_st->rb,
+                    skip_frames * AUDIO_FRAME_BYTES);
+
+                stream_st->rb_base_frame += skipped / AUDIO_FRAME_BYTES;
+            }
         }
     }
 }
@@ -549,10 +539,14 @@ static void audio_mixer_render(audio_mixer_t *m)
         if (!v->used || !v->playing)
             continue;
 
-        if (v->kind == AUDIO_VOICE_KIND_STREAM) {
-            audio_mixer_mix_stream_voice(m, j, v, m->accum_l, m->accum_r, m->mixbuf_frames);
-        } else if (v->kind == AUDIO_VOICE_KIND_SFX) {
-            audio_mixer_mix_sfx_voice(m, j, v, m->accum_l, m->accum_r, m->mixbuf_frames);
+        if (v->kind == AUDIO_VOICE_KIND_STREAM ||
+            v->kind == AUDIO_VOICE_KIND_SFX) {
+            audio_mixer_mix_pcm_voice(m,
+                                      j,
+                                      v,
+                                      m->accum_l,
+                                      m->accum_r,
+                                      m->mixbuf_frames);
         }
     }
 
@@ -1015,11 +1009,6 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
     if (volume_percent < 0) volume_percent = 0;
     if (volume_percent > 100) volume_percent = 100;
 
-    if (speed <= 0.0f)
-        speed = 1.0f;
-    if (speed < (1.0f / 3.0f)) speed = (1.0f / 3.0f);
-    if (speed > 3.0f) speed = 3.0f;
-
     if (mixer_is_stream_handle(asset_handle)) {
         int stream_idx = mixer_stream_index_from_handle(asset_handle);
         audio_stream_asset_t *a;
@@ -1057,7 +1046,7 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         v->volume_l = 100;
         v->volume_r = 100;
         v->pan = 0.0f;
-        v->speed = a->default_speed;
+        v->speed = audio_mixer_clamp_speed(speed > 0.0f ? speed : a->default_speed);
 
         v->on_started = on_started;
         v->on_stopped = on_stopped;
@@ -1081,7 +1070,6 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         a->bound_voice = voice_handle;
 
         audio_mixer_set_voice_volume(m, voice_handle, volume_percent);
-        audio_mixer_set_voice_speed(m, voice_handle, speed);
 
         audio_mixer_notify_started(m, voice_handle, v);
         return voice_handle;
@@ -1099,10 +1087,7 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         if (!a->pcm || a->total_frames == 0)
             return -2;
 
-        if (speed <= 0.0f)
-            speed = a->default_speed;
-        if (speed < (1.0f / 3.0f)) speed = (1.0f / 3.0f);
-        if (speed > 3.0f) speed = 3.0f;
+        speed = audio_mixer_clamp_speed(speed > 0.0f ? speed : a->default_speed);
 
         voice_handle = audio_mixer_alloc_voice(m, AUDIO_VOICE_KIND_SFX);
         if (voice_handle < 0)
@@ -1123,7 +1108,6 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         v->on_stopped = on_stopped;
         v->callback_userdata = userdata;
 
-        /* new play: set notify-flags to zero */
         audio_voice_reset_notify_flags(v);
 
         audio_voice_reset_playback(v);
@@ -1288,14 +1272,14 @@ void audio_mixer_set_voice_pan(audio_mixer_t *m, int voice_handle, float pan)
     v->volume_r = (int)(right * 100.0f);
 }
 
-void audio_mixer_set_voice_speed(audio_mixer_t *m, int voice_handle, float speed)
+void audio_mixer_set_voice_speed(audio_mixer_t *m,
+                                 int voice_handle,
+                                 float speed)
 {
     if (!mixer_is_valid_voice(m, voice_handle))
         return;
 
-    if (speed < (1.0f / 3.0f)) speed = (1.0f / 3.0f);
-    if (speed > 3.0f) speed = 3.0f;
-    m->voices[voice_handle].speed = speed;
+    m->voices[voice_handle].speed = audio_mixer_clamp_speed(speed);
 }
 
 int audio_mixer_voice_is_playing(const audio_mixer_t *m, int voice_handle)
