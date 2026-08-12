@@ -1341,14 +1341,14 @@ static void intro_test_update_menu(game_app_t *app, intro_test_state_data_t *dat
 
     if (input_button_pressed(INPUT_BUTTON_UP)) {
         data->option = (state_option_t)((data->option + count - 1) % count);
-        audio_play_ex(data->snd_menu_select.asset, 100, 1.0f, 0, NULL, NULL, NULL);
+        audio_play_ex(data->snd_menu_select.asset, 1.0f, 1.0f, 0, NULL, NULL, NULL);
         input_consume();
     } else if (input_button_pressed(INPUT_BUTTON_DOWN)) {
         data->option = (state_option_t)((data->option + 1) % count);
-        audio_play_ex(data->snd_menu_select.asset, 100, 1.0f, 0, NULL, NULL, NULL);
+        audio_play_ex(data->snd_menu_select.asset, 1.0f, 1.0f, 0, NULL, NULL, NULL);
         input_consume();
     } else if (input_button_pressed(INPUT_BUTTON_CROSS)) {
-        audio_play_ex(data->snd_confirm.asset, 100, 1.0f, 0, NULL, NULL, NULL);
+        audio_play_ex(data->snd_confirm.asset, 1.0f, 1.0f, 0, NULL, NULL, NULL);
         if (data->option != EXIT) {
             intro_test_begin_intro(app, data);
         } else {

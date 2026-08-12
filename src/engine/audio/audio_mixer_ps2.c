@@ -95,6 +95,26 @@ static float audio_mixer_clamp_speed(float speed)
     return speed;
 }
 
+static float audio_mixer_clamp_volume(float volume)
+{
+    if (volume < 0.0f)
+        return 0.0f;
+
+    if (volume > 1.0f)
+        return 1.0f;
+
+    return volume;
+}
+
+static float audio_mixer_resolve_volume(float requested,
+                                        float default_volume)
+{
+    if (requested >= 0.0f && requested <= 1.0f)
+        return requested;
+
+    return audio_mixer_clamp_volume(default_volume);
+}
+
 static void audio_mixer_release_stream_voice_resources(audio_voice_t *v)
 {
     audio_stream_voice_state_t *st;
@@ -346,8 +366,8 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
         return;
     }
 
-    gain_l = (v->volume * v->volume_l * 256) / (100 * 100);
-    gain_r = (v->volume * v->volume_r * 256) / (100 * 100);
+    gain_l = (int)(v->volume * v->volume_l * 256.0f);
+    gain_r = (int)(v->volume * v->volume_r * 256.0f);
 
     for (i = 0; i < frames; i++) {
         s16 l0, r0, l1, r1;
@@ -775,7 +795,7 @@ int audio_mixer_add_stream_asset(audio_mixer_t *m,
     a = &m->stream_assets[i];
     memset(a, 0, sizeof(*a));
     a->bound_voice = -1;
-    a->default_volume = 100;
+    a->default_volume = 1.0f;
     a->default_speed = 1.0f;
 
     rc = audio_stream_source_init(&a->source, wav_path, (u32)((io_buf_bytes > 0) ? io_buf_bytes : 0));
@@ -815,7 +835,7 @@ int audio_mixer_add_sfx_asset(audio_mixer_t *m, const char *wav_path)
     a->src_rate = data.src_rate;
     a->channels = data.channels;
     a->bits = data.bits;
-    a->default_volume = 100;
+    a->default_volume = 1.0f;
     a->default_speed = 1.0f;
     a->used = 1;
 
@@ -976,25 +996,9 @@ audio_asset_kind_t audio_mixer_asset_get_kind(const audio_mixer_t *m, int asset_
     return AUDIO_ASSET_KIND_STREAM;
 }
 
-int audio_mixer_play_asset(audio_mixer_t *m,
-                           int asset_handle,
-                           int volume_percent,
-                           float speed,
-                           int loop)
-{
-    return audio_mixer_play_asset_ex(m,
-                                     asset_handle,
-                                     volume_percent,
-                                     speed,
-                                     loop,
-                                     NULL,
-                                     NULL,
-                                     NULL);
-}
-
 int audio_mixer_play_asset_ex(audio_mixer_t *m,
                               int asset_handle,
-                              int volume_percent,
+                              float volume_percent,
                               float speed,
                               int loop,
                               audio_voice_callback_t on_started,
@@ -1005,9 +1009,6 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
 
     if (!m)
         return -1;
-
-    if (volume_percent < 0) volume_percent = 0;
-    if (volume_percent > 100) volume_percent = 100;
 
     if (mixer_is_stream_handle(asset_handle)) {
         int stream_idx = mixer_stream_index_from_handle(asset_handle);
@@ -1042,9 +1043,9 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         v = &m->voices[voice_handle];
         v->loop = loop ? 1 : 0;
         v->paused = 0;
-        v->volume = a->default_volume;
-        v->volume_l = 100;
-        v->volume_r = 100;
+        v->volume = audio_mixer_resolve_volume(volume_percent, a->default_volume);
+        v->volume_l = 1.0f;
+        v->volume_r = 1.0f;
         v->pan = 0.0f;
         v->speed = audio_mixer_clamp_speed(speed > 0.0f ? speed : a->default_speed);
 
@@ -1068,8 +1069,6 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
 
         v->playing = 1;
         a->bound_voice = voice_handle;
-
-        audio_mixer_set_voice_volume(m, voice_handle, volume_percent);
 
         audio_mixer_notify_started(m, voice_handle, v);
         return voice_handle;
@@ -1098,11 +1097,11 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         v->u.sfx.priority = 0;
         v->loop = loop ? 1 : 0;
         v->paused = 0;
-        v->volume = volume_percent;
-        v->volume_l = 100;
-        v->volume_r = 100;
+        v->volume = audio_mixer_resolve_volume(volume_percent, a->default_volume);
+        v->volume_l = 1.0f;
+        v->volume_r = 1.0f;
         v->pan = 0.0f;
-        v->speed = speed;
+        v->speed = audio_mixer_clamp_speed(speed > 0.0f ? speed : a->default_speed);
 
         v->on_started = on_started;
         v->on_stopped = on_stopped;
@@ -1141,9 +1140,9 @@ int audio_mixer_alloc_voice(audio_mixer_t *m, audio_voice_kind_t kind)
 
     v->used = 1;
     v->kind = kind;
-    v->volume = 100;
-    v->volume_l = 100;
-    v->volume_r = 100;
+    v->volume = 1.0f;
+    v->volume_l = 1.0f;
+    v->volume_r = 1.0f;
     v->pan = 0.0f;
     v->speed = 1.0f;
 
@@ -1217,50 +1216,47 @@ void audio_mixer_resume_voice(audio_mixer_t *m, int voice_handle)
         m->voices[voice_handle].paused = 0;
 }
 
-void audio_mixer_set_voice_volume(audio_mixer_t *m, int voice_handle, int percent)
+void audio_mixer_set_voice_volume(audio_mixer_t *m,
+                                  int voice_handle,
+                                  float volume)
 {
-    audio_voice_t *v;
-
     if (!mixer_is_valid_voice(m, voice_handle))
         return;
 
-    if (percent < 0) percent = 0;
-    if (percent > 100) percent = 100;
-
-    v = &m->voices[voice_handle];
-    v->volume = percent;
+    m->voices[voice_handle].volume =
+        audio_mixer_clamp_volume(volume);
 }
 
 void audio_mixer_set_voice_channel_volume(audio_mixer_t *m,
                                           int voice_handle,
-                                          int left_percent,
-                                          int right_percent)
+                                          float left_volume,
+                                          float right_volume)
 {
     audio_voice_t *v;
 
     if (!mixer_is_valid_voice(m, voice_handle))
         return;
-
-    if (left_percent < 0) left_percent = 0;
-    if (left_percent > 100) left_percent = 100;
-    if (right_percent < 0) right_percent = 0;
-    if (right_percent > 100) right_percent = 100;
 
     v = &m->voices[voice_handle];
-    v->volume_l = left_percent;
-    v->volume_r = right_percent;
+    v->volume_l = audio_mixer_clamp_volume(left_volume);
+    v->volume_r = audio_mixer_clamp_volume(right_volume);
 }
 
-void audio_mixer_set_voice_pan(audio_mixer_t *m, int voice_handle, float pan)
+void audio_mixer_set_voice_pan(audio_mixer_t *m,
+                               int voice_handle,
+                               float pan)
 {
     audio_voice_t *v;
-    float left, right;
+    float left;
+    float right;
 
     if (!mixer_is_valid_voice(m, voice_handle))
         return;
 
-    if (pan < -1.0f) pan = -1.0f;
-    if (pan >  1.0f) pan =  1.0f;
+    if (pan < -1.0f)
+        pan = -1.0f;
+    if (pan > 1.0f)
+        pan = 1.0f;
 
     v = &m->voices[voice_handle];
     v->pan = pan;
@@ -1268,8 +1264,8 @@ void audio_mixer_set_voice_pan(audio_mixer_t *m, int voice_handle, float pan)
     left  = (pan <= 0.0f) ? 1.0f : (1.0f - pan);
     right = (pan >= 0.0f) ? 1.0f : (1.0f + pan);
 
-    v->volume_l = (int)(left  * 100.0f);
-    v->volume_r = (int)(right * 100.0f);
+    v->volume_l = left;
+    v->volume_r = right;
 }
 
 void audio_mixer_set_voice_speed(audio_mixer_t *m,

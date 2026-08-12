@@ -125,20 +125,23 @@ audio_asset_kind_t audio_asset_get_kind(int asset_handle)
 /* Playback / voice API                                                       */
 /* ------------------------------------------------------------------------- */
 
-int audio_play(int asset_handle, int volume_percent, float speed, int loop)
+int audio_play(int asset_handle, float volume_percent, float speed, int loop)
 {
     if (!g_audio.available)
         return -1;
 
-    return audio_mixer_play_asset(&g_audio.mixer,
-                                  asset_handle,
-                                  volume_percent,
-                                  speed,
-                                  loop);
+    return audio_mixer_play_asset_ex(&g_audio.mixer,
+                                     asset_handle,
+                                     volume_percent,
+                                     speed,
+                                     loop,
+                                     NULL,
+                                     NULL,
+                                     NULL);
 }
 
 int audio_play_ex(int asset_handle,
-                  int volume_percent,
+                  float volume_percent,
                   float speed,
                   int loop,
                   audio_voice_callback_t on_started,
@@ -182,7 +185,7 @@ void audio_voice_resume(int voice_handle)
     audio_mixer_resume_voice(&g_audio.mixer, voice_handle);
 }
 
-void audio_voice_set_volume(int voice_handle, int percent)
+void audio_voice_set_volume(int voice_handle, float percent)
 {
     if (!g_audio.available)
         return;
@@ -190,7 +193,7 @@ void audio_voice_set_volume(int voice_handle, int percent)
     audio_mixer_set_voice_volume(&g_audio.mixer, voice_handle, percent);
 }
 
-void audio_voice_set_channel_volume(int voice_handle, int left_percent, int right_percent)
+void audio_voice_set_channel_volume(int voice_handle, float left_percent, float right_percent)
 {
     if (!g_audio.available)
         return;

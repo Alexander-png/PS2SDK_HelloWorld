@@ -27,7 +27,7 @@ typedef struct audio_test_state_data {
     int voice;
     int paused;
 
-    int volume;
+    float volume;
     float speed;
     float log_timer;
     float uptime_sec;
@@ -50,7 +50,7 @@ static void audio_test_reset(audio_test_state_data_t *data)
     data->asset_ok = 0;
     data->voice = -1;
     data->paused = 0;
-    data->volume = 100;
+    data->volume = 1.0f;
     data->speed = 1.0f;
     data->log_timer = 0.0f;
     data->uptime_sec = 0.0f;
@@ -100,7 +100,7 @@ static void audio_test_rebuild_overlay(audio_test_state_data_t *data)
         "voice_handle:    %d\n"
         "playing:         %d\n"
         "paused:          %d\n"
-        "volume:          %d\n"
+        "volume:          %d/100\n"
         "speed:           %d/100\n"
         "uptime_ms:       %d\n",
         AUDIO_TEST_WAV_PATH,
@@ -110,7 +110,7 @@ static void audio_test_rebuild_overlay(audio_test_state_data_t *data)
         data->voice,
         playing,
         paused,
-        data->volume,
+        (int)(data->volume * 100.0f),
         (int)(data->speed * 100.0f),
         (int)(data->uptime_sec * 1000.0f)
     );
@@ -299,20 +299,20 @@ static void audio_test_update(game_app_t *app, float dt)
         }
 
         if (input_button_pressed(INPUT_BUTTON_UP)) {
-            data->volume += 10;
-            if (data->volume > 100)
-                data->volume = 100;
+            data->volume += 0.1f;
+            if (data->volume > 1.0f)
+                data->volume = 1.0f;
             audio_voice_set_volume(data->voice, data->volume);
-            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] volume=%d", data->volume);
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] volume=%d/100", (int)(data->volume * 100.0f));
             data->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_DOWN)) {
-            data->volume -= 10;
-            if (data->volume < 0)
-                data->volume = 0;
+            data->volume -= 0.1f;
+            if (data->volume < 0.0f)
+                data->volume = 0.0f;
             audio_voice_set_volume(data->voice, data->volume);
-            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] volume=%d", data->volume);
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] volume=%d/100", (int)(data->volume * 100.0f));
             data->overlay_dirty = 1;
         }
 
@@ -349,10 +349,10 @@ static void audio_test_update(game_app_t *app, float dt)
         } else if (!data->asset_ok || data->asset < 0) {
             LOGLNC(LOGCAT_AUDIO, "[state:audio_test] no asset");
         } else {
-            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] playing=%d paused=%d volume=%d speed=%d/100",
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_test] playing=%d paused=%d volume=%d/100 speed=%d/100",
                   (data->voice >= 0) ? audio_voice_is_playing(data->voice) : 0,
                   (data->voice >= 0) ? audio_voice_is_paused(data->voice) : 0,
-                  data->volume,
+                  (int)(data->volume * 100.0f),
                   (int)(data->speed * 100.0f));
         }
     }

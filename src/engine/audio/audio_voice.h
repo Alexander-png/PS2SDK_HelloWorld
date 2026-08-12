@@ -64,9 +64,9 @@ typedef struct audio_voice {
     volatile int paused;
     volatile int loop;
 
-    volatile int volume;     /* overall gain: 0..100 */
-    volatile int volume_l;   /* per-channel gain: 0..100 */
-    volatile int volume_r;   /* per-channel gain: 0..100 */
+    volatile float volume;   /* overall gain: 0.0 .. 1.0 */
+    volatile float volume_l; /* per-channel gain: 0.0 .. 1.0 */
+    volatile float volume_r; /* per-channel gain: 0.0 .. 1.0 */
     volatile float pan;      /* -1.0 .. 1.0 */
     volatile float speed;
 

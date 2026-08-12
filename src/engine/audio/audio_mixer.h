@@ -31,7 +31,7 @@ typedef struct audio_stream_asset {
     int closing;
     int bound_voice; /* one music stream <-> one active voice */
 
-    int default_volume;
+    float default_volume;
     float default_speed;
 
     audio_stream_source_t source;
@@ -50,7 +50,7 @@ typedef struct audio_sfx_asset {
     int channels;
     int bits;
 
-    int default_volume;
+    float default_volume;
     float default_speed;
 } audio_sfx_asset_t;
 
@@ -92,15 +92,9 @@ int  audio_mixer_preload_asset(audio_mixer_t *m, int asset_handle);
 int  audio_mixer_asset_is_ready(const audio_mixer_t *m, int asset_handle);
 audio_asset_kind_t audio_mixer_asset_get_kind(const audio_mixer_t *m, int asset_handle);
 
-int  audio_mixer_play_asset(audio_mixer_t *m,
-                            int asset_handle,
-                            int volume_percent,
-                            float speed,
-                            int loop);
-
 int audio_mixer_play_asset_ex(audio_mixer_t *m,
                               int asset_handle,
-                              int volume_percent,
+                              float volume_percent,
                               float speed,
                               int loop,
                               audio_voice_callback_t on_started,
@@ -115,9 +109,9 @@ void audio_mixer_stop_voice(audio_mixer_t *m, int voice_handle);
 void audio_mixer_pause_voice(audio_mixer_t *m, int voice_handle);
 void audio_mixer_resume_voice(audio_mixer_t *m, int voice_handle);
 
-void audio_mixer_set_voice_volume(audio_mixer_t *m, int voice_handle, int percent);
+void audio_mixer_set_voice_volume(audio_mixer_t *m, int voice_handle, float percent);
 void audio_mixer_set_voice_channel_volume(audio_mixer_t *m, int voice_handle,
-                                          int left_percent, int right_percent);
+                                          float left_percent, float right_percent);
 void audio_mixer_set_voice_pan(audio_mixer_t *m, int voice_handle, float pan);
 void audio_mixer_set_voice_speed(audio_mixer_t *m, int voice_handle, float speed);
 

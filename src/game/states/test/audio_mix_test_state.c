@@ -50,7 +50,7 @@ typedef struct audio_mix_test_state_data {
     int music_asset_ok;
     int music_voice;
     int music_paused;
-    int music_volume;
+    float music_volume;
     float music_speed;
     float music_pan;
 
@@ -332,7 +332,7 @@ static void audio_mix_test_rebuild_overlay(audio_mix_test_state_data_t *s)
             "\n"
             "aud=%d uptime=%dms\n"
             "music asset=%d ok=%d voice=%d play=%d pause=%d\n"
-            "music vol=%d speed=%d/100 pan=%d/100\n"
+            "music vol=%d/100 speed=%d/100 pan=%d/100\n"
             "sfx1=%d(%d) sfx2=%d(%d) sfx3=%d(%d)\n"
             "sfx pan=%d/100\n"
             "last_voice=%d last_play=%d\n"
@@ -344,7 +344,7 @@ static void audio_mix_test_rebuild_overlay(audio_mix_test_state_data_t *s)
             s->music_voice,
             music_playing,
             music_paused,
-            s->music_volume,
+            (int)(s->music_volume * 100.0f),
             (int)(s->music_speed * 100.0f),
             (int)(s->music_pan * 100.0f),
             s->sfx1, s->sfx1_ok,
@@ -502,7 +502,7 @@ static void audio_mix_test_trigger_sfx(audio_mix_test_state_data_t *s,
     }
 
     voice = audio_play_ex(sfx_handle,
-                          100,
+                          1.0f,
                           1.0f,
                           0,
                           audio_mix_test_on_voice_started,
@@ -541,7 +541,7 @@ static void audio_mix_test_trigger_burst(audio_mix_test_state_data_t *s,
 
     for (i = 0; i < count; i++) {
         int voice = audio_play_ex(sfx_handle,
-                                  100,
+                                  1.0f,
                                   1.0f,
                                   0,
                                   audio_mix_test_on_voice_started,
@@ -603,22 +603,22 @@ static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data
         }
 
         if (input_button_pressed(INPUT_BUTTON_UP)) {
-            s->music_volume += 10;
-            if (s->music_volume > 100)
-                s->music_volume = 100;
+            s->music_volume += 0.1f;
+            if (s->music_volume > 1.0f)
+                s->music_volume = 1.0f;
             if (s->music_voice >= 0)
                 audio_voice_set_volume(s->music_voice, s->music_volume);
-            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music volume=%d", s->music_volume);
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music volume=%d/100", (int)(s->music_volume * 100.0f));
             s->overlay_dirty = 1;
         }
 
         if (input_button_pressed(INPUT_BUTTON_DOWN)) {
-            s->music_volume -= 10;
-            if (s->music_volume < 0)
-                s->music_volume = 0;
+            s->music_volume -= 0.1f;
+            if (s->music_volume < 0.0f)
+                s->music_volume = 0.0f;
             if (s->music_voice >= 0)
                 audio_voice_set_volume(s->music_voice, s->music_volume);
-            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music volume=%d", s->music_volume);
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music volume=%d/100", (int)(s->music_volume * 100.0f));
             s->overlay_dirty = 1;
         }
 
@@ -628,8 +628,7 @@ static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data
                 s->music_speed = 3.0f;
             if (s->music_voice >= 0)
                 audio_voice_set_speed(s->music_voice, s->music_speed);
-            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music speed=%d/100",
-                  (int)(s->music_speed * 100.0f));
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music speed=%d/100", (int)(s->music_speed * 100.0f));
             s->overlay_dirty = 1;
         }
 
@@ -639,8 +638,7 @@ static void audio_mix_test_update_page0_music_controls(audio_mix_test_state_data
                 s->music_speed = (1.0f / 3.0f);
             if (s->music_voice >= 0)
                 audio_voice_set_speed(s->music_voice, s->music_speed);
-            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music speed=%d/100",
-                  (int)(s->music_speed * 100.0f));
+            LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music speed=%d/100", (int)(s->music_speed * 100.0f));
             s->overlay_dirty = 1;
         }
     }
@@ -876,10 +874,10 @@ static void audio_mix_test_update(game_app_t *app, float dt)
     }
 
     if (do_periodic_log) {
-        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music playing=%d paused=%d vol=%d speed=%d/100 music_pan=%d/100 sfx_pan=%d/100 last_voice=%d last_voice_playing=%d recent_playing=%d sfx_count=%d",
+        LOGLNC(LOGCAT_AUDIO, "[state:audio_mix_test] music playing=%d paused=%d vol=%d/100 speed=%d/100 music_pan=%d/100 sfx_pan=%d/100 last_voice=%d last_voice_playing=%d recent_playing=%d sfx_count=%d",
               (s->music_voice >= 0) ? audio_voice_is_playing(s->music_voice) : 0,
               (s->music_voice >= 0) ? audio_voice_is_paused(s->music_voice) : 0,
-              s->music_volume,
+              (int)(s->music_volume * 100.0f),
               (int)(s->music_speed * 100.0f),
               (int)(s->music_pan * 100.0f),
               (int)(s->sfx_pan * 100.0f),
