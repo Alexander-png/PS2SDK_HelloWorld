@@ -46,8 +46,6 @@ void audio_voice_clear(audio_voice_t *v)
     v->kind = AUDIO_VOICE_KIND_NONE;
 
     v->volume = 1.0f;
-    v->volume_l = 1.0f;
-    v->volume_r = 1.0f;
     v->pan = 0.0f;
     v->speed = 1.0f;
 

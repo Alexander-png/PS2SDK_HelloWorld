@@ -193,17 +193,6 @@ void audio_voice_set_volume(int voice_handle, float percent)
     audio_mixer_set_voice_volume(&g_audio.mixer, voice_handle, percent);
 }
 
-void audio_voice_set_channel_volume(int voice_handle, float left_percent, float right_percent)
-{
-    if (!g_audio.available)
-        return;
-
-    audio_mixer_set_voice_channel_volume(&g_audio.mixer,
-                                         voice_handle,
-                                         left_percent,
-                                         right_percent);
-}
-
 void audio_voice_set_pan(int voice_handle, float pan)
 {
     if (!g_audio.available)

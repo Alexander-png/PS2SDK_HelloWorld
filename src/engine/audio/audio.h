@@ -57,7 +57,6 @@ void audio_voice_pause(int voice_handle);
 void audio_voice_resume(int voice_handle);
 
 void audio_voice_set_volume(int voice_handle, float percent);
-void audio_voice_set_channel_volume(int voice_handle, float left_percent, float right_percent);
 void audio_voice_set_pan(int voice_handle, float pan);
 void audio_voice_set_speed(int voice_handle, float speed);
 void audio_voice_set_callbacks(int voice_handle,

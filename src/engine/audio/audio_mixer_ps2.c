@@ -115,6 +115,20 @@ static float audio_mixer_resolve_volume(float requested,
     return audio_mixer_clamp_volume(default_volume);
 }
 
+static void audio_mixer_get_pan_gains(float pan,
+                                      float *gain_l,
+                                      float *gain_r)
+{
+    if (pan < -1.0f)
+        pan = -1.0f;
+
+    if (pan > 1.0f)
+        pan = 1.0f;
+
+    *gain_l = (pan > 0.0f) ? (1.0f - pan) : 1.0f;
+    *gain_r = (pan < 0.0f) ? (1.0f + pan) : 1.0f;
+}
+
 static void audio_mixer_release_stream_voice_resources(audio_voice_t *v)
 {
     audio_stream_voice_state_t *st;
@@ -318,6 +332,7 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
                                       int frames)
 {
     float step;
+    float pan_gain_l, pan_gain_r;
     int gain_l, gain_r;
     u32 total_frames;
     int i;
@@ -366,8 +381,10 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
         return;
     }
 
-    gain_l = (int)(v->volume * v->volume_l * 256.0f);
-    gain_r = (int)(v->volume * v->volume_r * 256.0f);
+    audio_mixer_get_pan_gains(v->pan, &pan_gain_l, &pan_gain_r);
+
+    gain_l = (int)(v->volume * pan_gain_l * 256.0f);
+    gain_r = (int)(v->volume * pan_gain_r * 256.0f);
 
     for (i = 0; i < frames; i++) {
         s16 l0, r0, l1, r1;
@@ -377,9 +394,9 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
         if (v->play_cursor_frames >= total_frames) {
             if (!v->loop) {
                 /*
-                 * Для stream конец подтверждается eof_reached:
-                 * последний chunk мог уже быть декодирован, но eof ещё
-                 * не был замечен refill-логикой.
+                 * For stream end is known as eof_reached:
+                 * last chunk may be already decoded but eof still not
+                 * detected by refill-logic.
                  */
                 if (!is_stream || stream_st->eof_reached) {
                     audio_mixer_finish_voice(m, voice_handle);
@@ -407,8 +424,8 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
 
         /*
          * Source-specific section:
-         * получает PCM frame0 и frame1, но не выполняет gain,
-         * interpolation или cursor advance.
+         * gets PCM frame0 and frame1, but does not apply gain,
+         * interpolation or cursor advance.
          */
         if (!is_stream) {
             u32 frame0 = v->play_cursor_frames;
@@ -482,11 +499,6 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
         l = (s32)((1.0f - t) * (float)l0 + t * (float)l1);
         r = (s32)((1.0f - t) * (float)r0 + t * (float)r1);
 
-        /*
-         * Существующий loop fade пока оставляем только stream-ам.
-         * Он не становится настоящим crossfade, но рефакторинг
-         * не должен менять слышимое поведение.
-         */
         if (is_stream && v->loop) {
             float env = 1.0f;
             u32 left = 0;
@@ -527,8 +539,8 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
     }
 
     /*
-     * Только stream имеет sliding window и должен освобождать
-     * уже не нужные frames в ring buffer.
+     * Only stream have sliding window and must free
+     * not needed frames in ring buffer.
      */
     if (is_stream) {
         if (v->play_cursor_frames > stream_st->rb_base_frame) {
@@ -1044,8 +1056,6 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         v->loop = loop ? 1 : 0;
         v->paused = 0;
         v->volume = audio_mixer_resolve_volume(volume_percent, a->default_volume);
-        v->volume_l = 1.0f;
-        v->volume_r = 1.0f;
         v->pan = 0.0f;
         v->speed = audio_mixer_clamp_speed(speed > 0.0f ? speed : a->default_speed);
 
@@ -1098,8 +1108,6 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         v->loop = loop ? 1 : 0;
         v->paused = 0;
         v->volume = audio_mixer_resolve_volume(volume_percent, a->default_volume);
-        v->volume_l = 1.0f;
-        v->volume_r = 1.0f;
         v->pan = 0.0f;
         v->speed = audio_mixer_clamp_speed(speed > 0.0f ? speed : a->default_speed);
 
@@ -1141,8 +1149,6 @@ int audio_mixer_alloc_voice(audio_mixer_t *m, audio_voice_kind_t kind)
     v->used = 1;
     v->kind = kind;
     v->volume = 1.0f;
-    v->volume_l = 1.0f;
-    v->volume_r = 1.0f;
     v->pan = 0.0f;
     v->speed = 1.0f;
 
@@ -1227,45 +1233,20 @@ void audio_mixer_set_voice_volume(audio_mixer_t *m,
         audio_mixer_clamp_volume(volume);
 }
 
-void audio_mixer_set_voice_channel_volume(audio_mixer_t *m,
-                                          int voice_handle,
-                                          float left_volume,
-                                          float right_volume)
-{
-    audio_voice_t *v;
-
-    if (!mixer_is_valid_voice(m, voice_handle))
-        return;
-
-    v = &m->voices[voice_handle];
-    v->volume_l = audio_mixer_clamp_volume(left_volume);
-    v->volume_r = audio_mixer_clamp_volume(right_volume);
-}
-
 void audio_mixer_set_voice_pan(audio_mixer_t *m,
                                int voice_handle,
                                float pan)
 {
-    audio_voice_t *v;
-    float left;
-    float right;
-
     if (!mixer_is_valid_voice(m, voice_handle))
         return;
 
     if (pan < -1.0f)
         pan = -1.0f;
+
     if (pan > 1.0f)
         pan = 1.0f;
 
-    v = &m->voices[voice_handle];
-    v->pan = pan;
-
-    left  = (pan <= 0.0f) ? 1.0f : (1.0f - pan);
-    right = (pan >= 0.0f) ? 1.0f : (1.0f + pan);
-
-    v->volume_l = left;
-    v->volume_r = right;
+    m->voices[voice_handle].pan = pan;
 }
 
 void audio_mixer_set_voice_speed(audio_mixer_t *m,

@@ -110,8 +110,6 @@ void audio_mixer_pause_voice(audio_mixer_t *m, int voice_handle);
 void audio_mixer_resume_voice(audio_mixer_t *m, int voice_handle);
 
 void audio_mixer_set_voice_volume(audio_mixer_t *m, int voice_handle, float percent);
-void audio_mixer_set_voice_channel_volume(audio_mixer_t *m, int voice_handle,
-                                          float left_percent, float right_percent);
 void audio_mixer_set_voice_pan(audio_mixer_t *m, int voice_handle, float pan);
 void audio_mixer_set_voice_speed(audio_mixer_t *m, int voice_handle, float speed);
 
