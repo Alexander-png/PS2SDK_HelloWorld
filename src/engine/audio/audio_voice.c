@@ -65,8 +65,6 @@ void audio_voice_stream_reset_runtime(audio_voice_t *v)
     st->eof_reached = 0;
     st->underrun_count = 0;
     st->underrun_count_logged = 0;
-    st->loop_fade_in_remaining = 0;
-    st->loop_fade_in_total = 0;
     st->rb_base_frame = 0;
 
     if (st->rb_storage && st->rb_capacity_bytes > 0)

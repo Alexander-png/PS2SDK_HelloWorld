@@ -34,13 +34,9 @@ typedef struct audio_stream_voice_state {
     u32 underrun_count;
     u32 underrun_count_logged;
 
-    int loop_fade_in_remaining;
-    int loop_fade_in_total;
-
     ring_buffer_t rb;
     u8 *rb_storage;
     u32 rb_capacity_bytes;
-    u32 rb_low_watermark_bytes;
     u32 rb_high_watermark_bytes;
 
     u32 rb_base_frame;

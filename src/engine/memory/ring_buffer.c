@@ -164,7 +164,7 @@ u32 ring_buffer_peek_at(const ring_buffer_t *rb, u32 offset_bytes, void *out, u3
     u32 pos;
     u8 *dst;
 
-    if (!rb || !out || bytes == 0)
+    if (!rb || !rb->data || !out || bytes == 0 || rb->capacity == 0)
         return 0;
 
     if (offset_bytes >= rb->size)

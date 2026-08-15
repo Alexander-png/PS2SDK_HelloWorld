@@ -25,10 +25,6 @@
 #define AUDIO_OUTPUT_RATE 48000
 #endif
 
-#ifndef AUDIO_LOOP_XFADE_FRAMES
-#define AUDIO_LOOP_XFADE_FRAMES 32
-#endif
-
 #ifndef AUDIO_STREAM_RING_BUFFER_BYTES
 #define AUDIO_STREAM_RING_BUFFER_BYTES (64 * 1024)
 #endif
@@ -240,7 +236,6 @@ static int audio_mixer_init_stream_voice(audio_mixer_t *m, int voice_handle, int
         stream_idx,
         st->rb_capacity_bytes);
 
-    st->rb_low_watermark_bytes = st->rb_capacity_bytes / 4;
     st->rb_high_watermark_bytes = (st->rb_capacity_bytes * 3) / 4;
 
     audio_voice_stream_reset_runtime(v);
@@ -408,8 +403,6 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
 
                 if (is_stream) {
                     stream_st->rb_base_frame = 0;
-                    stream_st->loop_fade_in_total = AUDIO_LOOP_XFADE_FRAMES;
-                    stream_st->loop_fade_in_remaining = AUDIO_LOOP_XFADE_FRAMES;
 
                     ring_buffer_reset(&stream_st->rb);
                     stream_st->decode_frame = 0;
@@ -499,43 +492,10 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
         l = (s32)((1.0f - t) * (float)l0 + t * (float)l1);
         r = (s32)((1.0f - t) * (float)r0 + t * (float)r1);
 
-        if (is_stream && v->loop) {
-            float env = 1.0f;
-            u32 left = 0;
-
-            if (v->play_cursor_frames < total_frames)
-                left = total_frames - v->play_cursor_frames;
-
-            if (left <= AUDIO_LOOP_XFADE_FRAMES) {
-                env = (float)left / (float)AUDIO_LOOP_XFADE_FRAMES;
-            }
-
-            if (stream_st->loop_fade_in_remaining > 0 &&
-                stream_st->loop_fade_in_total > 0) {
-                float in_env = 1.0f -
-                    ((float)stream_st->loop_fade_in_remaining /
-                     (float)stream_st->loop_fade_in_total);
-
-                if (in_env < env)
-                    env = in_env;
-            }
-
-            if (env < 0.0f) env = 0.0f;
-            if (env > 1.0f) env = 1.0f;
-
-            l = (s32)((float)l * env);
-            r = (s32)((float)r * env);
-        }
-
         accum_l[i] += (l * gain_l) >> 8;
         accum_r[i] += (r * gain_r) >> 8;
 
         audio_mixer_advance_voice_cursor(v, step);
-
-        if (v->kind == AUDIO_VOICE_KIND_STREAM &&
-            v->u.stream.loop_fade_in_remaining > 0) {
-            v->u.stream.loop_fade_in_remaining--;
-        }
     }
 
     /*
@@ -1095,8 +1055,6 @@ int audio_mixer_play_asset_ex(audio_mixer_t *m,
         a = &m->sfx_assets[sfx_idx];
         if (!a->pcm || a->total_frames == 0)
             return -2;
-
-        speed = audio_mixer_clamp_speed(speed > 0.0f ? speed : a->default_speed);
 
         voice_handle = audio_mixer_alloc_voice(m, AUDIO_VOICE_KIND_SFX);
         if (voice_handle < 0)
