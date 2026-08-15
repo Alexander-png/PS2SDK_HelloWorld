@@ -61,11 +61,12 @@ void audio_voice_stream_reset_runtime(audio_voice_t *v)
 
     st = &v->u.stream;
 
-    st->decode_frame = 0;
+
+    st->decode_timeline_frame = 0;
+    st->rb_base_timeline_frame = 0;
     st->eof_reached = 0;
     st->underrun_count = 0;
     st->underrun_count_logged = 0;
-    st->rb_base_frame = 0;
 
     if (st->rb_storage && st->rb_capacity_bytes > 0)
         ring_buffer_reset(&st->rb);

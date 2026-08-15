@@ -29,7 +29,15 @@ typedef enum audio_voice_kind {
 typedef struct audio_stream_voice_state {
     int asset_index;
 
-    u32 decode_frame;
+    /*
+     * Monotonic frame positions in this voice's playback timeline.
+     *
+     * For a looped source:
+     * source_frame = timeline_frame % source.total_frames.
+     */
+    u32 decode_timeline_frame;
+    u32 rb_base_timeline_frame;
+
     int eof_reached;
     u32 underrun_count;
     u32 underrun_count_logged;
@@ -38,8 +46,6 @@ typedef struct audio_stream_voice_state {
     u8 *rb_storage;
     u32 rb_capacity_bytes;
     u32 rb_high_watermark_bytes;
-
-    u32 rb_base_frame;
 } audio_stream_voice_state_t;
 
 typedef struct audio_sfx_voice_state {

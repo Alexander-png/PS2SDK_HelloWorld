@@ -30,6 +30,7 @@ typedef struct audio_test_state_data {
 
     float volume;
     float speed;
+    int loop;
     float log_timer;
     float uptime_sec;
     int overlay_dirty;
@@ -53,6 +54,7 @@ static void audio_test_reset(audio_test_state_data_t *data)
     data->paused = 0;
     data->volume = 1.0f;
     data->speed = 1.0f;
+    data->loop = 1;
     data->log_timer = 0.0f;
     data->uptime_sec = 0.0f;
     data->overlay_dirty = 1;
@@ -127,7 +129,7 @@ static int audio_test_start_voice(audio_test_state_data_t *data)
     voice = audio_play(data->asset,
                        data->volume,
                        data->speed,
-                       1);
+                       data->loop);
     if (voice < 0) {
         LOGLNC(LOGCAT_AUDIO, "[state:audio_test] audio_play failed rc=%d", voice);
         return -1;

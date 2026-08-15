@@ -253,18 +253,21 @@ static void audio_stream_voice_refill(audio_mixer_t *m, audio_voice_t *v)
         return;
 
     st = &v->u.stream;
+
     if (!mixer_is_valid_stream_asset_index(m, st->asset_index))
         return;
 
     asset = &m->stream_assets[st->asset_index];
     src = &asset->source;
 
-    if (!audio_stream_source_is_ready(src))
+    if (!audio_stream_source_is_ready(src) || src->total_frames == 0)
         return;
 
     while (ring_buffer_size(&st->rb) < st->rb_high_watermark_bytes) {
         u32 free_bytes;
         u32 free_frames;
+        u32 source_frame;
+        u32 frames_until_end;
         u32 frames_to_read;
         u32 got_frames;
         u32 bytes_to_write;
@@ -275,23 +278,42 @@ static void audio_stream_voice_refill(audio_mixer_t *m, audio_voice_t *v)
             break;
 
         free_frames = free_bytes / AUDIO_FRAME_BYTES;
+        if (free_frames == 0)
+            break;
+
+        if (!v->loop &&
+            st->decode_timeline_frame >= src->total_frames) {
+            st->eof_reached = 1;
+            break;
+        }
+
+        if (v->loop) {
+            source_frame =
+                st->decode_timeline_frame % src->total_frames;
+        } else {
+            source_frame = st->decode_timeline_frame;
+        }
+
+        frames_until_end = src->total_frames - source_frame;
+
         frames_to_read = free_frames;
         if (frames_to_read > AUDIO_STREAM_REFILL_TEMP_FRAMES)
             frames_to_read = AUDIO_STREAM_REFILL_TEMP_FRAMES;
 
-        if (st->decode_frame >= src->total_frames) {
-            if (v->loop) {
-                st->decode_frame = 0;
-            } else {
-                st->eof_reached = 1;
-                break;
-            }
-        }
+        /*
+         * Do not ask the source reader to cross the WAV boundary.
+         * The next refill iteration will map timeline to source frame 0.
+         */
+        if (frames_to_read > frames_until_end)
+            frames_to_read = frames_until_end;
 
-        audio_stream_source_update(src, st->decode_frame);
+        if (frames_to_read == 0)
+            break;
+
+        audio_stream_source_update(src, source_frame);
 
         got_frames = audio_stream_source_read_frames(src,
-                                                     st->decode_frame,
+                                                     source_frame,
                                                      temp,
                                                      frames_to_read);
         if (got_frames == 0)
@@ -302,7 +324,8 @@ static void audio_stream_voice_refill(audio_mixer_t *m, audio_voice_t *v)
         if (written_bytes == 0)
             break;
 
-        st->decode_frame += written_bytes / AUDIO_FRAME_BYTES;
+        st->decode_timeline_frame +=
+            written_bytes / AUDIO_FRAME_BYTES;
 
         if (written_bytes < bytes_to_write)
             break;
@@ -358,8 +381,7 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
             return;
 
         total_frames = stream_src->total_frames;
-        step = v->speed *
-            ((float)stream_src->src_rate / (float)AUDIO_OUTPUT_RATE);
+        step = v->speed * ((float)stream_src->src_rate / (float)AUDIO_OUTPUT_RATE);
     } else if (v->kind == AUDIO_VOICE_KIND_SFX) {
         if (!mixer_is_valid_sfx_asset_index(m, v->u.sfx.asset_index))
             return;
@@ -386,33 +408,21 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
         float t;
         s32 l, r;
 
-        if (v->play_cursor_frames >= total_frames) {
-            if (!v->loop) {
-                /*
-                 * For stream end is known as eof_reached:
-                 * last chunk may be already decoded but eof still not
-                 * detected by refill-logic.
-                 */
-                if (!is_stream || stream_st->eof_reached) {
-                    audio_mixer_finish_voice(m, voice_handle);
-                    return;
-                }
-            } else {
+        if (!is_stream && v->play_cursor_frames >= total_frames) {
+            if (v->loop) {
                 v->play_cursor_frames = 0;
                 v->play_frac = 0.0f;
-
-                if (is_stream) {
-                    stream_st->rb_base_frame = 0;
-
-                    ring_buffer_reset(&stream_st->rb);
-                    stream_st->decode_frame = 0;
-                    stream_st->eof_reached = 0;
-
-                    audio_stream_source_prewarm(stream_src, 0, 2);
-                    audio_stream_voice_refill(m, v);
-                    audio_stream_voice_refill(m, v);
-                }
+            } else {
+                audio_mixer_finish_voice(m, voice_handle);
+                return;
             }
+        }
+
+        if (is_stream && !v->loop
+            && v->play_cursor_frames >= total_frames 
+            && stream_st->eof_reached) {
+            audio_mixer_finish_voice(m, voice_handle);
+            return;
         }
 
         /*
@@ -438,12 +448,12 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
             s16 frame0[2];
             s16 frame1[2];
 
-            if (v->play_cursor_frames < stream_st->rb_base_frame) {
-                v->play_cursor_frames = stream_st->rb_base_frame;
+            if (v->play_cursor_frames < stream_st->rb_base_timeline_frame) {
+                v->play_cursor_frames = stream_st->rb_base_timeline_frame;
                 v->play_frac = 0.0f;
             }
 
-            local_index = v->play_cursor_frames - stream_st->rb_base_frame;
+            local_index = v->play_cursor_frames - stream_st->rb_base_timeline_frame;
 
             if (local_index >= rb_frames) {
                 stream_st->underrun_count++;
@@ -503,8 +513,8 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
      * not needed frames in ring buffer.
      */
     if (is_stream) {
-        if (v->play_cursor_frames > stream_st->rb_base_frame) {
-            u32 consumed = v->play_cursor_frames - stream_st->rb_base_frame;
+        if (v->play_cursor_frames > stream_st->rb_base_timeline_frame) {
+            u32 consumed = v->play_cursor_frames - stream_st->rb_base_timeline_frame;
 
             if (consumed > TAIL_FRAMES_TO_KEEP) {
                 u32 skip_frames = consumed - TAIL_FRAMES_TO_KEEP;
@@ -512,7 +522,7 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
                     &stream_st->rb,
                     skip_frames * AUDIO_FRAME_BYTES);
 
-                stream_st->rb_base_frame += skipped / AUDIO_FRAME_BYTES;
+                stream_st->rb_base_timeline_frame += skipped / AUDIO_FRAME_BYTES;
             }
         }
     }
