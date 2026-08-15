@@ -356,7 +356,6 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
     int i;
     int is_stream;
     audio_stream_voice_state_t *stream_st = NULL;
-    audio_stream_asset_t *stream_asset = NULL;
     audio_stream_source_t *stream_src = NULL;
     audio_sfx_asset_t *sfx_asset = NULL;
 
@@ -374,8 +373,7 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
         if (!mixer_is_valid_stream_asset_index(m, stream_st->asset_index))
             return;
 
-        stream_asset = &m->stream_assets[stream_st->asset_index];
-        stream_src = &stream_asset->source;
+        stream_src = &m->stream_assets[stream_st->asset_index].source;
 
         if (stream_src->total_frames == 0)
             return;
@@ -456,13 +454,12 @@ static void audio_mixer_mix_pcm_voice(audio_mixer_t *m,
             local_index = v->play_cursor_frames - stream_st->rb_base_timeline_frame;
 
             if (local_index >= rb_frames) {
-                stream_st->underrun_count++;
-
                 if (stream_st->eof_reached && rb_frames == 0 && !v->loop) {
                     audio_mixer_finish_voice(m, voice_handle);
                     return;
                 }
-
+                
+                stream_st->underrun_count++;
                 continue;
             }
 
