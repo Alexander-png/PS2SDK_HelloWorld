@@ -8,8 +8,14 @@
 #include <sbv_patches.h>
 #include <timer.h>
 
+#define PLATFORM_PS2_MAIN_THREAD_PRIO 36
+#define PLATFORM_PS2_YIELD_US         100
+
 static int s_platform_ready = 0;
 static int s_timer_system_started = 0;
+
+static int s_main_thread_id = -1;
+static int s_main_thread_priority_changed = 0;
 
 static unsigned long long platform_ps2_timer_to_us(u64 timer_clocks)
 {
@@ -24,6 +30,39 @@ static unsigned long long platform_ps2_timer_to_us(u64 timer_clocks)
            (unsigned long long)usec;
 }
 
+static int platform_ps2_configure_main_thread(void)
+{
+    int thread_id;
+    int rc;
+
+    thread_id = GetThreadId();
+    if (thread_id < 0) {
+        LOGLNC(LOGCAT_PLATFORM,
+               "[platform] GetThreadId failed rc=%d", thread_id);
+        return thread_id;
+    }
+
+    rc = ChangeThreadPriority(thread_id, PLATFORM_PS2_MAIN_THREAD_PRIO);
+    if (rc < 0) {
+        LOGLNC(LOGCAT_PLATFORM,
+               "[platform] ChangeThreadPriority tid=%d prio=%d failed rc=%d",
+               thread_id,
+               PLATFORM_PS2_MAIN_THREAD_PRIO,
+               rc);
+        return rc;
+    }
+
+    s_main_thread_id = thread_id;
+    s_main_thread_priority_changed = 1;
+
+    LOGLNC(LOGCAT_PLATFORM,
+           "[platform] game thread tid=%d priority=%d",
+           s_main_thread_id,
+           PLATFORM_PS2_MAIN_THREAD_PRIO);
+
+    return 0;
+}
+
 int platform_init(void)
 {
     int rc;
@@ -36,6 +75,10 @@ int platform_init(void)
     SifInitRpc(0);
     SifLoadFileInit();
     sbv_patch_enable_lmb();
+
+    rc = platform_ps2_configure_main_thread();
+    if (rc < 0)
+        return rc;
 
     rc = StartTimerSystemTime();
     if (rc < 0) {
@@ -100,7 +143,7 @@ float platform_time_now_seconds(void)
 
 void platform_yield(void)
 {
-    DelayThread(0);
+    DelayThread(PLATFORM_PS2_YIELD_US);
 }
 
 int platform_get_memory_info(platform_memory_info_t *out)

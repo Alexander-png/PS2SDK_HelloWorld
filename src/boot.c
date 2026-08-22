@@ -7,7 +7,6 @@
 #include "engine/streaming/streaming.h"
 #include "engine/resources/texture_assets.h"
 #include "engine/resources/resources.h"
-//#include "engine/gfx/gfx2d.h"
 #include "engine/gfx/renderer.h"
 
 #include <string.h>
