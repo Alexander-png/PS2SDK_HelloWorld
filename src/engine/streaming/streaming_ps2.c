@@ -8,6 +8,14 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#if (STREAMING_IO_CHUNK_BYTES <= 0)
+#error "STREAMING_IO_CHUNK_BYTES must be positive"
+#endif
+
+#if ((STREAMING_IO_CHUNK_BYTES & 63) != 0)
+#error "STREAMING_IO_CHUNK_BYTES must be 64-byte aligned"
+#endif
+
 typedef struct stream_request {
     int used;
     u16 generation;
@@ -22,6 +30,9 @@ typedef struct stream_request {
 
     int bytes_read;
     int result;
+
+    int fd;
+    int worker_active;
 
     stream_callback_t callback;
     void *userdata;
@@ -61,6 +72,7 @@ static void stream_unlock(void)
 static stream_handle_t stream_make_invalid_handle(void)
 {
     stream_handle_t h;
+
     h.index = 0xffffu;
     h.generation = 0;
     return h;
@@ -75,23 +87,57 @@ static int stream_handle_to_index_unsafe(stream_handle_t handle)
 
     r = &g_streaming.requests[handle.index];
 
-    if (!r->used)
-        return -1;
-
-    if (r->generation != handle.generation)
+    if (!r->used || r->generation != handle.generation)
         return -1;
 
     return (int)handle.index;
 }
 
+static int stream_status_is_terminal(stream_status_t status)
+{
+    return status == STREAM_STATUS_READY ||
+           status == STREAM_STATUS_FAILED ||
+           status == STREAM_STATUS_CANCELLED;
+}
+
+static void stream_close_request_fd_unsafe(stream_request_t *r)
+{
+    if (r->fd >= 0) {
+        close(r->fd);
+        r->fd = -1;
+    }
+}
+
+/*
+ * Publish a terminal outcome. This deliberately does not close fd: cancel
+ * may race a worker blocked in read(), and only the worker may close its fd
+ * after it has returned from that read.
+ */
 static void stream_queue_callback_unsafe(stream_request_t *r,
                                          stream_status_t status,
                                          int result)
 {
+    if (stream_status_is_terminal(r->status))
+        return;
+
     r->status = status;
     r->result = result;
     r->callback_status = status;
-    r->callback_pending = 1;
+    r->callback_pending = (r->callback != NULL) ? 1 : 0;
+}
+
+/* Called only after the worker no longer accesses the descriptor. */
+static void stream_finish_request_unsafe(stream_request_t *r,
+                                         stream_status_t status,
+                                         int result)
+{
+    stream_close_request_fd_unsafe(r);
+    stream_queue_callback_unsafe(r, status, result);
+}
+
+static void stream_release_worker_ownership_unsafe(stream_request_t *r)
+{
+    r->worker_active = 0;
 }
 
 static int stream_claim_request_unsafe(void)
@@ -100,7 +146,7 @@ static int stream_claim_request_unsafe(void)
     int best = -1;
     int best_priority = -1;
 
-    for (i = 0; i < STREAMING_MAX_REQUESTS; i++) {
+    for (i = 0; i < STREAMING_MAX_REQUESTS; ++i) {
         stream_request_t *r = &g_streaming.requests[i];
 
         if (!r->used || r->status != STREAM_STATUS_QUEUED)
@@ -114,140 +160,226 @@ static int stream_claim_request_unsafe(void)
 
     if (best >= 0) {
         g_streaming.requests[best].status = STREAM_STATUS_READING;
-        g_streaming.requests[best].bytes_read = 0;
-        g_streaming.requests[best].result = 0;
+        g_streaming.requests[best].worker_active = 1;
     }
 
     return best;
 }
 
-static void stream_process_request(int index)
+static void stream_mark_failed(int index, u16 generation, int result)
 {
-    stream_request_t local;
+    stream_lock();
+
+    if (index >= 0 && index < STREAMING_MAX_REQUESTS &&
+        g_streaming.requests[index].used &&
+        g_streaming.requests[index].generation == generation) {
+        stream_request_t *r = &g_streaming.requests[index];
+
+        if (r->status == STREAM_STATUS_READING)
+            stream_finish_request_unsafe(r, STREAM_STATUS_FAILED, result);
+
+        stream_release_worker_ownership_unsafe(r);
+    }
+
+    stream_unlock();
+}
+
+/*
+ * Reads one bounded chunk and then yields ownership back to the request
+ * scheduler. Snapshot data is copied under lock; no request memory is read
+ * while the lock is released for open/lseek/read.
+ */
+static void stream_process_one_chunk(int index)
+{
+    char path[sizeof(g_streaming.requests[0].path)];
+    u16 generation;
     int fd;
-    int remaining;
-    unsigned char *dst;
+    u32 offset;
+    u32 size;
+    int bytes_read;
+    void *dst;
+    int chunk;
+    int rd;
+    int needs_open;
+    int need_seek;
 
     stream_lock();
+
     if (index < 0 || index >= STREAMING_MAX_REQUESTS ||
         !g_streaming.requests[index].used ||
-        g_streaming.requests[index].status != STREAM_STATUS_READING) {
+        g_streaming.requests[index].status != STREAM_STATUS_READING ||
+        !g_streaming.requests[index].worker_active) {
         stream_unlock();
         return;
     }
 
-    local = g_streaming.requests[index];
-    stream_unlock();
+    {
+        stream_request_t *r = &g_streaming.requests[index];
 
-    if (!local.dst || local.size == 0 || local.path[0] == '\0') {
-        stream_lock();
-        if (g_streaming.requests[index].used &&
-            g_streaming.requests[index].generation == local.generation &&
-            g_streaming.requests[index].status == STREAM_STATUS_READING) {
-            stream_queue_callback_unsafe(&g_streaming.requests[index], STREAM_STATUS_FAILED, -1);
-        }
-        stream_unlock();
-        return;
-    }
+        generation = r->generation;
+        fd = r->fd;
+        offset = r->offset;
+        size = r->size;
+        bytes_read = r->bytes_read;
+        dst = r->dst;
+        memcpy(path, r->path, sizeof(path));
+        path[sizeof(path) - 1] = '\0';
 
-    fd = open(local.path, O_RDONLY);
-    if (fd < 0) {
-        LOGLNC(LOGCAT_STREAMING, "[streaming] open failed: %s", local.path);
-        stream_lock();
-        if (g_streaming.requests[index].used &&
-            g_streaming.requests[index].generation == local.generation &&
-            g_streaming.requests[index].status == STREAM_STATUS_READING) {
-            stream_queue_callback_unsafe(&g_streaming.requests[index], STREAM_STATUS_FAILED, -2);
-        }
-        stream_unlock();
-        return;
-    }
-
-    if (local.offset > 0) {
-        if (lseek(fd, (off_t)local.offset, SEEK_SET) < 0) {
-            close(fd);
-            LOGLNC(LOGCAT_STREAMING, "[streaming] seek failed: %s offset=%u", local.path, local.offset);
-            stream_lock();
-            if (g_streaming.requests[index].used &&
-                g_streaming.requests[index].generation == local.generation &&
-                g_streaming.requests[index].status == STREAM_STATUS_READING) {
-                stream_queue_callback_unsafe(&g_streaming.requests[index], STREAM_STATUS_FAILED, -3);
-            }
+        if (!dst || size == 0 || bytes_read < 0 ||
+            (u32)bytes_read > size || path[0] == '\0') {
+            stream_finish_request_unsafe(r, STREAM_STATUS_FAILED, -1);
+            stream_release_worker_ownership_unsafe(r);
             stream_unlock();
             return;
         }
     }
 
-    remaining = (int)local.size;
-    dst = (unsigned char *)local.dst;
+    needs_open = (fd < 0);
+    need_seek = needs_open && offset != 0;
+    stream_unlock();
 
-    while (remaining > 0) {
-        int chunk = remaining;
-        int rd;
-        int cancelled = 0;
+    if (needs_open) {
+        fd = open(path, O_RDONLY);
+        if (fd < 0) {
+            LOGLNC(LOGCAT_STREAMING, "[streaming] open failed: %s", path);
+            stream_mark_failed(index, generation, -2);
+            return;
+        }
 
-        if (chunk > 64 * 1024)
-            chunk = 64 * 1024;
+        if (need_seek && lseek(fd, (off_t)offset, SEEK_SET) < 0) {
+            close(fd);
+            LOGLNC(LOGCAT_STREAMING,
+                   "[streaming] seek failed: %s offset=%u",
+                   path,
+                   (unsigned int)offset);
+            stream_mark_failed(index, generation, -3);
+            return;
+        }
 
         stream_lock();
-        if (!g_streaming.requests[index].used ||
-            g_streaming.requests[index].generation != local.generation ||
-            g_streaming.requests[index].status == STREAM_STATUS_CANCELLED) {
-            cancelled = 1;
-        }
-        stream_unlock();
 
-        if (cancelled) {
+        if (!g_streaming.requests[index].used ||
+            g_streaming.requests[index].generation != generation) {
+            stream_unlock();
             close(fd);
             return;
         }
 
-        rd = read(fd, dst + local.bytes_read, chunk);
-        if (rd <= 0)
-            break;
+        {
+            stream_request_t *r = &g_streaming.requests[index];
 
-        local.bytes_read += rd;
-        remaining -= rd;
+            if (r->status == STREAM_STATUS_CANCELLED) {
+                stream_release_worker_ownership_unsafe(r);
+                stream_unlock();
+                close(fd);
+                return;
+            }
 
-        stream_lock();
-        if (g_streaming.requests[index].used &&
-            g_streaming.requests[index].generation == local.generation &&
-            g_streaming.requests[index].status == STREAM_STATUS_READING) {
-            g_streaming.requests[index].bytes_read = local.bytes_read;
+            if (r->status != STREAM_STATUS_READING || !r->worker_active) {
+                stream_unlock();
+                close(fd);
+                return;
+            }
+
+            r->fd = fd;
         }
+
         stream_unlock();
     }
 
-    close(fd);
+    chunk = (int)(size - (u32)bytes_read);
+    if (chunk > STREAMING_IO_CHUNK_BYTES)
+        chunk = STREAMING_IO_CHUNK_BYTES;
+
+    if (chunk <= 0) {
+        stream_lock();
+
+        if (g_streaming.requests[index].used &&
+            g_streaming.requests[index].generation == generation) {
+            stream_request_t *r = &g_streaming.requests[index];
+
+            if (r->status == STREAM_STATUS_READING) {
+                stream_finish_request_unsafe(r,
+                                             STREAM_STATUS_READY,
+                                             bytes_read);
+            }
+
+            stream_release_worker_ownership_unsafe(r);
+        }
+
+        stream_unlock();
+        return;
+    }
+
+    rd = read(fd, (u8 *)dst + bytes_read, chunk);
 
     stream_lock();
 
     if (!g_streaming.requests[index].used ||
-        g_streaming.requests[index].generation != local.generation) {
+        g_streaming.requests[index].generation != generation) {
         stream_unlock();
         return;
     }
 
-    if (g_streaming.requests[index].status == STREAM_STATUS_CANCELLED) {
-        stream_unlock();
-        return;
-    }
+    {
+        stream_request_t *r = &g_streaming.requests[index];
 
-    g_streaming.requests[index].bytes_read = local.bytes_read;
+        if (r->status == STREAM_STATUS_CANCELLED) {
+            stream_close_request_fd_unsafe(r);
+            stream_release_worker_ownership_unsafe(r);
+            stream_unlock();
+            return;
+        }
 
-    if (local.bytes_read == (int)local.size) {
-        stream_queue_callback_unsafe(&g_streaming.requests[index],
-                                     STREAM_STATUS_READY,
-                                     local.bytes_read);
-    } else {
-        LOGLNC(LOGCAT_STREAMING, "[streaming] short read: %s got=%d wanted=%u",
-              local.path, local.bytes_read, local.size);
-        stream_queue_callback_unsafe(&g_streaming.requests[index],
-                                     STREAM_STATUS_FAILED,
-                                     -4);
+        if (r->status != STREAM_STATUS_READING || !r->worker_active) {
+            stream_release_worker_ownership_unsafe(r);
+            stream_unlock();
+            return;
+        }
+
+        if (rd <= 0) {
+            LOGLNC(LOGCAT_STREAMING,
+                   "[streaming] short read: %s got=%d wanted=%u",
+                   path,
+                   bytes_read,
+                   (unsigned int)size);
+            stream_finish_request_unsafe(r, STREAM_STATUS_FAILED, -4);
+            stream_release_worker_ownership_unsafe(r);
+            stream_unlock();
+            return;
+        }
+
+        bytes_read += rd;
+        r->bytes_read = bytes_read;
+
+        if ((u32)bytes_read == size) {
+            stream_finish_request_unsafe(r,
+                                         STREAM_STATUS_READY,
+                                         bytes_read);
+            stream_release_worker_ownership_unsafe(r);
+            stream_unlock();
+            return;
+        }
+
+        if ((u32)bytes_read > size) {
+            stream_finish_request_unsafe(r, STREAM_STATUS_FAILED, -5);
+            stream_release_worker_ownership_unsafe(r);
+            stream_unlock();
+            return;
+        }
+
+        /*
+         * Return this incomplete request to the scheduler. A higher-priority
+         * request may be selected before its next chunk.
+         */
+        r->status = STREAM_STATUS_QUEUED;
+        stream_release_worker_ownership_unsafe(r);
     }
 
     stream_unlock();
+
+    /* Keep the queued request runnable for its next bounded read. */
+    SignalSema(g_streaming.work_sema);
 }
 
 static void stream_worker_thread(void *arg)
@@ -267,7 +399,7 @@ static void stream_worker_thread(void *arg)
         stream_unlock();
 
         if (index >= 0)
-            stream_process_request(index);
+            stream_process_one_chunk(index);
     }
 
     ExitDeleteThread();
@@ -277,7 +409,7 @@ static void stream_dispatch_callbacks(void)
 {
     int i;
 
-    for (i = 0; i < STREAMING_MAX_REQUESTS; i++) {
+    for (i = 0; i < STREAMING_MAX_REQUESTS; ++i) {
         stream_handle_t handle;
         stream_callback_t callback;
         void *userdata;
@@ -314,7 +446,8 @@ int streaming_init(void)
     memset(&g_streaming, 0, sizeof(g_streaming));
     g_streaming.lock_sema = -1;
     g_streaming.work_sema = -1;
-    for (i = 0; i < STREAMING_WORKER_COUNT; i++) {
+
+    for (i = 0; i < STREAMING_WORKER_COUNT; ++i) {
         g_streaming.worker_ids[i] = -1;
         g_streaming.worker_stacks[i] = NULL;
     }
@@ -336,12 +469,12 @@ int streaming_init(void)
         return -2;
     }
 
-    for (i = 0; i < STREAMING_WORKER_COUNT; i++) {
+    for (i = 0; i < STREAMING_WORKER_COUNT; ++i) {
         ee_thread_t th;
 
         g_streaming.worker_stacks[i] = mem_alloc(STREAMING_THREAD_STACK_SIZE,
-                                         16,
-                                         MEMTAG_THREAD_STACK);
+                                                  16,
+                                                  MEMTAG_THREAD_STACK);
         if (!g_streaming.worker_stacks[i]) {
             streaming_shutdown();
             return -3;
@@ -361,29 +494,34 @@ int streaming_init(void)
         }
 
         StartThread(g_streaming.worker_ids[i], NULL);
-        g_streaming.worker_count++;
+        ++g_streaming.worker_count;
     }
 
     g_streaming.initialized = 1;
-    LOGLNC(LOGCAT_STREAMING, "[streaming] init max_requests=%d workers=%d",
-          STREAMING_MAX_REQUESTS, g_streaming.worker_count);
+
+    LOGLNC(LOGCAT_STREAMING,
+           "[streaming] init max_requests=%d workers=%d chunk=%d",
+           STREAMING_MAX_REQUESTS,
+           g_streaming.worker_count,
+           STREAMING_IO_CHUNK_BYTES);
     return 0;
 }
 
 void streaming_shutdown(void)
 {
-    int i, t;
+    int i;
+    int t;
 
     if (g_streaming.work_sema >= 0)
         g_streaming.shutdown = 1;
 
-    for (i = 0; i < g_streaming.worker_count; i++)
+    for (i = 0; i < g_streaming.worker_count; ++i)
         SignalSema(g_streaming.work_sema);
 
-    for (t = 0; t < 100; t++)
+    for (t = 0; t < 100; ++t)
         platform_delay_us(1000);
 
-    for (i = 0; i < g_streaming.worker_count; i++) {
+    for (i = 0; i < g_streaming.worker_count; ++i) {
         if (g_streaming.worker_ids[i] >= 0) {
             TerminateThread(g_streaming.worker_ids[i]);
             DeleteThread(g_streaming.worker_ids[i]);
@@ -391,20 +529,28 @@ void streaming_shutdown(void)
         }
     }
 
+    if (g_streaming.lock_sema >= 0) {
+        stream_lock();
+        for (i = 0; i < STREAMING_MAX_REQUESTS; ++i)
+            stream_close_request_fd_unsafe(&g_streaming.requests[i]);
+        stream_unlock();
+    }
+
     if (g_streaming.work_sema >= 0)
         DeleteSema(g_streaming.work_sema);
     if (g_streaming.lock_sema >= 0)
         DeleteSema(g_streaming.lock_sema);
 
-    for (i = 0; i < STREAMING_WORKER_COUNT; i++) {
+    for (i = 0; i < STREAMING_WORKER_COUNT; ++i) {
         if (g_streaming.worker_stacks[i]) {
             mem_free(g_streaming.worker_stacks[i], MEMTAG_THREAD_STACK);
             g_streaming.worker_stacks[i] = NULL;
         }
     }
 
-    LOGLNC(LOGCAT_STREAMING, "[streaming] shutdown workers=%d",
-        g_streaming.worker_count);
+    LOGLNC(LOGCAT_STREAMING,
+           "[streaming] shutdown workers=%d",
+           g_streaming.worker_count);
 
     memset(&g_streaming, 0, sizeof(g_streaming));
     g_streaming.lock_sema = -1;
@@ -422,32 +568,21 @@ void streaming_update(void)
 stream_handle_t streaming_request_file(const stream_request_desc_t *desc)
 {
     int i;
-    //int j;
-    //int used_count = 0;
     stream_request_t *r;
     stream_handle_t h;
 
-    if (!g_streaming.initialized || !desc)
-        return stream_make_invalid_handle();
-
-    if (!desc->path || !desc->dst || desc->size == 0)
+    if (!g_streaming.initialized || !desc ||
+        !desc->path || !desc->dst || desc->size == 0)
         return stream_make_invalid_handle();
 
     stream_lock();
 
-    for (i = 0; i < STREAMING_MAX_REQUESTS; i++) {
+    for (i = 0; i < STREAMING_MAX_REQUESTS; ++i) {
         if (!g_streaming.requests[i].used)
             break;
     }
 
-    // for (j = 0; j < STREAMING_MAX_REQUESTS; j++) {
-    //     if (g_streaming.requests[j].used)
-    //         used_count++;
-    // }
-    // LOGLNC(LOGCAT_STREAMING, "[streaming] used=%d/%d before request", used_count, STREAMING_MAX_REQUESTS);
-
     if (i >= STREAMING_MAX_REQUESTS) {
-        //LOGLNC(LOGCAT_STREAMING, "[streaming] NO FREE REQUEST SLOTS");
         stream_unlock();
         return stream_make_invalid_handle();
     }
@@ -462,6 +597,8 @@ stream_handle_t streaming_request_file(const stream_request_desc_t *desc)
     }
 
     r->used = 1;
+    r->fd = -1;
+    r->worker_active = 0;
     strncpy(r->path, desc->path, sizeof(r->path) - 1);
     r->path[sizeof(r->path) - 1] = '\0';
     r->offset = desc->offset;
@@ -471,18 +608,21 @@ stream_handle_t streaming_request_file(const stream_request_desc_t *desc)
     r->status = STREAM_STATUS_QUEUED;
     r->callback = desc->callback;
     r->userdata = desc->userdata;
-    r->callback_pending = 0;
     r->callback_status = STREAM_STATUS_UNUSED;
-    r->bytes_read = 0;
-    r->result = 0;
 
     h.index = (u16)i;
     h.generation = r->generation;
 
     stream_unlock();
 
-    LOGLNC(LOGCAT_STREAMING, "[streaming] request index=%d gen=%u path=%s offset=%u size=%u priority=%d",
-          i, h.generation, desc->path, desc->offset, desc->size, desc->priority);
+    LOGLNC(LOGCAT_STREAMING,
+           "[streaming] request index=%d gen=%u path=%s offset=%u size=%u priority=%d",
+           i,
+           (unsigned int)h.generation,
+           desc->path,
+           (unsigned int)desc->offset,
+           (unsigned int)desc->size,
+           (int)desc->priority);
 
     SignalSema(g_streaming.work_sema);
     return h;
@@ -498,14 +638,8 @@ void streaming_cancel(stream_handle_t handle)
     if (index >= 0) {
         stream_request_t *r = &g_streaming.requests[index];
 
-        if (r->status != STREAM_STATUS_READY &&
-            r->status != STREAM_STATUS_FAILED &&
-            r->status != STREAM_STATUS_CANCELLED) {
+        if (!stream_status_is_terminal(r->status))
             stream_queue_callback_unsafe(r, STREAM_STATUS_CANCELLED, -5);
-        }
-
-        LOGLNC(LOGCAT_STREAMING, "[streaming] cancel index=%d gen=%u",
-            index, handle.generation);
     }
 
     stream_unlock();
@@ -522,10 +656,13 @@ void streaming_release(stream_handle_t handle)
     if (index >= 0) {
         stream_request_t *r = &g_streaming.requests[index];
 
-        if (r->status != STREAM_STATUS_READING) {
+        /* Never recycle a slot while the worker still has local snapshots. */
+        if (!r->worker_active) {
+            stream_close_request_fd_unsafe(r);
             generation = r->generation;
             memset(r, 0, sizeof(*r));
             r->generation = generation;
+            r->fd = -1;
         }
     }
 
@@ -535,15 +672,15 @@ void streaming_release(stream_handle_t handle)
 stream_status_t streaming_status(stream_handle_t handle)
 {
     int index;
-    stream_status_t st = STREAM_STATUS_UNUSED;
+    stream_status_t status = STREAM_STATUS_UNUSED;
 
     stream_lock();
     index = stream_handle_to_index_unsafe(handle);
     if (index >= 0)
-        st = g_streaming.requests[index].status;
+        status = g_streaming.requests[index].status;
     stream_unlock();
 
-    return st;
+    return status;
 }
 
 int streaming_bytes_read(stream_handle_t handle)
@@ -563,6 +700,52 @@ int streaming_bytes_read(stream_handle_t handle)
 int streaming_is_valid(stream_handle_t handle)
 {
     return streaming_status(handle) != STREAM_STATUS_UNUSED;
+}
+
+int streaming_is_complete(stream_handle_t handle)
+{
+    return stream_status_is_terminal(streaming_status(handle));
+}
+
+int streaming_take_completion(stream_handle_t handle,
+                              stream_status_t *status,
+                              int *bytes_read)
+{
+    int index;
+    stream_request_t *r;
+
+    if (status)
+        *status = STREAM_STATUS_UNUSED;
+
+    if (bytes_read)
+        *bytes_read = 0;
+
+    stream_lock();
+
+    index = stream_handle_to_index_unsafe(handle);
+    if (index < 0) {
+        stream_unlock();
+        return 0;
+    }
+
+    r = &g_streaming.requests[index];
+
+    if (!stream_status_is_terminal(r->status)) {
+        stream_unlock();
+        return 0;
+    }
+
+    /* A polling client owns terminal processing from this point. */
+    r->callback_pending = 0;
+
+    if (status)
+        *status = r->status;
+
+    if (bytes_read)
+        *bytes_read = r->bytes_read;
+
+    stream_unlock();
+    return 1;
 }
 
 const char *streaming_status_name(stream_status_t status)

@@ -2,6 +2,7 @@
 #include "engine/logging/log.h"
 #include "engine/memory/memory.h"
 #include "engine/audio/audio_wav.h"
+#include "engine/platform/platform.h"
 
 #include <string.h>
 
@@ -74,61 +75,103 @@ static audio_stream_chunk_t *find_chunk_to_fill(audio_stream_source_t *src, u32 
     return best;
 }
 
-typedef struct audio_chunk_request_userdata {
-    audio_stream_source_t *src;
-    audio_stream_chunk_t *chunk;
-} audio_chunk_request_userdata_t;
-
-static void audio_stream_chunk_callback(stream_handle_t handle,
-                                        stream_status_t status,
-                                        int bytes_read,
-                                        void *userdata)
+static stream_handle_t audio_stream_invalid_request(void)
 {
-    audio_chunk_request_userdata_t *ud = (audio_chunk_request_userdata_t *)userdata;
-    audio_stream_chunk_t *c;
+    stream_handle_t h;
 
-    if (!ud || !ud->src || !ud->chunk)
-        return;
+    h.index = 0xffffu;
+    h.generation = 0;
+    return h;
+}
 
-    c = ud->chunk;
+static void audio_stream_source_finish_chunk_request(audio_stream_source_t *src,
+                                                      audio_stream_chunk_t *c,
+                                                      stream_status_t status,
+                                                      int bytes_read)
+{
     c->in_flight = 0;
 
     if (status == STREAM_STATUS_READY && bytes_read > 0) {
+        if ((u32)bytes_read > c->capacity_bytes)
+            bytes_read = (int)c->capacity_bytes;
+
+        bytes_read &= ~(AUDIO_FRAME_BYTES - 1);
+
         c->valid_bytes = (u32)bytes_read;
         c->frame_count = (u32)bytes_read / AUDIO_FRAME_BYTES;
-        c->ready = (c->frame_count > 0) ? 1 : 0;
-        c->failed = 0;
-        ud->src->status = c->ready ? AUDIO_STREAM_SOURCE_STATUS_READY
-                                   : AUDIO_STREAM_SOURCE_STATUS_FAILED;
-        LOGLNC(LOGCAT_STREAMING, "[audio:stream] chunk ready path=%s start=%u bytes=%d frames=%u",
-            ud->src->path,
-            c->start_frame,
-            bytes_read,
-            c->frame_count);
+        c->ready = c->frame_count > 0;
+        c->failed = c->ready ? 0 : 1;
+
+        src->status = c->ready
+            ? AUDIO_STREAM_SOURCE_STATUS_READY
+            : AUDIO_STREAM_SOURCE_STATUS_FAILED;
+
+        LOGLNC(LOGCAT_STREAMING,
+               "[audio:stream] chunk ready path=%s start=%u bytes=%d frames=%u",
+               src->path,
+               (unsigned int)c->start_frame,
+               bytes_read,
+               (unsigned int)c->frame_count);
     } else if (status == STREAM_STATUS_CANCELLED) {
+        c->valid_bytes = 0;
+        c->frame_count = 0;
         c->ready = 0;
         c->failed = 0;
-        LOGLNC(LOGCAT_STREAMING, "[audio:stream] chunk cancelled path=%s start=%u",
-            ud->src->path,
-            c->start_frame);
+
+        LOGLNC(LOGCAT_STREAMING,
+               "[audio:stream] chunk cancelled path=%s start=%u",
+               src->path,
+               (unsigned int)c->start_frame);
     } else {
+        c->valid_bytes = 0;
+        c->frame_count = 0;
         c->ready = 0;
         c->failed = 1;
-        ud->src->status = AUDIO_STREAM_SOURCE_STATUS_FAILED;
-        LOGLNC(LOGCAT_STREAMING, "[audio:stream] chunk failed path=%s start=%u status=%s bytes=%d",
-            ud->src->path,
-            c->start_frame,
-            streaming_status_name(status),
-            bytes_read);
+        src->status = AUDIO_STREAM_SOURCE_STATUS_FAILED;
+
+        LOGLNC(LOGCAT_STREAMING,
+               "[audio:stream] chunk failed path=%s start=%u status=%s bytes=%d",
+               src->path,
+               (unsigned int)c->start_frame,
+               streaming_status_name(status),
+               bytes_read);
     }
 
-    if (streaming_is_valid(handle))
-        streaming_release(handle);
+    c->req = audio_stream_invalid_request();
+}
 
-    c->req.index = 0xffffu;
-    c->req.generation = 0;
+static void audio_stream_source_poll_completions(audio_stream_source_t *src)
+{
+    int i;
 
-    mem_free(ud, MEMTAG_STREAM);
+    if (!src || !src->used)
+        return;
+
+    for (i = 0; i < AUDIO_STREAM_SOURCE_MAX_CHUNKS; ++i) {
+        audio_stream_chunk_t *c = &src->chunks[i];
+        stream_handle_t completed_request;
+        stream_status_t status;
+        int bytes_read;
+
+        if (!c->in_flight || !streaming_is_valid(c->req))
+            continue;
+
+        if (!streaming_take_completion(c->req, &status, &bytes_read))
+            continue;
+
+        /*
+         * finish_chunk_request() invalidates c->req, поэтому сохраняем
+         * current handle заранее.
+         */
+        completed_request = c->req;
+
+        audio_stream_source_finish_chunk_request(src,
+                                                  c,
+                                                  status,
+                                                  bytes_read);
+
+        streaming_release(completed_request);
+    }
 }
 
 static int submit_chunk_request(audio_stream_source_t *src,
@@ -138,7 +181,6 @@ static int submit_chunk_request(audio_stream_source_t *src,
     stream_request_desc_t desc;
     u32 file_byte_offset;
     u32 max_bytes;
-    audio_chunk_request_userdata_t *ud;
 
     if (!src || !c)
         return -1;
@@ -161,37 +203,26 @@ static int submit_chunk_request(audio_stream_source_t *src,
     c->req.index = 0xffffu;
     c->req.generation = 0;
 
-    ud = (audio_chunk_request_userdata_t *)mem_alloc(sizeof(*ud), 0, MEMTAG_STREAM);
-    if (!ud) {
-        c->in_flight = 0;
-        LOGLNC(LOGCAT_STREAMING, "[audio:stream] chunk request userdata alloc failed path=%s start=%u bytes=%u",
-            src->path,
-            start_frame,
-            max_bytes);
-        return -3;
-    }
-
-    ud->src = src;
-    ud->chunk = c;
-
     memset(&desc, 0, sizeof(desc));
     desc.path = src->path;
     desc.offset = c->file_offset;
     desc.size = max_bytes;
     desc.dst = c->data;
-    desc.priority = STREAM_PRIORITY_HIGH;
-    desc.callback = audio_stream_chunk_callback;
-    desc.userdata = ud;
+    desc.priority = STREAM_PRIORITY_CRITICAL;
+    desc.callback = NULL;
+    desc.userdata = NULL;
 
     c->req = streaming_request_file(&desc);
     if (!streaming_is_valid(c->req)) {
         c->in_flight = 0;
-        mem_free(ud, MEMTAG_STREAM);
-        LOGLNC(LOGCAT_STREAMING, "[audio:stream] request failed path=%s offset=%u bytes=%u start=%u",
-            src->path,
-            c->file_offset,
-            max_bytes,
-            start_frame);
+        c->req = audio_stream_invalid_request();
+
+        LOGLNC(LOGCAT_STREAMING,
+               "[audio:stream] request failed path=%s offset=%u bytes=%u start=%u",
+               src->path,
+               (unsigned int)c->file_offset,
+               (unsigned int)max_bytes,
+               (unsigned int)start_frame);
         return -4;
     }
 
@@ -315,32 +346,70 @@ int audio_stream_source_init(audio_stream_source_t *src,
 void audio_stream_source_destroy(audio_stream_source_t *src)
 {
     int i;
+    int wait;
 
     if (!src)
         return;
 
-    for (i = 0; i < AUDIO_STREAM_SOURCE_MAX_CHUNKS; i++) {
+    for (i = 0; i < AUDIO_STREAM_SOURCE_MAX_CHUNKS; ++i) {
         audio_stream_chunk_t *c = &src->chunks[i];
 
-        if (c->in_flight && streaming_is_valid(c->req)) {
-            LOGLNC(LOGCAT_STREAMING, "[audio:stream] cancel in-flight chunk path=%s start=%u",
-                src->path,
-                c->start_frame);
+        if (c->in_flight && streaming_is_valid(c->req))
             streaming_cancel(c->req);
-        }
-
-        if (streaming_is_valid(c->req)) {
-            LOGLNC(LOGCAT_STREAMING, "[audio:stream] release chunk request path=%s start=%u",
-                src->path,
-                c->start_frame);
-            streaming_release(c->req);
-        }
-
-        if (c->data)
-            mem_free(c->data, MEMTAG_AUDIO);
     }
 
-    LOGLNC(LOGCAT_STREAMING, "[audio:stream] source destroyed path=%s", src->path);
+    for (wait = 0; wait < 200; ++wait) {
+        int pending = 0;
+
+        for (i = 0; i < AUDIO_STREAM_SOURCE_MAX_CHUNKS; ++i) {
+            audio_stream_chunk_t *c = &src->chunks[i];
+            stream_status_t status;
+            int bytes_read;
+
+            if (!c->in_flight || !streaming_is_valid(c->req))
+                continue;
+
+            if (!streaming_take_completion(c->req, &status, &bytes_read)) {
+                pending = 1;
+                continue;
+            }
+
+            {
+                stream_handle_t completed_request = c->req;
+
+                c->in_flight = 0;
+                c->req = audio_stream_invalid_request();
+                streaming_release(completed_request);
+            }
+        }
+
+        if (!pending)
+            break;
+
+        platform_delay_us(1000);
+    }
+
+    for (i = 0; i < AUDIO_STREAM_SOURCE_MAX_CHUNKS; ++i) {
+        audio_stream_chunk_t *c = &src->chunks[i];
+
+        /* Must not free this source if a request remains active. */
+        if (c->in_flight && streaming_is_valid(c->req)) {
+            LOGLNC(LOGCAT_STREAMING,
+                   "[audio:stream] destroy pending request path=%s start=%u",
+                   src->path,
+                   (unsigned int)c->start_frame);
+            return;
+        }
+    }
+
+    for (i = 0; i < AUDIO_STREAM_SOURCE_MAX_CHUNKS; ++i) {
+        if (src->chunks[i].data)
+            mem_free(src->chunks[i].data, MEMTAG_AUDIO);
+    }
+
+    LOGLNC(LOGCAT_STREAMING,
+           "[audio:stream] source destroyed path=%s",
+           src->path);
     memset(src, 0, sizeof(*src));
 }
 
@@ -349,6 +418,7 @@ void audio_stream_source_update(audio_stream_source_t *src, u32 wanted_frame)
     if (!src || !src->used)
         return;
 
+    audio_stream_source_poll_completions(src);
     maybe_queue_needed_chunks(src, wanted_frame);
 }
 

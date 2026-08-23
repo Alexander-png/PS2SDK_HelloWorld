@@ -11,12 +11,9 @@ extern "C" {
 #define STREAMING_MAX_REQUESTS 16
 #endif
 
+/* One physical DVD/HDD backend: serialize file I/O by default. */
 #ifndef STREAMING_WORKER_COUNT
 #define STREAMING_WORKER_COUNT 1
-#endif
-
-#ifndef STREAMING_IO_CHUNK_BYTES
-#define STREAMING_IO_CHUNK_BYTES 8 * 1024
 #endif
 
 #ifndef STREAMING_THREAD_PRIO
@@ -25,6 +22,11 @@ extern "C" {
 
 #ifndef STREAMING_THREAD_STACK_SIZE
 #define STREAMING_THREAD_STACK_SIZE 0x2000
+#endif
+
+/* Must remain modest and 64-byte aligned for predictable I/O/copy behavior. */
+#ifndef STREAMING_IO_CHUNK_BYTES
+#define STREAMING_IO_CHUNK_BYTES 8 * 1024
 #endif
 
 typedef enum stream_priority {
@@ -74,6 +76,19 @@ void streaming_release(stream_handle_t handle);
 stream_status_t streaming_status(stream_handle_t handle);
 int streaming_bytes_read(stream_handle_t handle);
 int streaming_is_valid(stream_handle_t handle);
+int streaming_is_complete(stream_handle_t handle);
+
+/*
+ * Atomically claims terminal completion for clients that poll it.
+ *
+ * Returns 1 only for READY, FAILED, or CANCELLED.
+ * On success, the normal main-thread callback is suppressed.
+ * This does not release the request; caller must call
+ * streaming_release() after consuming dst/result.
+ */
+int streaming_take_completion(stream_handle_t handle,
+                              stream_status_t *status,
+                              int *bytes_read);
 
 const char *streaming_status_name(stream_status_t status);
 
